@@ -156,6 +156,19 @@
       "install": { "command": ["npm", "ci", "--omit=dev", "--no-audit", "--no-fund"], "always": true },
       "build": [["node", "build.js"]],
       "nginx": { "repoVhosts": "deploy/nginx/*.conf", "installOnDeploy": true }
+    },
+    "host": {
+      "_note": "OpenVibe.Host Stage B (tenant static hosting): the Host API service on port 4910. Not deployed as of 22 Sep 2026. Its database and content-addressed objects live in /var/lib/openvibe-host-api, which is NOT ovhost's own stateDir (/var/lib/openvibe-host). Tenant vhosts: `ovhost nginx tenants host`.",
+      "repo": "/opt/openvibe.host",
+      "units": ["openvibe-host.service"],
+      "unitSources": { "openvibe-host.service": "deploy/systemd/openvibe-host.service" },
+      "envFile": "/etc/openvibe/host.env",
+      "env": { "required": ["BASE_URL", "OV_NETWORK_URL", "OV_OAUTH_CLIENT_ID", "OV_OAUTH_CLIENT_SECRET", "HOST_FORM_SECRET", "HOST_SITES_DOMAIN"] },
+      "port": 4910,
+      "ready": { "url": "http://127.0.0.1:4910/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "host", "path": "/var/lib/openvibe-host-api/host.db" }],
+      "nginx": { "tenants": { "sitesDomain": "openvibe.host", "dashboardDomain": "openvibe.host", "wildcardCert": "openvibe.host", "database": "/var/lib/openvibe-host-api/host.db", "maxUpload": "110m" } }
     }
   }
 }

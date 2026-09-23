@@ -1,0 +1,20 @@
+
+    # Static files only: no request bodies, no cookies in either direction.
+    client_max_body_size 1k;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
+    location / {
+        limit_except GET HEAD { deny all; }
+        limit_req zone={{zone}}_sites burst=200 nodelay;
+        proxy_pass http://127.0.0.1:{{port}};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header Cookie "";
+        proxy_set_header Authorization "";
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header Set-Cookie;
+        proxy_read_timeout 60s;
+    }
