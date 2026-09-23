@@ -1,0 +1,24 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.22.1   # production runs Node 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - name: syntax check
+        run: for f in bin/ovhost lib/*.js lib/commands/*.js; do node --check "$f"; done
+      - name: contract check (openvibe-contracts)
+        # The published host manifest (contracts v0.7.0) is still the charter placeholder with range
+        # ^0.1.0, so this step fails until docs/service-manifest-proposal.json is released in
+        # OpenVibe.Contracts. Remove continue-on-error in the same change that bumps the dependency.
+        continue-on-error: true
+        run: npx openvibe-contracts-check --service host --src lib

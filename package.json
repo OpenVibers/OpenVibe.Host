@@ -1,0 +1,24 @@
+{
+  "name": "openvibe-host",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenVibe.Host Stage A: the operator plane. The ovhost CLI validates, deploys, rolls back, snapshots and backs up the services on the OpenVibe host, and encodes the rules that keep live streams and recordings alive through a deploy.",
+  "main": "lib/index.js",
+  "bin": {
+    "ovhost": "bin/ovhost"
+  },
+  "scripts": {
+    "test": "node test/run.js"
+  },
+  "keywords": ["openvibe", "deploy", "systemd", "nginx", "operator"],
+  "author": "OpenVibers",
+  "license": "AGPL-3.0-only",
+  "repository": "github:OpenVibers/OpenVibe.Host",
+  "dependencies": {
+    "better-sqlite3": "^11.10.0",
+    "openvibe-contracts": "https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.7.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

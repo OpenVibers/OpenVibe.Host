@@ -1,0 +1,12 @@
+node_modules/
+# The real inventory lives on the host (/etc/openvibe/host.json) and is never committed.
+host.json
+*.tar.gz
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.pem
+*.key
+.env
+.env.*

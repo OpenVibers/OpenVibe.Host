@@ -1,0 +1,20 @@
+
+    # Server-Sent Events: never buffered or compressed; long reads (the service sends heartbeats
+    # well inside Cloudflare's 100 s idle limit).
+    location = {{path}} {
+        proxy_pass http://127.0.0.1:{{port}};
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Last-Event-ID $http_last_event_id;
+        proxy_buffering off;
+        proxy_cache off;
+        gzip off;
+        chunked_transfer_encoding on;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        send_timeout 1h;
+    }

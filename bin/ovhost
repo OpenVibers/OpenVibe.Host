@@ -1,0 +1,6 @@
+#!/usr/bin/env node
+'use strict';
+require('../lib/cli').main(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (err) => {
+    process.stderr.write(`[ovhost] ${err.stack || err.message}\n`);
+    process.exitCode = 2;
+});

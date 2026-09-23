@@ -1,0 +1,5 @@
+# Upgrade header -> Connection header, named per service so two vhosts never define the same variable.
+map $http_upgrade ${{zone}}_connection {
+    default upgrade;
+    ''      close;
+}

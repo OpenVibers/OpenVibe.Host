@@ -1,0 +1,161 @@
+{
+  "_about": "Example ovhost inventory for the single OpenVibe host (openvibe-oregon). Copy to /etc/openvibe/host.json (root:root, 0640) and correct anything that differs on the machine; the real file is never committed. Paths, units, ports and env file locations come from OpenVibe.Network docs/roadmap-baseline/data/services.json and prod-snapshot.json (22 Sep 2026) and each repository's deploy/ directory. env.required lists NAMES only.",
+  "host": "openvibe-oregon",
+  "stateDir": "/var/lib/openvibe-host",
+  "backupDir": "/var/backups/openvibe",
+  "nginx": {
+    "sitesAvailable": "/etc/nginx/sites-available",
+    "sitesEnabled": "/etc/nginx/sites-enabled",
+    "bin": "nginx"
+  },
+  "defaults": {
+    "owner": "ubuntu",
+    "runAs": "ubuntu",
+    "remote": "origin",
+    "branch": "main"
+  },
+  "services": {
+    "network": {
+      "repo": "/opt/openvibe.network",
+      "units": ["openvibe-network.service"],
+      "unitSources": { "openvibe-network.service": "deploy/systemd/openvibe-network.service" },
+      "envFile": "/etc/openvibe/network.env",
+      "env": { "required": ["BASE_URL", "JWT_PRIVATE_KEY", "JWT_PUBLIC_KEY", "DB_PATH"] },
+      "port": 4000,
+      "ready": { "url": "http://127.0.0.1:4000/api/health", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "network", "path": "/opt/openvibe.network/data/network.db" }],
+      "nginx": { "vhost": "openvibe.network.conf", "repoVhost": "deploy/nginx/openvibe.network.conf", "variant": "http" }
+    },
+    "live": {
+      "repo": "/opt/openvibe.live",
+      "units": ["openvibe-live.service"],
+      "socketUnit": "openvibe-live.socket",
+      "unitSources": {
+        "openvibe-live.service": "deploy/systemd/openvibe-live.service",
+        "openvibe-live.socket": "deploy/systemd/openvibe-live.socket",
+        "openvibe-live.service.d/socket.conf": "deploy/systemd/openvibe-live.service.d/socket.conf"
+      },
+      "envFile": "/etc/openvibe/live.env",
+      "env": { "required": ["BASE_URL", "JWT_SECRET", "OV_NETWORK_URL", "OV_OAUTH_CLIENT_ID", "OV_OAUTH_CLIENT_SECRET", "MEDIA_URL", "MEDIA_API_KEY", "MEDIA_WEBHOOK_SECRET"] },
+      "port": 3000,
+      "ready": { "url": "http://127.0.0.1:3000/api/ready", "timeoutSeconds": 90 },
+      "noRestartPaths": ["public/", "docs/", "test/", "scripts/", "hardware/", "deploy/nginx/", "deploy/cloudflare/", "deploy/fail2ban/", "**/*.md"],
+      "protected": {
+        "kind": "http-json-count",
+        "url": "http://127.0.0.1:3000/api/streams",
+        "array": "streams",
+        "where": { "is_live": true },
+        "label": "live streams"
+      },
+      "drain": { "policy": "refuse", "waitMaxSeconds": 28800, "pollSeconds": 60, "quietChecks": 2 },
+      "databases": [
+        { "name": "live", "path": "/opt/openvibe.live/data/live.db" },
+        { "name": "rs-companion", "path": "/opt/openvibe.live/data/rs-companion.db" }
+      ],
+      "_databasesNote": "analytics.db (1.7 GB, append-only pageviews) is left out of routine backups on purpose; add it here to include it.",
+      "backupOnChange": ["server/db/migrations.js", "server/db/schema.sql"],
+      "nginx": { "vhost": "openvibe.live.conf", "repoVhost": "deploy/nginx/openvibe.live.conf", "variant": "websocket", "wsPaths": ["/ws/"], "maxBody": "3m" }
+    },
+    "media": {
+      "repo": "/opt/openvibe.media",
+      "units": ["openvibe-media.service"],
+      "unitSources": { "openvibe-media.service": "deploy/systemd/openvibe-media.service" },
+      "envFile": "/etc/openvibe/media.env",
+      "env": { "required": ["DB_PATH", "VOD_PATH", "MEDIA_B2_ENDPOINT", "MEDIA_B2_BUCKET", "MEDIA_B2_KEY_ID", "MEDIA_B2_APP_KEY", "MEDIA_R2_ENDPOINT", "MEDIA_R2_BUCKET", "MEDIA_R2_ACCESS_KEY_ID", "MEDIA_R2_SECRET_ACCESS_KEY"] },
+      "port": 4100,
+      "ready": { "url": "http://127.0.0.1:4100/healthz", "timeoutSeconds": 60 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "protected": {
+        "kind": "sqlite-count",
+        "db": "/opt/openvibe.media/data/media.db",
+        "sql": "SELECT count(*) AS n FROM vods WHERE is_recording = 1",
+        "label": "recordings in progress"
+      },
+      "drain": { "policy": "refuse", "waitMaxSeconds": 43200, "pollSeconds": 60, "quietChecks": 2 },
+      "databases": [{ "name": "media", "path": "/opt/openvibe.media/data/media.db" }],
+      "nginx": { "vhost": "openvibe.media.conf", "repoVhost": "deploy/nginx/openvibe.media.conf", "variant": "http" }
+    },
+    "tools": {
+      "repo": "/opt/openvibe.tools",
+      "packages": ["apps/*"],
+      "units": [
+        "openvibe-tools.service",
+        "openvibe-tools-maps.service",
+        "openvibe-tools-food.service",
+        "openvibe-tools-img.service",
+        "openvibe-tools-yt.service",
+        "openvibe-tools-audio.service",
+        "openvibe-tools-text.service",
+        "openvibe-tools-docs.service"
+      ],
+      "envFile": "/etc/openvibe/tools.env",
+      "env": { "required": ["OV_NETWORK_URL", "OV_OAUTH_CLIENT_ID", "OV_OAUTH_CLIENT_SECRET", "MEDIA_URL"] },
+      "port": 4001,
+      "ready": { "url": "http://127.0.0.1:4001/api/health", "headers": { "Host": "openvibe.tools" }, "timeoutSeconds": 60 },
+      "noRestartPaths": ["**/*.md"],
+      "databases": [
+        { "name": "tools-audio-analytics", "path": "/opt/openvibe.tools/apps/audio/data/analytics.db" },
+        { "name": "tools-docs-analytics", "path": "/opt/openvibe.tools/apps/docs/data/analytics.db" },
+        { "name": "tools-food-analytics", "path": "/opt/openvibe.tools/apps/food/data/analytics.db" },
+        { "name": "tools-img-analytics", "path": "/opt/openvibe.tools/apps/img/data/analytics.db" },
+        { "name": "tools-maps-analytics", "path": "/opt/openvibe.tools/apps/maps/data/analytics.db" },
+        { "name": "tools-text-analytics", "path": "/opt/openvibe.tools/apps/text/data/analytics.db" },
+        { "name": "tools-yt-analytics", "path": "/opt/openvibe.tools/apps/yt/data/analytics.db" }
+      ]
+    },
+    "community": {
+      "repo": "/opt/openvibe.community",
+      "units": ["openvibe-community.service"],
+      "unitSources": { "openvibe-community.service": "deploy/systemd/openvibe-community.service" },
+      "envFile": "/etc/openvibe/community.env",
+      "env": { "required": ["BASE_URL", "OV_NETWORK_URL", "OV_OAUTH_CLIENT_ID", "OV_OAUTH_CLIENT_SECRET", "OV_OAUTH_REDIRECT_URI"] },
+      "port": 4200,
+      "ready": { "url": "http://127.0.0.1:4200/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [
+        { "name": "community", "path": "/var/lib/openvibe-community/community.db" },
+        { "name": "community-legacy-path", "path": "/opt/openvibe.community/data/community.db" }
+      ],
+      "_databasesNote": "The repo unit puts the database in /var/lib/openvibe-community; the 22 Sep production snapshot found it under /opt/openvibe.community/data. Keep the one that exists (backup skips a missing path).",
+      "nginx": { "vhost": "openvibe.community.conf", "repoVhost": "deploy/nginx/openvibe.community.conf", "variant": "http" }
+    },
+    "events": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot (no events.env on the host).",
+      "repo": "/opt/openvibe.events",
+      "units": ["openvibe-events.service"],
+      "unitSources": { "openvibe-events.service": "deploy/systemd/openvibe-events.service" },
+      "envFile": "/etc/openvibe/events.env",
+      "env": { "required": ["OV_NETWORK_URL", "OV_NETWORK_INTERNAL_URL"] },
+      "port": 4300,
+      "ready": { "url": "http://127.0.0.1:4300/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "protected": {
+        "kind": "http-json-count",
+        "url": "http://127.0.0.1:4300/api/ready",
+        "field": "realtime_connections",
+        "label": "SSE connections"
+      },
+      "drain": { "policy": "report" },
+      "databases": [{ "name": "events", "path": "/var/lib/openvibe-events/events.db" }],
+      "nginx": { "vhost": "events.openvibe.network.conf", "repoVhost": "deploy/nginx/events.openvibe.network.conf", "variant": "sse", "ssePaths": ["/realtime/stream"], "certName": "openvibe.network" }
+    },
+    "games": {
+      "repo": "/opt/openvibe.games",
+      "managed": false,
+      "unmanagedReason": "pnpm workspace with a TypeScript build; its deploy steps are not encoded in Stage A (status, validate, snapshot and backup still work)",
+      "units": ["openvibe-games.service"],
+      "envFile": "/etc/openvibe/games.env",
+      "port": 8000,
+      "ready": { "url": "http://127.0.0.1:8000/healthz", "timeoutSeconds": 60 },
+      "databases": [{ "name": "world", "path": "/opt/openvibe.games/data/world.db" }]
+    },
+    "sites": {
+      "repo": "/opt/openvibe.sites",
+      "units": [],
+      "install": { "command": ["npm", "ci", "--omit=dev", "--no-audit", "--no-fund"], "always": true },
+      "build": [["node", "build.js"]],
+      "nginx": { "repoVhosts": "deploy/nginx/*.conf", "installOnDeploy": true }
+    }
+  }
+}

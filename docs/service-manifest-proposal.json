@@ -1,0 +1,18 @@
+{
+  "version": "0.1.0",
+  "contractRanges": {
+    "openvibe-contracts": ">=0.7.0 <1.0.0"
+  },
+  "id": "host",
+  "name": "OpenVibe.Host",
+  "status": "alpha",
+  "repository": "OpenVibers/OpenVibe.Host",
+  "domains": [],
+  "capabilities": [],
+  "eventsProduced": [],
+  "eventsConsumed": [],
+  "namespacesOwned": [
+    "host.*"
+  ],
+  "notes": "Stage A operator plane only: the ovhost CLI, run by an operator on the host (validate, plan, deploy with protected-session guards, automatic rollback, status, certificate inventory, vhost rendering, config snapshots, SQLite backups). No server and no public API yet; port 4910 is reserved for the later operator API. Stages B (tenant static hosting) and C (sandboxed user code) are not started."
+}

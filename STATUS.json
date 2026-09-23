@@ -1,7 +1,22 @@
 {
   "repository": "OpenVibers/OpenVibe.Host",
-  "stage": "placeholder",
-  "code": false,
+  "stage": "alpha",
+  "code": true,
+  "wave": "W21 Stage A",
   "plan": "OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026)",
-  "updated": "2026-09-21"
+  "runtime": "node 22, CLI only (no server)",
+  "port": null,
+  "portReserved": 4910,
+  "domain": "openvibe.host",
+  "contracts": "openvibe-contracts v0.7.0",
+  "capabilities": [],
+  "capabilitiesRegistered": false,
+  "stages": {
+    "A": "alpha: ovhost CLI written and tested against a fake host; not installed on the production host",
+    "B": "not started",
+    "C": "not started"
+  },
+  "installedOnHost": false,
+  "adoptedByServices": [],
+  "updated": "2026-09-22"
 }
