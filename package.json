@@ -1,24 +1,43 @@
 {
   "name": "openvibe-host",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "OpenVibe.Host Stage A: the operator plane. The ovhost CLI validates, deploys, rolls back, snapshots and backs up the services on the OpenVibe host, and encodes the rules that keep live streams and recordings alive through a deploy.",
+  "description": "OpenVibe.Host: the operator plane (Stage A, the ovhost CLI) and tenant static hosting (Stage B, the Host API service on port 4910): immutable content-addressed deploys, per-site domains, quotas and rollback.",
   "main": "lib/index.js",
   "bin": {
     "ovhost": "bin/ovhost"
   },
   "scripts": {
+    "start": "node server/index.js",
+    "dev": "NODE_ENV=development node server/index.js",
     "test": "node test/run.js"
   },
-  "keywords": ["openvibe", "deploy", "systemd", "nginx", "operator"],
+  "keywords": [
+    "openvibe",
+    "deploy",
+    "systemd",
+    "nginx",
+    "operator",
+    "static-hosting"
+  ],
   "author": "OpenVibers",
   "license": "AGPL-3.0-only",
   "repository": "github:OpenVibers/OpenVibe.Host",
   "dependencies": {
     "better-sqlite3": "^11.10.0",
-    "openvibe-contracts": "https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.10.0"
+    "busboy": "^1.6.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "openvibe-contracts": "https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.19.0",
+    "openvibe-sdk": "https://codeload.github.com/OpenVibers/OpenVibe.SDK/tar.gz/refs/tags/v0.2.2",
+    "openvibe-shared": "https://codeload.github.com/OpenVibers/OpenVibe.Shared/tar.gz/refs/tags/v1.3.0"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "jsonwebtoken": "^9.0.2"
   }
 }

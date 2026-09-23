@@ -10,3 +10,5 @@ host.json
 *.key
 .env
 .env.*
+data/
+!.env.example

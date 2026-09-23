@@ -33,7 +33,7 @@ runTests([
         const m = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'docs', 'service-manifest-proposal.json'), 'utf8'));
         contracts.assertValid('registry.service-manifest', m);
         assert.strictEqual(m.id, 'host');
-        assert.deepStrictEqual(m.capabilities, [], 'Stage A exposes no API, so it enforces no capability');
+        assert.deepStrictEqual(m.capabilities, ['host.site.manage', 'host.deploy.create', 'host.domain.manage'], 'Stage A has no API; the Stage B service enforces these three');
     }),
 
     test('as root, an inventory that is not root-owned or is writable by others is refused', async () => {

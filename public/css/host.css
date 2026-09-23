@@ -1,0 +1,32 @@
+/* OpenVibe.Host dashboard. Colours follow the shared theme tokens when theme-loader.js has run. */
+:root { --hs-bg: var(--bg-primary, #0a0f1c); --hs-fg: var(--text-primary, #e6edf7); --hs-muted: var(--text-secondary, #9aa7bd);
+        --hs-card: var(--bg-secondary, #111a2c); --hs-line: rgba(255,255,255,.12); --hs-accent: var(--accent, #60a5fa);
+        --hs-ok: #34d399; --hs-warn: #fbbf24; --hs-bad: #f87171; }
+body { margin: 0; background: var(--hs-bg); color: var(--hs-fg); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--hs-accent); }
+.skip { position: absolute; left: -9999px; } .skip:focus { left: 1rem; top: 1rem; }
+.account-bar { max-width: 72rem; margin: 0 auto; padding: .5rem 1rem; text-align: right; color: var(--hs-muted); font-size: 14px; }
+.page { max-width: 72rem; margin: 0 auto; padding: 0 1rem 3rem; }
+h1 { font-size: 1.7rem; margin: .5rem 0 .25rem; } h2 { font-size: 1.2rem; margin-top: 2rem; } h3 { font-size: 1rem; }
+.meta, .muted, .crumbs { color: var(--hs-muted); } .crumbs { margin: 0; font-size: 14px; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; overflow-wrap: anywhere; }
+table { width: 100%; border-collapse: collapse; margin: .5rem 0 1rem; font-size: 14px; }
+th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--hs-line); vertical-align: top; }
+tr.active td { background: rgba(96,165,250,.08); }
+form { margin: .5rem 0 1rem; display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: end; }
+form.inline { display: inline-flex; margin: 0; }
+fieldset { border: 1px solid var(--hs-line); border-radius: 8px; padding: .5rem .75rem; }
+label { display: flex; flex-direction: column; gap: .25rem; font-size: 14px; }
+label.confirm { flex-direction: row; align-items: center; }
+input, select { font: inherit; padding: .4rem .5rem; border-radius: 6px; border: 1px solid var(--hs-line); background: var(--hs-card); color: var(--hs-fg); }
+button, .button { font: inherit; padding: .45rem .9rem; border-radius: 6px; border: 0; background: var(--hs-accent); color: #0a0f1c; cursor: pointer; text-decoration: none; display: inline-block; }
+button.link { background: none; color: var(--hs-accent); padding: 0; text-decoration: underline; }
+button.danger, .danger { background: var(--hs-bad); color: #0a0f1c; } button.link.danger { background: none; color: var(--hs-bad); }
+.notice { padding: .6rem .8rem; border-radius: 6px; background: var(--hs-card); border-left: 4px solid var(--hs-accent); }
+.notice-error { border-left-color: var(--hs-bad); }
+.ok { color: var(--hs-ok); } .warn { color: var(--hs-warn); }
+ul.log { list-style: none; padding: 0; font-family: ui-monospace, monospace; font-size: 13px; background: var(--hs-card); border-radius: 8px; padding: .75rem; }
+ul.log .level { display: inline-block; width: 3.5em; color: var(--hs-muted); } .log-error { color: var(--hs-bad); } .log-warn { color: var(--hs-warn); }
+ul.domains { padding-left: 1.2rem; } ul.domains li { margin-bottom: 1rem; }
+.intro { max-width: 44rem; }
+@media (max-width: 40rem) { table { display: block; overflow-x: auto; } .account-bar { text-align: left; } }

@@ -1,0 +1,31 @@
+{
+  "id": "host.site.manage",
+  "version": "1.0",
+  "owner": "host",
+  "status": "active",
+  "visibility": "first-party",
+  "description": "Manage OpenVibe.Host tenant projects and static sites: create a project (owned by the person named with X-OV-Subject; apps cannot own projects), read projects, quotas and usage, manage members (owner role), create and delete sites, delete a deploy that is not active. Also judged by the acting principal's project role; a sandbox token (env=sandbox) is refused on production projects. Quota changes additionally need a Network staff user.",
+  "permissions": [
+    "host:write"
+  ],
+  "resourceConstraints": [
+    "project"
+  ],
+  "quotaClass": "host-manage",
+  "events": [],
+  "implementedBy": [
+    "GET /api/v1/projects",
+    "POST /api/v1/projects",
+    "GET /api/v1/projects/:id",
+    "DELETE /api/v1/projects/:id",
+    "GET /api/v1/projects/:id/quota",
+    "PUT /api/v1/projects/:id/quota",
+    "PUT /api/v1/projects/:id/members/:principal",
+    "DELETE /api/v1/projects/:id/members/:principal",
+    "GET /api/v1/projects/:id/sites",
+    "POST /api/v1/projects/:id/sites",
+    "GET /api/v1/sites/:id",
+    "DELETE /api/v1/sites/:id",
+    "DELETE /api/v1/deploys/:id"
+  ]
+}
