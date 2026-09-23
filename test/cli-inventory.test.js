@@ -17,7 +17,7 @@ runTests([
     test('host.example.json is a valid inventory for every service on the host', () => {
         const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'host.example.json'), 'utf8'));
         const inv = normalise(raw);
-        assert.deepStrictEqual(Object.keys(inv.services), ['network', 'live', 'media', 'tools', 'community', 'events', 'games', 'sites', 'host', 'billing', 'chat', 'search', 'sources', 'wiki', 'blog', 'tips', 'vip', 'news', 'reviews', 'deals', 'coupons', 'trade', 'codes']);
+        assert.deepStrictEqual(Object.keys(inv.services), ['network', 'live', 'media', 'tools', 'community', 'events', 'games', 'sites', 'host', 'billing', 'chat', 'search', 'sources', 'wiki', 'blog', 'tips', 'vip', 'news', 'reviews', 'deals', 'coupons', 'trade', 'codes', 'ai', 'openre']);
         assert.strictEqual(inv.services.live.socketUnit, 'openvibe-live.socket');
         assert.ok(!inv.services.live.units.includes('openvibe-live.socket'));
         assert.strictEqual(inv.services.live.protected.url, 'http://127.0.0.1:3000/api/streams');

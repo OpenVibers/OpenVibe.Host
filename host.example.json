@@ -24,7 +24,7 @@
       "envFile": "/etc/openvibe/network.env",
       "env": { "required": ["BASE_URL", "JWT_PRIVATE_KEY", "JWT_PUBLIC_KEY", "DB_PATH"] },
       "port": 4000,
-      "ready": { "url": "http://127.0.0.1:4000/api/health", "timeoutSeconds": 30 },
+      "ready": { "url": "http://127.0.0.1:4000/api/ready", "timeoutSeconds": 30 },
       "noRestartPaths": ["docs/", "test/", "**/*.md"],
       "databases": [{ "name": "network", "path": "/opt/openvibe.network/data/network.db" }],
       "nginx": { "vhost": "openvibe.network.conf", "repoVhost": "deploy/nginx/openvibe.network.conf", "variant": "http" },
@@ -87,7 +87,7 @@
       "envFile": "/etc/openvibe/media.env",
       "env": { "required": ["DB_PATH", "VOD_PATH", "MEDIA_B2_ENDPOINT", "MEDIA_B2_BUCKET", "MEDIA_B2_KEY_ID", "MEDIA_B2_APP_KEY", "MEDIA_R2_ENDPOINT", "MEDIA_R2_BUCKET", "MEDIA_R2_ACCESS_KEY_ID", "MEDIA_R2_SECRET_ACCESS_KEY"] },
       "port": 4100,
-      "ready": { "url": "http://127.0.0.1:4100/healthz", "timeoutSeconds": 60 },
+      "ready": { "url": "http://127.0.0.1:4100/api/ready", "timeoutSeconds": 60 },
       "noRestartPaths": ["docs/", "test/", "**/*.md"],
       "protected": {
         "kind": "sqlite-count",
@@ -119,7 +119,7 @@
       "envFile": "/etc/openvibe/tools.env",
       "env": { "required": ["OV_NETWORK_URL", "OV_OAUTH_CLIENT_ID", "OV_OAUTH_CLIENT_SECRET", "MEDIA_URL"] },
       "port": 4001,
-      "ready": { "url": "http://127.0.0.1:4001/api/health", "headers": { "Host": "openvibe.tools" }, "timeoutSeconds": 60 },
+      "ready": { "url": "http://127.0.0.1:4001/api/ready", "headers": { "Host": "openvibe.tools" }, "timeoutSeconds": 60 },
       "noRestartPaths": ["**/*.md"],
       "databases": [
         { "name": "tools-audio-analytics", "path": "/opt/openvibe.tools/apps/audio/data/analytics.db" },
@@ -128,7 +128,10 @@
         { "name": "tools-img-analytics", "path": "/opt/openvibe.tools/apps/img/data/analytics.db" },
         { "name": "tools-maps-analytics", "path": "/opt/openvibe.tools/apps/maps/data/analytics.db" },
         { "name": "tools-text-analytics", "path": "/opt/openvibe.tools/apps/text/data/analytics.db" },
-        { "name": "tools-yt-analytics", "path": "/opt/openvibe.tools/apps/yt/data/analytics.db" }
+        { "name": "tools-yt-analytics", "path": "/opt/openvibe.tools/apps/yt/data/analytics.db" },
+        { "name": "tools-audio-jobs", "path": "/opt/openvibe.tools/apps/audio/data/jobs.db" },
+        { "name": "tools-docs-jobs", "path": "/opt/openvibe.tools/apps/docs/data/jobs.db" },
+        { "name": "tools-img-jobs", "path": "/opt/openvibe.tools/apps/img/data/jobs.db" }
       ],
       "drill": {
         "supported": false,
@@ -533,6 +536,30 @@
         "counts": [{ "db": "codes", "table": "manifests" }, { "db": "codes", "table": "releases" }, { "db": "codes", "table": "trust" }],
         "_notes": "Left on (read-only): JWKS and registry GETs to Network on loopback. The docs pages carry their boot time, so they are not compared."
       }
+    },
+    "ai": {
+      "repo": "/opt/openvibe.ai",
+      "units": ["openvibe-ai.service"],
+      "unitSources": { "openvibe-ai.service": "deploy/systemd/openvibe-ai.service" },
+      "envFile": "/etc/openvibe/ai.env",
+      "env": { "required": "from-example" },
+      "port": 4700,
+      "ready": { "url": "http://127.0.0.1:4700/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "ai", "path": "/var/lib/openvibe-ai/ai.db" }],
+      "drill": { "supported": false, "reason": "Not written yet: a drill must start AI with every provider key blanked, or queued and new runs would call paid providers. Backups work." }
+    },
+    "openre": {
+      "_note": "Release layout: the service runs from /opt/openre.stream/current and deploys with its own deploy/deploy.sh (release | api | workers). The templated ingest and restream workers belong to the session coordinator; ovhost never restarts them.",
+      "repo": "/opt/openre.stream",
+      "units": ["openre-api.service", "openre-session-coordinator.service"],
+      "envFile": "/etc/openvibe/openre.env",
+      "env": { "required": "from-example" },
+      "port": 4500,
+      "ready": { "url": "http://127.0.0.1:4500/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "openre", "path": "/var/lib/openre/openre.db" }],
+      "drill": { "supported": false, "reason": "The session coordinator reconciles slots and starts workers at boot; a drill needs a switch that keeps it away from live ingest slots." }
     }
   }
 }
