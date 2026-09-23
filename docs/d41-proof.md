@@ -132,6 +132,7 @@ nothing reads it in production today.
 
 | Date (UTC) | Service | Releases | Other units / readiness | Evidence | Result |
 |---|---|---|---|---|---|
+| 2026-09-23 20:09 | sources | `2e986af27a55` → `202aec4fa0e5` → `2e986af27a55` (3 restarts) | 37 other units identical: yes; readiness kept: yes | `/var/lib/openvibe-host/d41/sources-20260923-200932` | PASS |
 
 *(no run yet)*
 
