@@ -22,13 +22,18 @@ runTests([
         const st = await host.cli('status', '--json');
         assert.match(st.out, /655b98a10aaa/);
         assert.match(st.out, /"managed":\s*false/);
-        // A release the service user could rewrite is refused.
-        host.put('/opt/rel.stream/releases/bad/package.json', '{}', { owner: 'ubuntu' });
-        host.files.get('/opt/rel.stream/releases/bad').owner = 'ubuntu';
+        // current must name a release under releases/, owned by root or the checkout owner.
+        host.put('/opt/elsewhere/package.json', '{}');
         host.files.delete('/opt/rel.stream/current');
-        await host.exec.symlink('/opt/rel.stream/releases/bad', '/opt/rel.stream/current');
+        await host.exec.symlink('/opt/elsewhere', '/opt/rel.stream/current');
         res = JSON.parse((await host.cli('validate', 'rel', '--json')).out);
-        assert.ok(res.findings.some((f) => f.level === 'error' && /must be root-owned/.test(f.message)));
+        assert.ok(res.findings.some((f) => f.level === 'error' && /points outside/.test(f.message)));
+        host.put('/opt/rel.stream/releases/odd/package.json', '{}', { owner: 'nobody' });
+        host.files.get('/opt/rel.stream/releases/odd').owner = 'nobody';
+        host.files.delete('/opt/rel.stream/current');
+        await host.exec.symlink('/opt/rel.stream/releases/odd', '/opt/rel.stream/current');
+        res = JSON.parse((await host.cli('validate', 'rel', '--json')).out);
+        assert.ok(res.findings.some((f) => f.level === 'error' && /owned by nobody/.test(f.message)));
     }),
 
     test('env validation reports names only — never a value — in text and JSON output', async () => {
