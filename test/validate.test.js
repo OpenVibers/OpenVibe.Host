@@ -9,6 +9,28 @@ function noSecrets(text) {
 }
 
 runTests([
+    test('a release-layout service is checked by its current release, not as a git checkout, and is never managed', async () => {
+        const host = scenario();
+        const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
+        raw.services.rel = { repo: '/opt/rel.stream', layout: 'release', units: [] };
+        host.put('/etc/openvibe/host.json', JSON.stringify(raw), { mode: 0o640 });
+        host.put('/opt/rel.stream/releases/655b98a10aaa/package.json', '{}');
+        await host.exec.symlink('/opt/rel.stream/releases/655b98a10aaa', '/opt/rel.stream/current');
+        let res = JSON.parse((await host.cli('validate', 'rel', '--json')).out);
+        assert.deepStrictEqual(res.findings.filter((f) => f.level === 'error'), []);
+        assert.ok(res.findings.some((f) => f.area === 'checkout' && /current -> \/opt\/rel\.stream\/releases\/655b98a10aaa/.test(f.message)));
+        const st = await host.cli('status', '--json');
+        assert.match(st.out, /655b98a10aaa/);
+        assert.match(st.out, /"managed":\s*false/);
+        // A release the service user could rewrite is refused.
+        host.put('/opt/rel.stream/releases/bad/package.json', '{}', { owner: 'ubuntu' });
+        host.files.get('/opt/rel.stream/releases/bad').owner = 'ubuntu';
+        host.files.delete('/opt/rel.stream/current');
+        await host.exec.symlink('/opt/rel.stream/releases/bad', '/opt/rel.stream/current');
+        res = JSON.parse((await host.cli('validate', 'rel', '--json')).out);
+        assert.ok(res.findings.some((f) => f.level === 'error' && /must be root-owned/.test(f.message)));
+    }),
+
     test('env validation reports names only — never a value — in text and JSON output', async () => {
         const host = scenario();
         host.put('/etc/openvibe/live.env', `JWT_SECRET=${SECRET}\nBASE_URL=\nPAYPAL_CLIENT_SECRET=""\n`, { mode: 0o644 });

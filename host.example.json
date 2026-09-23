@@ -552,6 +552,7 @@
     "openre": {
       "_note": "Release layout: the service runs from /opt/openre.stream/current and deploys with its own deploy/deploy.sh (release | api | workers). The templated ingest and restream workers belong to the session coordinator; ovhost never restarts them.",
       "repo": "/opt/openre.stream",
+      "layout": "release",
       "units": ["openre-api.service", "openre-session-coordinator.service"],
       "envFile": "/etc/openvibe/openre.env",
       "env": { "required": "from-example" },
