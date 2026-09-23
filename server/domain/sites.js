@@ -21,7 +21,7 @@ const RESERVED = new Set([
 ]);
 const HOLD_MS = 30 * 24 * 3600 * 1000;
 
-function createSites({ store, config, access, projects }) {
+function createSites({ store, config, access, projects, takedowns }) {
     const { db } = store;
     const reserved = new Set([...RESERVED, ...config.sites.extraReservedNames]);
     const q = {
@@ -97,6 +97,7 @@ function createSites({ store, config, access, projects }) {
 
     function remove(viewer, id, { deploys }) {
         const { site, project } = load(viewer, id, 'maintain');
+        takedowns.assertDeletable(viewer, { site });
         const now = store.now();
         let freed = [];
         store.tx(() => {

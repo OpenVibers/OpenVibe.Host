@@ -172,4 +172,25 @@ async function readUpload(req, { maxUploadBytes, maxUnpackedBytes = Infinity, li
     return { source, entries, fields, notes };
 }
 
-module.exports = { readUpload, UploadError };
+/**
+ * At most `max` uploads are read and validated at once, service-wide. An upload is held in memory
+ * (up to HOST_MAX_UPLOAD_BYTES, plus up to HOST_MAX_UNPACKED_BYTES once unpacked), so without a cap
+ * a handful of accounts uploading together could exhaust the host's memory. enter() -> release()
+ * or null when every slot is taken (the caller answers 503 with Retry-After before reading a byte).
+ */
+function createUploadGate(max) {
+    const limit = Math.max(1, Number(max) || 1);
+    let inFlight = 0;
+    return {
+        enter() {
+            if (inFlight >= limit) return null;
+            inFlight++;
+            let released = false;
+            return () => { if (!released) { released = true; inFlight--; } };
+        },
+        get inFlight() { return inFlight; },
+        limit,
+    };
+}
+
+module.exports = { readUpload, UploadError, createUploadGate };

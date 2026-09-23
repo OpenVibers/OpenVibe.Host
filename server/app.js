@@ -25,6 +25,7 @@ const { openStore } = require('./db');
 const { createBlobStore } = require('./storage');
 const { createHostOutbox } = require('./events/outbox');
 const { createAccess } = require('./domain/access');
+const { createTakedowns } = require('./domain/takedowns');
 const { createProjects } = require('./domain/projects');
 const { createSites } = require('./domain/sites');
 const { createDeploys } = require('./domain/deploys');
@@ -32,6 +33,7 @@ const { createDomains } = require('./domain/domains');
 const { createAuthClient, createAuthRoutes } = require('./auth/sso');
 const { createViewerResolver } = require('./auth/viewer');
 const { createTenantServer } = require('./http/tenant');
+const { createUploadGate } = require('./http/upload');
 const { createApi } = require('./http/api');
 const { createDashboard } = require('./http/dashboard');
 const { createHostReadiness } = require('./observability');
@@ -71,16 +73,18 @@ function createApp(opts = {}) {
 
     const outbox = createHostOutbox({ db: store.db, config, fetchImpl: opts.fetchImpl, now: store.now, log });
     const access = createAccess({ store });
-    const projects = createProjects({ store, config, access, blobs, log });
-    const sites = createSites({ store, config, access, projects });
-    const deploys = createDeploys({ store, access, projects, sites, blobs, outbox, log });
+    const takedowns = createTakedowns({ store });
+    const projects = createProjects({ store, config, access, blobs, takedowns, log });
+    const sites = createSites({ store, config, access, projects, takedowns });
+    const deploys = createDeploys({ store, access, projects, sites, blobs, outbox, takedowns, log });
     const domains = createDomains({ store, config, access, projects, sites, outbox, resolver: opts.resolver, log });
     const auth = opts.auth || createAuthClient(config);
     const viewers = createViewerResolver({ auth, config });
-    const tenant = createTenantServer({ store, config, blobs, log });
+    const tenant = createTenantServer({ store, config, blobs, takedowns, log });
+    const uploadGate = createUploadGate(config.uploads.maxConcurrent);
     const worker = createWorker({ config, store, domains, blobs, outbox, log });
 
-    const ctx = { config, store, blobs, outbox, access, projects, sites, deploys, domains, auth, viewers, tenant, worker, log };
+    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, auth, viewers, tenant, worker, uploadGate, log };
 
     const app = express();
     app.disable('x-powered-by');
@@ -128,7 +132,13 @@ function createApp(opts = {}) {
     const readiness = createHostReadiness({ store, blobs, auth, outbox, release: release.release });
     app.get('/api/ready', readiness.handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));
-    app.get('/robots.txt', (_req, res) => res.type('text/plain').send('User-agent: *\nAllow: /$\nDisallow: /\n'));
+    // The dashboard host: only the public front page and the legal pages are crawlable. Tenant sites
+    // never reach this app's routes; their robots.txt and sitemap are whatever the tenant uploads.
+    const legalPaths = require('openvibe-shared/legal').PATHS;
+    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', 'public, max-age=3600')
+        .send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
+    app.get('/sitemap.xml', (_req, res) => res.type('application/xml').set('Cache-Control', 'public, max-age=3600')
+        .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${['/', ...legalPaths].map((p) => `  <url><loc>${config.baseUrl}${p}</loc></url>`).join('\n')}\n</urlset>\n`));
 
     // ── Sign-in (OAuth2 client of OpenVibe.Network) ─────────
     app.use('/auth/', rateLimit({ windowMs: 15 * 60_000, max: 60, standardHeaders: true, legacyHeaders: false }));

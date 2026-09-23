@@ -226,7 +226,7 @@
       "ready": { "url": "http://127.0.0.1:4910/api/ready", "timeoutSeconds": 30 },
       "noRestartPaths": ["docs/", "test/", "**/*.md"],
       "databases": [{ "name": "host", "path": "/var/lib/openvibe-host-api/host.db" }],
-      "nginx": { "tenants": { "sitesDomain": "openvibe.host", "dashboardDomain": "openvibe.host", "wildcardCert": "openvibe.host", "database": "/var/lib/openvibe-host-api/host.db", "maxUpload": "110m" } },
+      "nginx": { "tenants": { "sitesDomain": "openvibe.host", "dashboardDomain": "openvibe.host", "wildcardCert": "openvibe.host", "database": "/var/lib/openvibe-host-api/host.db", "maxUpload": "110m", "replaces": ["openvibe.host-tenants-pending.conf"] } },
       "drill": {
         "port": 14910,
         "databases": { "host": "HOST_DB_PATH" },

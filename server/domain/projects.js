@@ -18,7 +18,7 @@ const PRINCIPAL_RE = /^(usr_[0-9A-HJKMNP-TV-Z]{26}|app:app_[0-9A-HJKMNP-TV-Z]{26
 const QUOTA_FIELDS = { storage_bytes: 'storageBytes', deploys_per_day: 'deploysPerDay', max_files: 'maxFiles', max_file_bytes: 'maxFileBytes', sites: 'sites', custom_domains: 'customDomains' };
 const DAY = 24 * 3600 * 1000;
 
-function createProjects({ store, config, access, blobs, log = console }) {
+function createProjects({ store, config, access, blobs, takedowns, log = console }) {
     const { db } = store;
     const q = {
         byId: db.prepare('SELECT * FROM host_projects WHERE id = ?'),
@@ -146,6 +146,7 @@ function createProjects({ store, config, access, blobs, log = console }) {
     /** Owner (or staff) deletes the project: every site stops serving at once; objects are removed. */
     function remove(viewer, project, { sites }) {
         access.authorize(project, viewer, 'own');
+        takedowns.assertDeletable(viewer, { projectId: project.id });
         const now = store.now();
         store.tx(() => {
             for (const s of sites.listForProject(project.id)) sites.markDeleted(s, now);

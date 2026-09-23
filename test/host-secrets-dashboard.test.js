@@ -57,7 +57,26 @@ const ORIGIN = 'https://openvibe.host';
         assert.match(r.headers['content-security-policy'], /frame-ancestors 'none'/);
         assert.strictEqual(r.headers['x-frame-options'], 'DENY');
         assert.strictEqual(r.headers['cache-control'], 'private, no-store');
-        assert.match(r.text, /<meta name="robots" content="noindex, nofollow">/);
+        // The public front page is indexable, with a canonical URL; nothing behind sign-in is.
+        assert.match(r.text, /<meta name="robots" content="index, follow">/);
+        assert.match(r.text, /<link rel="canonical" href="https:\/\/openvibe\.host\/">/);
+        const signedIn = await t.api('GET', '/', { session: alice });
+        assert.match(signedIn.text, /<meta name="robots" content="noindex, nofollow">/);
+        assert.ok(!/rel="canonical"/.test(signedIn.text));
+        const withQuery = await t.api('GET', '/?notice=hi');
+        assert.match(withQuery.text, /<meta name="robots" content="noindex, nofollow">/);
+    });
+
+    await check('robots.txt and sitemap.xml: the front page and the legal pages only; tenant sites keep their own', async () => {
+        const robots = await t.api('GET', '/robots.txt');
+        assert.strictEqual(robots.status, 200);
+        assert.strictEqual(robots.text, 'User-agent: *\nAllow: /$\nAllow: /terms$\nAllow: /privacy$\nAllow: /dmca$\nDisallow: /\n\nSitemap: https://openvibe.host/sitemap.xml\n');
+        const map = await t.api('GET', '/sitemap.xml');
+        assert.strictEqual(map.status, 200);
+        assert.match(map.headers['content-type'], /application\/xml/);
+        const locs = [...map.text.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+        assert.deepStrictEqual(locs, ['https://openvibe.host/', 'https://openvibe.host/terms', 'https://openvibe.host/privacy', 'https://openvibe.host/dmca']);
+        for (const p of ['/terms', '/privacy', '/dmca']) assert.strictEqual((await t.api('GET', p)).status, 200, p);
     });
 
     await check('a planted ov_token cookie (e.g. set by a tenant subdomain) is not a session', async () => {

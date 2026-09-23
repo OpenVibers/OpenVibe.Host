@@ -16,6 +16,7 @@ const MAX_PATH = 1024;
 const MAX_SEGMENT = 255;
 const MAX_DEPTH = 32;
 const SEGMENT_RE = /^[A-Za-z0-9._@+~()!,= -]+$/;
+const CA_VALIDATION = new Set(['acme-challenge', 'pki-validation']);
 
 class PathError extends Error {
     constructor(code, message) { super(message); this.code = code; }
@@ -42,6 +43,12 @@ function checkPath(input) {
         }
         if (s.endsWith(' ') || s.startsWith(' ')) throw new PathError('path.invalid_character', `segment "${s}" starts or ends with a space`);
     });
+    // Certificate authorities prove control of a host name with files under these paths (ACME
+    // HTTP-01, and the file-based validation other CAs accept over HTTPS). A tenant must never be
+    // able to obtain a certificate for <site>.openvibe.host: the operator issues every certificate.
+    if (segments[0] === '.well-known' && CA_VALIDATION.has(String(segments[1]).toLowerCase())) {
+        throw new PathError('path.reserved', `"${segments.slice(0, 2).join('/')}/" is reserved: certificate validation files are never published from a site`);
+    }
     return input;
 }
 

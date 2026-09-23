@@ -23,7 +23,7 @@ const { principalOf, actorRef } = require('./access');
 const DAY = 24 * 3600 * 1000;
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${n} B`);
 
-function createDeploys({ store, access, projects, sites, blobs, outbox, log = console }) {
+function createDeploys({ store, access, projects, sites, blobs, outbox, takedowns, log = console }) {
     const { db } = store;
     const q = {
         byId: db.prepare('SELECT * FROM host_deploys WHERE id = ?'),
@@ -74,6 +74,7 @@ function createDeploys({ store, access, projects, sites, blobs, outbox, log = co
     /** Before any byte is read: may this caller deploy to this site right now? */
     function precheck(viewer, siteId) {
         const { site, project } = sites.load(viewer, siteId, 'deploy');
+        takedowns.assertOpen(site);
         const limits = limitsFor(project);
         const recent = q.deploysSince.get(project.id, store.now() - DAY).n;
         if (recent >= limits.quota.deploysPerDay) {
@@ -190,6 +191,7 @@ function createDeploys({ store, access, projects, sites, blobs, outbox, log = co
 
     function activate(viewer, id, { expectedActive, traceparent } = {}) {
         const { deploy, site } = load(viewer, id, 'deploy');
+        takedowns.assertOpen(site);
         const out = store.tx(() => switchPointer(viewer, site, deploy, 'activate', { expectedActive, traceparent }));
         outbox.kick();
         return out;
@@ -198,6 +200,7 @@ function createDeploys({ store, access, projects, sites, blobs, outbox, log = co
     /** To `deployId`, or else to the most recent previously active deploy that still exists. */
     function rollback(viewer, siteId, { deployId, expectedActive, traceparent } = {}) {
         const { site } = sites.load(viewer, siteId, 'deploy');
+        takedowns.assertOpen(site);
         const out = store.tx(() => {
             const current = db.prepare('SELECT active_deploy_id FROM host_sites WHERE id = ?').get(site.id).active_deploy_id;
             let target = null;
@@ -236,6 +239,7 @@ function createDeploys({ store, access, projects, sites, blobs, outbox, log = co
 
     function remove(viewer, id) {
         const { deploy, site, project } = load(viewer, id, 'maintain');
+        takedowns.assertDeletable(viewer, { site });
         let freed = [];
         store.tx(() => {
             const active = db.prepare('SELECT active_deploy_id FROM host_sites WHERE id = ?').get(site.id).active_deploy_id;

@@ -42,7 +42,7 @@ function load(env = process.env) {
         baseUrl,
         dashboardHost,
         sitesDomain,
-        trustProxy: env.TRUST_PROXY != null ? Number(env.TRUST_PROXY) : 2,
+        trustProxy: env.TRUST_PROXY != null ? Number(env.TRUST_PROXY) : 1,   // nginx (realip) → Node
 
         dbPath: env.HOST_DB_PATH || './data/host.db',
         // Content-addressed deploy objects, one directory per project (tenancy keyed by project id).
@@ -74,6 +74,8 @@ function load(env = process.env) {
             // unpacked files are held in memory while they are checked, so this bounds what a small
             // gzip bomb can cost, whatever quota staff grant a project.
             maxUnpackedBytes: int(env.HOST_MAX_UNPACKED_BYTES, 256 * MiB),
+            // Uploads read and validated at the same time, service-wide (each is held in memory).
+            maxConcurrent: int(env.HOST_MAX_CONCURRENT_UPLOADS, 2),
         },
 
         // Per-project quotas (a row in host_quotas overrides them per project; only staff set it).

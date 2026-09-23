@@ -8,7 +8,12 @@
  */
 const iso = (ms) => (ms == null ? null : new Date(ms).toISOString());
 
-function project(p, { role = null, quota = null, usage = null } = {}) {
+/** A staff takedown as members see it (domain/takedowns.js), or null. */
+function takedownOut(t) {
+    return t ? { scope: t.scope, reason: t.reason, since: iso(t.since) } : null;
+}
+
+function project(p, { role = null, quota = null, usage = null, takedown = null } = {}) {
     return {
         id: p.id,
         name: p.name,
@@ -17,6 +22,7 @@ function project(p, { role = null, quota = null, usage = null } = {}) {
         owner: p.owner_subject,
         role: role || p.role || null,
         created_at: iso(p.created_at),
+        takedown: takedownOut(takedown),
         ...(quota ? { quota: quotaOut(quota) } : {}),
         ...(usage ? { usage: usageOut(usage) } : {}),
     };
@@ -33,7 +39,7 @@ function usageOut(u) {
     return { storage_bytes: u.storageBytes, objects: u.objects, deploys_last_24h: u.deploysLast24h, sites: u.sites, custom_domains: u.customDomains };
 }
 
-function site(s, { hostname, url }) {
+function site(s, { hostname, url, takedown = null }) {
     return {
         id: s.id,
         project_id: s.project_id,
@@ -41,6 +47,7 @@ function site(s, { hostname, url }) {
         hostname,
         url,
         active_deploy_id: s.active_deploy_id || null,
+        takedown: takedownOut(takedown),
         created_at: iso(s.created_at),
         updated_at: iso(s.updated_at),
     };
@@ -89,4 +96,4 @@ function activation(a) {
     return { deploy_id: a.deploy_id, previous_deploy_id: a.previous_deploy_id || null, kind: a.kind, actor: a.actor, at: iso(a.created_at) };
 }
 
-module.exports = { project, quotaOut, usageOut, site, deploy, logLine, domain, activation, iso };
+module.exports = { project, takedownOut, quotaOut, usageOut, site, deploy, logLine, domain, activation, iso };

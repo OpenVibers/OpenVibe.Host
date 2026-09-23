@@ -25,8 +25,8 @@ function createDashboard(ctx) {
     router.use(viewers.middleware('dashboard'));
     router.use((req, res, next) => { privateNoStore(res); next(); });
 
-    function page(req, res, status, title, body, notice) {
-        res.status(status).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, notice }));
+    function page(req, res, status, title, body, notice, { indexable = false } = {}) {
+        res.status(status).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, notice, indexable }));
     }
 
     function fail(req, res, err) {
@@ -56,11 +56,15 @@ function createDashboard(ctx) {
         const n = req.query.notice;
         return typeof n === 'string' && n.length < 300 ? { kind: req.query.kind === 'error' ? 'error' : 'info', text: n } : null;
     };
+    /** A staff takedown outranks any other notice: members must see why nothing is served. */
+    const takedownNotice = (t) => (t ? { kind: 'error', text: `This ${t.scope} was taken down by OpenVibe staff: ${t.reason}. Nothing of it is served, and nothing can be published or deleted, until staff lift the takedown.` } : null);
     const back = (path, text, kind) => `${path}?notice=${encodeURIComponent(text)}${kind ? `&kind=${kind}` : ''}`;
 
     // ── Pages ───────────────────────────────────────────────
     router.get('/', view((req, res) => {
-        if (req.viewer.kind !== 'user') return page(req, res, 200, null, pages.signedOut());
+        // The signed-out front page is the public page of openvibe.host (sitemap.xml): indexable.
+        // Everything behind sign-in stays noindex and private.
+        if (req.viewer.kind !== 'user') return page(req, res, 200, null, pages.signedOut(), null, { indexable: !req.query || !Object.keys(req.query).length });
         page(req, res, 200, 'Projects', pages.home({ projects: projects.listFor(req.viewer), csrf: csrfToken(config, req.viewer) }), notice(req));
     }));
 
@@ -71,7 +75,7 @@ function createDashboard(ctx) {
         page(req, res, 200, project.name, pages.project({
             project, role, sites: sites.listForProject(project.id), quota: projects.quotaOf(project), usage: projects.usageOf(project),
             members: projects.members(project), csrf: csrfToken(config, req.viewer), siteUrl,
-        }), notice(req));
+        }), takedownNotice(ctx.takedowns.ofProject(project.id)) || notice(req));
     }));
 
     router.get('/sites/:id', view((req, res) => {
@@ -81,12 +85,12 @@ function createDashboard(ctx) {
             site, project, role, url: siteUrl(site), csrf: csrfToken(config, req.viewer),
             deploys: deploys.list(site.id, 50), activations: deploys.activationsOf(site.id, 10),
             domains: domains.listForSite(site.id).map((d) => ({ domain: d, instructions: domains.instructions(d, site) })),
-        }), notice(req));
+        }), takedownNotice(ctx.takedowns.ofSite(site)) || notice(req));
     }));
 
     router.get('/deploys/:id', view((req, res) => {
         if (req.viewer.kind !== 'user') throw new ApiError(401, 'auth.required', 'sign in first');
-        const { deploy, site, project } = deploys.load(req.viewer, req.params.id, 'deploy');
+        const { deploy, site, project } = deploys.load(req.viewer, req.params.id, 'read');
         page(req, res, 200, `Deploy ${deploy.id.slice(0, 12)}`, pages.deploy({
             deploy, site, project, active: site.active_deploy_id === deploy.id, files: deploys.filesOf(deploy.id), log: deploys.logOf(deploy.id),
         }), notice(req));
@@ -158,10 +162,13 @@ function createDashboard(ctx) {
 
     // Upload: multipart; the form token is checked after the body is parsed (Origin before).
     router.post('/sites/:id/deploys', async (req, res) => {
+        let release = null;
         try {
             if (req.viewer.kind !== 'user') throw new ApiError(401, 'auth.required', 'sign in first');
             if (!sameOrigin(config, req)) throw new ApiError(403, 'form.invalid', 'this form did not come from this dashboard');
             const pre = deploys.precheck(req.viewer, req.params.id);
+            release = ctx.uploadGate.enter();
+            if (!release) { res.set('Retry-After', '30'); throw new ApiError(503, 'upload.busy', 'Host is validating other uploads right now; try again in 30 seconds'); }
             let up;
             try {
                 up = await readUpload(req, { maxUploadBytes: config.uploads.maxUploadBytes, maxUnpackedBytes: config.uploads.maxUnpackedBytes, limits: pre.limits });
@@ -183,6 +190,8 @@ function createDashboard(ctx) {
         } catch (err) {
             if (!req.complete) res.set('Connection', 'close');
             fail(req, res, err);
+        } finally {
+            if (release) release();
         }
     });
 

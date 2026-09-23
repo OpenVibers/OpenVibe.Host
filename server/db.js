@@ -15,6 +15,7 @@
  *   host_activations      every pointer switch (activate / rollback), for audit and rollback targets
  *   host_deploy_logs      the upload/validation log of each deploy (there is no build in Stage B)
  *   host_domains          default <site>.openvibe.host and custom domains (TXT-verified)
+ *   host_takedowns        staff takedowns of a site or a project (serving stops; content is kept)
  *   event_outbox          openvibe-sdk transactional outbox
  *
  * Immutability is enforced by the database itself: triggers refuse any UPDATE of a deploy's
@@ -152,6 +153,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS host_domains_verified ON host_domains (hostnam
 CREATE UNIQUE INDEX IF NOT EXISTS host_domains_site_host ON host_domains (site_id, hostname);
 CREATE INDEX IF NOT EXISTS host_domains_status ON host_domains (kind, status, last_checked_at);
 
+-- Abuse takedowns (staff only): a site, or every site of a project, stops being served (451) while
+-- its deploys, files and objects are KEPT for review. Rows are never deleted: a lift is recorded.
+CREATE TABLE IF NOT EXISTS host_takedowns (
+    id           INTEGER PRIMARY KEY,
+    target_kind  TEXT NOT NULL CHECK (target_kind IN ('project','site')),
+    target_id    TEXT NOT NULL,                             -- prj_… or site_…
+    reason       TEXT NOT NULL,
+    created_by   TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    lifted_by    TEXT,
+    lifted_at    INTEGER,
+    lift_note    TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS host_takedowns_active ON host_takedowns (target_kind, target_id) WHERE lifted_at IS NULL;
+
 -- Deploy artifacts are immutable: only state / deleted_at may change, and never back from 'deleted'.
 CREATE TRIGGER IF NOT EXISTS host_deploys_immutable
 BEFORE UPDATE OF id, project_id, site_id, source, manifest, manifest_sha256, file_count, total_bytes, new_bytes, created_by, created_at ON host_deploys
@@ -167,7 +183,7 @@ BEFORE DELETE ON host_deploy_files WHEN (SELECT state FROM host_deploys WHERE id
 BEGIN SELECT RAISE(ABORT, 'host: files of a live deploy cannot be removed'); END;
 `;
 
-const CHARTER_TABLES = ['host_projects', 'host_project_members', 'host_quotas', 'host_sites', 'host_deploys', 'host_deploy_files', 'host_blobs', 'host_activations', 'host_deploy_logs', 'host_domains'];
+const CHARTER_TABLES = ['host_projects', 'host_project_members', 'host_quotas', 'host_sites', 'host_deploys', 'host_deploy_files', 'host_blobs', 'host_activations', 'host_deploy_logs', 'host_domains', 'host_takedowns'];
 
 function openStore(dbPath, { now = () => Date.now() } = {}) {
     if (dbPath !== ':memory:') fs.mkdirSync(path.dirname(path.resolve(dbPath)), { recursive: true });

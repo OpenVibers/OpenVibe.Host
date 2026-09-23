@@ -84,6 +84,64 @@ runTests([
         assert.strictEqual(fresh.read('/etc/nginx/sites-available/openvibe.host-custom-domains.conf'), null);
     }),
 
+    test('launch: --install removes the interim tenants-pending vhost in the same nginx -t and reload; a failed test brings it back', async () => {
+        const PENDING = '# *.openvibe.host before Host Stage B tenant hosting launches\nserver { server_name *.openvibe.host; return 404; }\n';
+        const SITES = '# openvibe.host — static front page (OpenVibe.Sites)\nserver { server_name openvibe.host; root /opt/openvibe.sites/dist/openvibe.host; }\n';
+        const prepare = (host) => {
+            host.put('/etc/nginx/sites-available/openvibe.host-tenants-pending.conf', PENDING);
+            host.files.set('/etc/nginx/sites-enabled/openvibe.host-tenants-pending.conf', { type: 'symlink', target: '/etc/nginx/sites-available/openvibe.host-tenants-pending.conf', owner: 'root', mode: 0o777 });
+            host.put('/etc/nginx/sites-available/openvibe.host.conf', SITES);
+            host.files.set('/etc/nginx/sites-enabled/openvibe.host.conf', { type: 'symlink', target: '/etc/nginx/sites-available/openvibe.host.conf', owner: 'root', mode: 0o777 });
+            return host;
+        };
+        const review = await prepare(withHost(scenario(), [])).cli('nginx', 'tenants', 'host');
+        assert.match(review.out, /--install also removes, in the same nginx -t and reload: openvibe\.host-tenants-pending\.conf/);
+
+        const host = prepare(withHost(scenario(), []));
+        let seenAtTest = null;
+        host.nginxTest = () => {
+            seenAtTest = { pending: host.files.has('/etc/nginx/sites-enabled/openvibe.host-tenants-pending.conf'), main: host.read('/etc/nginx/sites-available/openvibe.host.conf') };
+            return { code: 0, stderr: 'ok' };
+        };
+        const r = await host.cli('nginx', 'tenants', 'host', '--install');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.deepStrictEqual([seenAtTest.pending, /server_name \*\.openvibe\.host;/.test(seenAtTest.main)], [false, true], 'one nginx -t sees the tenant vhost and no pending vhost');
+        assert.ok(!host.files.has('/etc/nginx/sites-enabled/openvibe.host-tenants-pending.conf'));
+        assert.ok(!host.files.has('/etc/nginx/sites-available/openvibe.host-tenants-pending.conf'));
+        assert.match(r.out, /removed openvibe\.host-tenants-pending\.conf/);
+        assert.strictEqual(host.calls.filter((c) => c.cmd === 'systemctl' && c.args[0] === 'reload').length, 1, 'one reload');
+        const again = await host.cli('nginx', 'tenants', 'host', '--install');
+        assert.match(again.out, /already installed; nothing changed/);
+
+        const bad = prepare(withHost(scenario(), []));
+        bad.nginxTest = () => ({ code: 1, stderr: 'nginx: [emerg] cannot load certificate' });
+        const f = await bad.cli('nginx', 'tenants', 'host', '--install');
+        assert.strictEqual(f.code, 2);
+        assert.strictEqual(bad.read('/etc/nginx/sites-available/openvibe.host-tenants-pending.conf'), PENDING, 'pending vhost restored');
+        assert.strictEqual(bad.files.get('/etc/nginx/sites-enabled/openvibe.host-tenants-pending.conf').target, '/etc/nginx/sites-available/openvibe.host-tenants-pending.conf');
+        assert.strictEqual(bad.read('/etc/nginx/sites-available/openvibe.host.conf'), SITES, 'the Sites placeholder vhost restored');
+        assert.ok(!bad.calls.some((c) => c.cmd === 'systemctl' && c.args[0] === 'reload'), 'not reloaded');
+    }),
+
+    test('client address headers come from $remote_addr only (realip), in every template ovhost renders', async () => {
+        const fs = require('fs');
+        const path = require('path');
+        const dir = path.join(__dirname, '..', 'templates', 'nginx');
+        for (const f of fs.readdirSync(dir)) {
+            const t = fs.readFileSync(path.join(dir, f), 'utf8');
+            assert.ok(!/\$proxy_add_x_forwarded_for|\$http_x_forwarded_for|\$http_cf_connecting_ip/.test(t), `${f} passes a client-supplied address on`);
+            if (/X-Forwarded-For/.test(t)) assert.match(t, /X-Forwarded-For \$remote_addr;/, f);
+        }
+        const r = await withHost(scenario(), []).cli('nginx', 'tenants', 'host');
+        assert.ok(!/proxy_add_x_forwarded_for/.test(r.out));
+        assert.match(r.out, /proxy_set_header CF-Connecting-IP \$remote_addr;/);
+    }),
+
+    test('www.openvibe.host redirects to the dashboard over the wildcard certificate', async () => {
+        const r = await withHost(scenario(), []).cli('nginx', 'tenants', 'host');
+        assert.match(r.out, /server_name www\.openvibe\.host;\n\n    ssl_certificate +\/etc\/letsencrypt\/live\/openvibe\.host\/fullchain\.pem;[\s\S]*?return 301 https:\/\/openvibe\.host\$request_uri;/);
+    }),
+
     test('refuses a service without a tenants block, a bad certificate path, and sites under a first-party domain', async () => {
         const host = withHost(scenario(), []);
         assert.notStrictEqual((await host.cli('nginx', 'tenants', 'media')).code, 0);

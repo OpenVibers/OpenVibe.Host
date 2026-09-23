@@ -53,6 +53,7 @@ function renderPage(o) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(o.title ? `${o.title} · ${SITE_NAME}` : SITE_NAME)}</title>
 <meta name="robots" content="${o.indexable ? 'index, follow' : 'noindex, nofollow'}">
+${o.indexable ? `<link rel="canonical" href="${esc(`${o.config.baseUrl}${o.path && o.path.split('?')[0] !== '/' ? o.path.split('?')[0] : '/'}`)}">` : ''}
 <meta name="description" content="OpenVibe.Host: static site hosting for OpenVibe projects (alpha).">
 ${appIcon.headTags({ site: 'host' })}
 <link rel="stylesheet" href="${asset('css/host.css')}">

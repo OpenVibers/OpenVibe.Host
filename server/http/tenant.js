@@ -15,6 +15,7 @@
  * Responses: GET/HEAD only; Content-Type from the manifest; strong ETag (the sha256); 304 on
  * If-None-Match; single byte ranges; `immutable` caching for fingerprinted assets and revalidation
  * for everything else (so a rollback shows at once); nosniff; a strict CSP; never a cookie.
+ * A site that staff took down (domain/takedowns.js) answers 451 with none of its content.
  */
 const fs = require('fs');
 const { checkPath, PathError, isHashedAsset } = require('../artifacts/paths');
@@ -74,7 +75,7 @@ function plain(res, status, text, extra = {}) {
     res.end(text);
 }
 
-function createTenantServer({ store, config, blobs, log = console }) {
+function createTenantServer({ store, config, blobs, takedowns = null, log = console }) {
     const { db } = store;
     const q = {
         siteByName: db.prepare("SELECT s.*, p.environment FROM host_sites s JOIN host_projects p ON p.id = s.project_id WHERE s.name = ? AND s.status = 'active' AND p.status = 'active'"),
@@ -178,6 +179,10 @@ function createTenantServer({ store, config, blobs, log = console }) {
         if (req.method !== 'GET' && req.method !== 'HEAD') {
             return plain(res, 405, 'Static site: only GET and HEAD are supported.', { Allow: 'GET, HEAD' });
         }
+        // Taken down by staff: nothing of the tenant's is served, on any of its hosts, until lifted.
+        if (takedowns && takedowns.ofSite(site)) {
+            return plain(res, 451, 'This site is unavailable: OpenVibe.Host staff took it down after a report.');
+        }
         // Absolute-form request targets must agree with the Host header (or they would pick the site).
         let target = req.url || '/';
         if (!target.startsWith('/')) {
@@ -196,8 +201,12 @@ function createTenantServer({ store, config, blobs, log = console }) {
         for (const p of c.list) {
             const row = q.file.get(deployId, p);
             if (row && row.project_id === site.project_id) {
-                const cache = isHashedAsset(p) ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate';
-                return send(req, res, site, row, { cache });
+                const hashed = isHashedAsset(p);
+                // Browsers keep fingerprinted assets for a year; a shared CDN in front of the tenant
+                // vhost (Cloudflare) keeps them for an hour at most, so a takedown, deletion or
+                // rollback leaves the edge within the hour even if nobody purges it.
+                if (hashed) res.setHeader('CDN-Cache-Control', 'public, max-age=3600');
+                return send(req, res, site, row, { cache: hashed ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate' });
             }
         }
         if (!c.dir && c.dirIndex && q.file.get(deployId, c.dirIndex)) {

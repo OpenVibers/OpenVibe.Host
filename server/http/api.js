@@ -13,6 +13,7 @@
  *              DELETE /deploys/:id                                                host.site.manage
  *   domains    GET/POST /sites/:id/domains · POST /domains/:id/verify
  *              DELETE /domains/:id                                                host.domain.manage
+ *   takedowns  POST/DELETE /projects/:id/takedown · POST/DELETE /sites/:id/takedown   host.site.manage (staff)
  */
 const express = require('express');
 const contracts = require('openvibe-contracts');
@@ -24,7 +25,7 @@ const out = require('./serialize');
 const truthy = (v) => v === true || v === 1 || ['1', 'true', 'yes', 'on'].includes(String(v || '').toLowerCase());
 
 function createApi(ctx) {
-    const { config, projects, sites, deploys, domains, viewers } = ctx;
+    const { config, projects, sites, deploys, domains, viewers, takedowns } = ctx;
     const router = express.Router();
 
     // CORS for first-party browser origins presenting a Bearer token (never credentials/cookies).
@@ -47,8 +48,8 @@ function createApi(ctx) {
         const u = new URL(config.baseUrl);
         return `${u.protocol}//${hostname}${u.port ? `:${u.port}` : ''}`;
     };
-    const siteOut = (s) => { const hostname = sites.defaultHostname(s.name); return out.site(s, { hostname, url: siteUrl(hostname) }); };
-    const projectOut = (p, role) => out.project(p, { role, quota: projects.quotaOf(p), usage: projects.usageOf(p) });
+    const siteOut = (s) => { const hostname = sites.defaultHostname(s.name); return out.site(s, { hostname, url: siteUrl(hostname), takedown: takedowns.ofSite(s) }); };
+    const projectOut = (p, role) => out.project(p, { role, quota: projects.quotaOf(p), usage: projects.usageOf(p), takedown: takedowns.ofProject(p.id) });
     const tp = (req) => (req.ov ? req.ov.traceparent : undefined);
     const loadProject = (req, need) => {
         const project = projects.get(req.params.id);
@@ -59,7 +60,7 @@ function createApi(ctx) {
     // ── Projects ────────────────────────────────────────────
     router.get('/projects', guard('host.site.manage'), run((req) => {
         if (req.viewer.kind === 'anonymous') throw new ApiError(401, 'auth.required', 'sign in with OpenVibe, or present a service token');
-        return { projects: projects.listFor(req.viewer).map((p) => out.project(p)) };
+        return { projects: projects.listFor(req.viewer).map((p) => out.project(p, { takedown: takedowns.ofProject(p.id) })) };
     }));
     router.post('/projects', guard('host.site.manage'), jsonBody, run((req) => {
         if (req.viewer.kind === 'anonymous') throw new ApiError(401, 'auth.required', 'sign in with OpenVibe, or present a service token');
@@ -94,6 +95,25 @@ function createApi(ctx) {
         return { members: list.map((m) => ({ principal: m.principal, role: m.role, added_at: out.iso(m.created_at) })) };
     }));
 
+    // ── Takedowns (staff only; members see them on the project and site) ──
+    // Serving stops at once and the content is kept for review (domain/takedowns.js).
+    router.post('/projects/:id/takedown', guard('host.site.manage'), jsonBody, run((req) => {
+        const { project } = loadProject(req, 'read');
+        return { takedown: out.takedownOut(takedowns.takeDown(req.viewer, 'project', project.id, (req.body || {}).reason)) };
+    }, 201));
+    router.delete('/projects/:id/takedown', guard('host.site.manage'), jsonBody, run((req) => {
+        const { project } = loadProject(req, 'read');
+        return takedowns.lift(req.viewer, 'project', project.id, (req.body || {}).note);
+    }));
+    router.post('/sites/:id/takedown', guard('host.site.manage'), jsonBody, run((req) => {
+        const { site } = sites.load(req.viewer, req.params.id, 'read');
+        return { takedown: out.takedownOut(takedowns.takeDown(req.viewer, 'site', site.id, (req.body || {}).reason)) };
+    }, 201));
+    router.delete('/sites/:id/takedown', guard('host.site.manage'), jsonBody, run((req) => {
+        const { site } = sites.load(req.viewer, req.params.id, 'read');
+        return takedowns.lift(req.viewer, 'site', site.id, (req.body || {}).note);
+    }));
+
     // ── Sites ───────────────────────────────────────────────
     router.get('/projects/:id/sites', guard('host.site.manage'), run((req) => {
         const { project } = loadProject(req, 'read');
@@ -112,7 +132,8 @@ function createApi(ctx) {
 
     // ── Deploys ─────────────────────────────────────────────
     router.get('/sites/:id/deploys', guard('host.deploy.create'), run((req) => {
-        const { site } = sites.load(req.viewer, req.params.id, 'deploy');
+        // Reads need the least member role (deployer); staff may read them too, e.g. to review a takedown.
+        const { site } = sites.load(req.viewer, req.params.id, 'read');
         return {
             active_deploy_id: site.active_deploy_id || null,
             deploys: deploys.list(site.id, Number(req.query.limit) || 50).map((d) => out.deploy(d, { active: d.id === site.active_deploy_id })),
@@ -121,8 +142,11 @@ function createApi(ctx) {
     }));
 
     router.post('/sites/:id/deploys', guard('host.deploy.create'), async (req, res) => {
+        let release = null;
         try {
             const pre = deploys.precheck(req.viewer, req.params.id);
+            release = ctx.uploadGate.enter();
+            if (!release) { res.set('Retry-After', '30'); throw new ApiError(503, 'upload.busy', 'Host is validating other uploads right now; try again in 30 seconds'); }
             let up;
             try {
                 up = await readUpload(req, { maxUploadBytes: config.uploads.maxUploadBytes, maxUnpackedBytes: config.uploads.maxUnpackedBytes, limits: pre.limits });
@@ -138,18 +162,20 @@ function createApi(ctx) {
             const site = sites.get(pre.site.id);
             res.status(201).json({ deploy: out.deploy(r.deploy, { active: site.active_deploy_id === r.deploy.id, log: r.log }), activated: Boolean(r.activated && r.activated.changed), url: siteUrl(sites.defaultHostname(site.name)) });
         } catch (err) {
-            // Refused before the body was read (404, 429): close instead of draining a large upload.
+            // Refused before the body was read (404, 429, 503): close instead of draining a large upload.
             if (!req.complete) res.set('Connection', 'close');
             if (!res.headersSent) sendError(res, req, err);
+        } finally {
+            if (release) release();
         }
     });
 
     router.get('/deploys/:id', guard('host.deploy.create'), run((req) => {
-        const { deploy, site } = deploys.load(req.viewer, req.params.id, 'deploy');
+        const { deploy, site } = deploys.load(req.viewer, req.params.id, 'read');
         return { deploy: out.deploy(deploy, { active: site.active_deploy_id === deploy.id, files: deploys.filesOf(deploy.id) }) };
     }));
     router.get('/deploys/:id/log', guard('host.deploy.create'), run((req) => {
-        const { deploy } = deploys.load(req.viewer, req.params.id, 'deploy');
+        const { deploy } = deploys.load(req.viewer, req.params.id, 'read');
         return { deploy_id: deploy.id, state: deploy.state, log: deploys.logOf(deploy.id).map(out.logLine) };
     }));
     router.post('/deploys/:id/activate', guard('host.deploy.create'), jsonBody, run((req) => {
