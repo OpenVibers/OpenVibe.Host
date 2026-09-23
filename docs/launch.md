@@ -146,7 +146,7 @@ restart `openvibe-network`, poll `/api/ready`).
 **6. Host's own records.** In a follow-up Host commit, set README **Status**, `STATUS.json`
 (`"deployed"`, `"placeholderInSites": false`) and the Launch rule note to *launched on <date>*.
 
-**Contracts** (done in openvibe-contracts v0.32.0, which Host pins): `host.site.manage` lists the
+**Contracts** (done in openvibe-contracts v0.32.0; Host pins v0.33.0): `host.site.manage` lists the
 takedown routes from this repository's `docs/capabilities-proposal/host.site.manage.json`:
 
 - `POST /api/v1/projects/:id/takedown`

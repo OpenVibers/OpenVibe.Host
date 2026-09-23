@@ -9,9 +9,9 @@
   "domain": "openvibe.host",
   "tenantDomain": "*.openvibe.host",
   "packages": [
-    "openvibe-contracts v0.32.0 (host.* capabilities and manifest released in v0.24.0; v0.32.0 adds the takedown routes to host.site.manage)",
+    "openvibe-contracts v0.33.0 (host.* capabilities and manifest released in v0.24.0; v0.32.0 adds the takedown routes to host.site.manage)",
     "openvibe-sdk v0.5.0",
-    "openvibe-shared v1.5.0"
+    "openvibe-shared v1.5.1"
   ],
   "capabilities": [
     "host.site.manage",

@@ -46,10 +46,10 @@ Stage A adds a few safety rules of its own:
 
 ## Depends on
 
-- OpenVibe.Contracts (`openvibe-contracts` v0.32.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
+- OpenVibe.Contracts (`openvibe-contracts` v0.33.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
 - OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.5.0 transactional outbox.
-- `openvibe-shared` v1.5.0 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
+- `openvibe-shared` v1.5.1 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
 - OpenVibe.Media: not yet. The roadmap stores artifacts "through Media where practical"; Stage B keeps them on local disk for now (see [Not done yet](#not-done-yet-stage-b)).
 
 ## Stages
@@ -266,7 +266,7 @@ The relay publishes with Host's service token (`events.event.publish`, audience 
 
 ### Dashboard
 
-Server-rendered pages with the shared chrome (`openvibe-shared` v1.5.0: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
+Server-rendered pages with the shared chrome (`openvibe-shared` v1.5.1: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
 
 ### Observability
 
