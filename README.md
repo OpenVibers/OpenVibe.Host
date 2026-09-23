@@ -264,7 +264,7 @@ Nothing here has been done yet.
 6. **Unit.** `sudo cp deploy/systemd/openvibe-host.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-host`, then `curl -s http://127.0.0.1:4910/api/ready`.
 7. **nginx.** Add the `host` entry from [`host.example.json`](host.example.json) to `/etc/openvibe/host.json`, update `/usr/local/lib/openvibe-host`, then `sudo ovhost nginx tenants host` (review) and `sudo ovhost nginx tenants host --install` (writes `openvibe.host.conf` and `openvibe.host-custom-domains.conf`, `nginx -t`, reload; restored on failure). [`deploy/nginx/openvibe.host.conf`](deploy/nginx/openvibe.host.conf) is a reference copy.
 8. **Custom domains** (whenever tenants verify one): `sudo ovhost nginx tenants host` lists the verified domains still waiting for a certificate. For each, `sudo certbot certonly --webroot -w /var/www/certbot -d <hostname>` (the generated port-80 block already answers the ACME challenge), then `sudo ovhost nginx tenants host --install` again. Until then, the domain is verified but only answers over HTTP with the challenge. Certificates never pass through the Host API.
-9. **Launch.** The Sites placeholder stays until the launch rule below holds and the lead switches it.
+9. **Launch.** The Sites placeholder stays until the launch rule below holds and the lead switches it. Until then [`deploy/nginx/openvibe.host-tenants-pending.conf`](deploy/nginx/openvibe.host-tenants-pending.conf) answers every `*.openvibe.host` name with a 404 over the wildcard certificate (installed 2026-09-23; without it the wildcard fell through to nginx's default server). Remove it in the same change that installs the tenant vhost.
 
 ### Not done yet (Stage B)
 
