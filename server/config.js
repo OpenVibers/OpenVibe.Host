@@ -70,6 +70,10 @@ function load(env = process.env) {
         uploads: {
             // Largest request body accepted for one deploy (the compressed archive or all multipart parts).
             maxUploadBytes: int(env.HOST_MAX_UPLOAD_BYTES, 100 * MiB),
+            // Largest size an archive may unpack to (also capped by the project's storage quota). The
+            // unpacked files are held in memory while they are checked, so this bounds what a small
+            // gzip bomb can cost, whatever quota staff grant a project.
+            maxUnpackedBytes: int(env.HOST_MAX_UNPACKED_BYTES, 256 * MiB),
         },
 
         // Per-project quotas (a row in host_quotas overrides them per project; only staff set it).

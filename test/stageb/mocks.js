@@ -56,13 +56,17 @@ async function startNetwork() {
     function userToken(u) {
         return jwt.sign({ sub: String(Math.floor(Math.random() * 1e6)), subject_id: u.subject, username: u.username, display_name: u.display_name, role: u.role || 'user' }, privatePem, { algorithm: 'RS256', issuer, expiresIn: '1h' });
     }
+    /** A FedCM ID assertion as Network's /fedcm/assertion signs it (same key and issuer, aud = the RP origin). */
+    function fedcmAssertion(u, origin, nonce = 'n0nce') {
+        return jwt.sign({ sub: String(Math.floor(Math.random() * 1e6)), id: 1, subject_id: u.subject, username: u.username, display_name: u.display_name, nonce, typ: 'fedcm', jti: crypto.randomBytes(16).toString('hex') }, privatePem, { algorithm: 'RS256', issuer, audience: origin, expiresIn: 300 });
+    }
     function serviceToken(client, cap, extra = {}) {
         return sign({ sub: `svc:${client}`, aud: ['openvibe.host'], cap, ...extra });
     }
     function appToken(appId, cap, extra = {}) {
         return sign({ sub: `app:${appId}`, actor_type: 'app', aud: ['openvibe.host'], cap, ...extra });
     }
-    return { ...srv, publicPem, addUser, userToken, serviceToken, appToken, sign };
+    return { ...srv, publicPem, addUser, userToken, fedcmAssertion, serviceToken, appToken, sign };
 }
 
 module.exports = { startNetwork, listen };

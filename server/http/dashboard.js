@@ -164,7 +164,7 @@ function createDashboard(ctx) {
             const pre = deploys.precheck(req.viewer, req.params.id);
             let up;
             try {
-                up = await readUpload(req, { maxUploadBytes: config.uploads.maxUploadBytes, limits: pre.limits });
+                up = await readUpload(req, { maxUploadBytes: config.uploads.maxUploadBytes, maxUnpackedBytes: config.uploads.maxUnpackedBytes, limits: pre.limits });
             } catch (err) {
                 if (!(err instanceof UploadError)) throw err;
                 if (err.closeConnection) res.set('Connection', 'close');

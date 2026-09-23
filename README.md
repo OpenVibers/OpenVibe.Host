@@ -182,7 +182,7 @@ A Node service (`server/`, Express 4, better-sqlite3, port **4910**, service id 
 - a file is server-side code or an executable (`php`, `cgi`, `pl`, `py`, `sh`, `asp(x)`, `jsp`, `shtml`, `exe`, `jar`, …) or looks like a credential or database (`pem`, `key`, `p12`, `env`, `sqlite`, …);
 - a file type is not on the allowlist (HTML, CSS, JavaScript, JSON, source maps, web manifests, text, Markdown, CSV, XML/RSS/Atom, WebVTT, SVG, PNG, JPEG, GIF, WebP, AVIF, ICO, BMP, fonts, MP4/WebM/Ogg video, MP3/Ogg/Opus/WAV/M4A/FLAC audio, PDF, WebAssembly, glTF, zip; extension-less files are plain text);
 - two entries have the same path, a path is both a file and a directory, or there are no files;
-- a limit is exceeded: request size (`HOST_MAX_UPLOAD_BYTES`, the connection is closed rather than drained), files, bytes per file, total bytes (decompression stops at the limit, so a gzip bomb cannot fill memory), or storage.
+- a limit is exceeded: request size (`HOST_MAX_UPLOAD_BYTES`, the connection is closed rather than drained), files, bytes per file, total bytes (decompression stops at `HOST_MAX_UNPACKED_BYTES`, default 256 MiB, or the storage quota if smaller, so a gzip bomb cannot fill memory), or storage.
 
 ### Serving
 
@@ -268,7 +268,7 @@ Nothing here has been done yet.
 
 ### Not done yet (Stage B)
 
-- Uploads are held in memory while they are validated (bounded by `HOST_MAX_UPLOAD_BYTES` and the decompression cap), so the service needs that much headroom per concurrent upload.
+- Uploads are held in memory while they are validated (bounded by `HOST_MAX_UPLOAD_BYTES` and `HOST_MAX_UNPACKED_BYTES`), so the service needs that much headroom per concurrent upload.
 - Objects live on the service's local disk, not in OpenVibe.Media; there is no replication and no backup beyond `ovhost backup host` (the SQLite database only).
 - Certificates for custom domains are issued by hand (step 8); there is no automatic ACME flow.
 - Projects are created in Host. When Network has projects (ADR-014), Host should accept only Network project ids and read membership from Network.

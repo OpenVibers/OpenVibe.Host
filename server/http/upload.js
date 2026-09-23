@@ -117,7 +117,7 @@ function readMultipart(req, { maxUploadBytes, limits }) {
  * Throws UploadError for problems with the request itself; everything else (the archive's
  * contents) is reported by the validator.
  */
-async function readUpload(req, { maxUploadBytes, limits }) {
+async function readUpload(req, { maxUploadBytes, maxUnpackedBytes = Infinity, limits }) {
     const len = Number(req.headers['content-length']);
     if (Number.isFinite(len) && len > maxUploadBytes) throw tooLarge(maxUploadBytes);
     const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
@@ -150,7 +150,7 @@ async function readUpload(req, { maxUploadBytes, limits }) {
     if (rawArchive) {
         source = 'archive';
         let r;
-        try { r = readArchive(rawArchive, limits); } catch (err) {
+        try { r = readArchive(rawArchive, { ...limits, maxTotalBytes: Math.min(limits.maxTotalBytes, maxUnpackedBytes) }); } catch (err) {
             if (err instanceof ArchiveError) { const e = new UploadError(err.status, err.code, err.message); e.fields = fields; e.source = 'archive'; throw e; }
             throw err;
         }

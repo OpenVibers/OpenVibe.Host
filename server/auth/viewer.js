@@ -54,6 +54,11 @@ function createViewerResolver({ auth, config }) {
     async function fromUserToken(token) {
         const claims = await auth.verify(token);
         if (!claims || (typeof claims.sub === 'string' && PRINCIPAL_SUB.test(claims.sub))) return null;
+        // Network signs FedCM ID assertions (typ "fedcm", aud = any OpenVibe RP origin, including
+        // tenant subdomains of openvibe.host) with the same key and issuer as access tokens. An
+        // assertion is only ever swapped at /oauth/token, never presented as a session. Access
+        // tokens carry no typ.
+        if (claims.typ !== undefined || claims.nonce !== undefined) return null;
         const subject = ids.isSubjectId('user', claims.subject_id) ? claims.subject_id : null;
         if (!subject) return null;
         return { kind: 'user', subject, staff: STAFF_ROLES.has(claims.role), user: claimsToUser(claims) };

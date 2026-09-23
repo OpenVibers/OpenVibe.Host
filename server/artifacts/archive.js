@@ -116,7 +116,7 @@ function readArchive(buf, limits) {
         if (size > limits.maxFileBytes) throw new ArchiveError('quota.max_file_bytes', `"${name}" is ${size} bytes; the limit per file is ${limits.maxFileBytes}`, 413);
         total += size;
         if (total > limits.maxTotalBytes) throw new ArchiveError('deploy.too_large', `the files add up to more than ${limits.maxTotalBytes} bytes`, 413);
-        entries.push({ path: name, data: Buffer.from(data) });
+        entries.push({ path: name, data });   // a view into the tar buffer: no second copy
     }
     if (!sawEnd && off < tar.length) throw new ArchiveError('archive.corrupt', 'trailing garbage after the last entry');
     return { entries, directories, compressed };

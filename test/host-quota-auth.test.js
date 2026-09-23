@@ -11,7 +11,7 @@ const { site: siteTar } = require('./stageb/tar');
 const DAY = 24 * 3600 * 1000;
 
 (async () => {
-    const t = await boot({ env: { HOST_MAX_UPLOAD_BYTES: String(64 * 1024) } });
+    const t = await boot({ env: { HOST_MAX_UPLOAD_BYTES: String(64 * 1024), HOST_MAX_UNPACKED_BYTES: String(1024 * 1024) } });
     const alice = t.user('alice');
     const staff = t.user('root', { role: 'admin' });
     const project = await t.project(alice, 'Q');
@@ -79,6 +79,17 @@ const DAY = 24 * 3600 * 1000;
         assert.strictEqual(r.status, 413);
         assert.strictEqual(r.json().code, 'upload.too_large');
         assert.strictEqual(r.headers.connection, 'close');
+    });
+
+    await check('decompression: an archive unpacks to at most HOST_MAX_UNPACKED_BYTES, however large the storage quota', async () => {
+        // A few KiB of gzip that expands to 2 MiB (the default production quota would allow 1 GiB:
+        // a 1 MB request would otherwise inflate to 1 GiB in memory and block the event loop).
+        const zeros = Buffer.alloc(512 * 1024, 0);
+        const bomb = siteTar({ 'a.png': zeros, 'b.png': zeros, 'c.png': zeros, 'd.png': zeros });
+        assert.ok(bomb.length < 64 * 1024, 'well under the request limit');
+        const r = await t.api('POST', `/api/v1/sites/${site.id}/deploys`, { as: alice, body: bomb, headers: { 'content-type': 'application/gzip' } });
+        assert.strictEqual(r.status, 413, r.text);
+        assert.strictEqual(r.json().code, 'deploy.too_large');
     });
 
     await check('sites per project and custom domains per project', async () => {
@@ -173,6 +184,18 @@ const DAY = 24 * 3600 * 1000;
         assert.strictEqual(p.status, 403);
         const sb = await t.api('POST', '/api/v1/projects', { as: sandboxTok, json: { name: 'sb', environment: 'sandbox' }, headers: { 'x-ov-subject': alice.subject } });
         assert.strictEqual(sb.status, 201);
+    });
+
+    await check('a FedCM ID assertion is not a session: a tenant page on <site>.openvibe.host cannot act as its visitor', async () => {
+        // Network signs FedCM assertions with the key and issuer of its access tokens, for any RP
+        // origin under an OpenVibe zone, tenant subdomains of openvibe.host included.
+        const assertion = t.network.fedcmAssertion(alice, 'https://evil-tenant.openvibe.host');
+        const list = await t.api('GET', '/api/v1/projects', { as: assertion });
+        assert.strictEqual(list.status, 401, list.text);
+        const del = await t.api('DELETE', `/api/v1/projects/${project.id}`, { as: assertion });
+        assert.strictEqual(del.status, 401, del.text);
+        const dash = await t.request({ method: 'GET', host: 'openvibe.host', path: '/', headers: { cookie: `ov_host_session=${assertion}` } });
+        assert.ok(!/Your projects/.test(dash.text), 'the dashboard does not accept it as a session either');
     });
 
     await check('mods cannot manage hosted sites', async () => {
