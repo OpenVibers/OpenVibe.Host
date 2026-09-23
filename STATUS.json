@@ -9,7 +9,7 @@
   "domain": "openvibe.host",
   "tenantDomain": "*.openvibe.host",
   "packages": [
-    "openvibe-contracts v0.19.0",
+    "openvibe-contracts v0.24.0 (host.* capabilities and manifest released; unchanged in v0.30.1)",
     "openvibe-sdk v0.2.2",
     "openvibe-shared v1.3.0"
   ],
@@ -18,8 +18,8 @@
     "host.deploy.create",
     "host.domain.manage"
   ],
-  "capabilitiesRegistered": false,
-  "serviceManifestRegistered": "stage A manifest only (v0.10.0); the Stage B proposal is in docs/service-manifest-proposal.json",
+  "capabilitiesRegistered": true,
+  "serviceManifestRegistered": "host manifest v0.2.0 released (openvibe-contracts v0.24.0+), with the four host.* events",
   "events": [
     "host.deploy.created",
     "host.deploy.activated",
@@ -27,15 +27,17 @@
     "host.domain.verified"
   ],
   "stages": {
-    "A": "alpha: ovhost CLI installed on the production host 2026-09-23 (/usr/local/bin/ovhost, inventory /etc/openvibe/host.json); used read-only (status, validate) so far — no service deploy has moved to it; restore drills (`ovhost drill`, Wave 22) written and tested against the fake host, not yet run on the host",
-    "B": "alpha: tenant static hosting service written and tested (tenant isolation, traversal/symlink refusal, quotas, atomic rollback, TXT-verified custom domains, no secrets in responses); not deployed",
+    "A": "alpha: ovhost CLI installed on the production host 2026-09-23 (/usr/local/bin/ovhost, inventory /etc/openvibe/host.json); status/validate/backup/drill used there (19 restore drills passed 2026-09-23, docs/restore-drills.md); no service deploy has moved to it yet; the D41 deploy-and-rollback proof (scripts/d41-proof.sh) is written and tested, not run",
+    "B": "alpha: running on the host on loopback :4910 (2026-09-23 audit), not launched; launch-rule items met in code and tests, launch steps in docs/launch.md, threat review in docs/threat-review.md",
     "C": "not started (deliberately: blocked until isolation and metering are proven)"
   },
   "artifactStorage": "local disk, content-addressed per project (not OpenVibe.Media yet)",
   "customDomainCertificates": "operator-issued (certbot), not automated",
   "installedOnHost": true,
-  "deployed": false,
+  "deployed": "loopback only, not launched",
   "placeholderInSites": true,
   "adoptedByServices": [],
-  "updated": "2026-09-22"
+  "updated": "2026-09-23",
+  "capabilitiesNote": "released in openvibe-contracts v0.24.0 and identical in v0.30.1; the next release should add the four takedown routes to host.site.manage.implementedBy (docs/launch.md)",
+  "launchReady": true
 }

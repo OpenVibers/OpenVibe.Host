@@ -111,7 +111,7 @@ list endpoints differ, and the drill reports that honestly. Take the backup righ
 
 ### Services
 
-Supported with declared overrides (not yet run on the host with `ovhost drill`):
+Supported with declared overrides (the table above records which have passed on the host):
 
 - network
 - community

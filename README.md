@@ -2,7 +2,7 @@
 
 > The network's deployment/control plane first; then isolated hosting for community sites, bots and mods.
 
-**Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It is installed on the production host (2026-09-23, `/usr/local/bin/ovhost`, inventory `/etc/openvibe/host.json`) and used read-only (`status`, `validate`); no service's deploy has moved to it yet. Stage B (tenant static hosting) is a service, written and tested, **not deployed**. Stage C (sandboxed user code) is **not started**.
+**Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It is installed on the production host (2026-09-23, `/usr/local/bin/ovhost`, inventory `/etc/openvibe/host.json`) and used read-only (`status`, `validate`); no service's deploy has moved to it yet. Stage B (tenant static hosting) is a service, written and tested; it runs on the host on loopback `:4910` (2026-09-23 audit) and is **not launched**: `openvibe.host` is still the Sites placeholder and `*.openvibe.host` answers 404. The launch is ready to run: [docs/launch.md](docs/launch.md) (steps, verification, rollback and the launch-rule evidence) and [docs/threat-review.md](docs/threat-review.md). Stage C (sandboxed user code) is **not started**.
 **Domain:** `openvibe.host` (dashboard and API) and `*.openvibe.host` (tenant sites). The domain keeps its placeholder page on [OpenVibe.Sites](https://github.com/OpenVibers/OpenVibe.Sites) until Stage B is deployed and launched (see [Launch rule](#launch-rule)).
 **Plan:** OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026), §15.3 and §15.17; roadmap Wave 21.
 **License:** AGPL-3.0 (same as every OpenVibe service).
@@ -46,7 +46,7 @@ Stage A adds a few safety rules of its own:
 
 ## Depends on
 
-- OpenVibe.Contracts (`openvibe-contracts` v0.19.0): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
+- OpenVibe.Contracts (`openvibe-contracts` v0.24.0; `host.*` capabilities and the `host` manifest are released there and unchanged in v0.30.1): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
 - OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.2.2 transactional outbox.
 - `openvibe-shared` v1.3.0 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
@@ -240,11 +240,12 @@ People present their Network user JWT as a Bearer token. Services and apps prese
 | `GET/POST /sites/:id/deploys` · `GET /deploys/:id` · `GET /deploys/:id/log` | `host.deploy.create` | deployer |
 | `POST /deploys/:id/activate` · `POST /sites/:id/rollback` (`{ deploy_id?, expected_active? }`) | `host.deploy.create` | deployer |
 | `DELETE /deploys/:id` (not the active one) | `host.site.manage` | maintainer |
+| `POST/DELETE /projects/:id/takedown` · `POST/DELETE /sites/:id/takedown` | `host.site.manage` | Network staff only |
 | `GET/POST /sites/:id/domains` · `POST /domains/:id/verify` · `DELETE /domains/:id` | `host.domain.manage` | maintainer (reads: member) |
 
-Errors are RFC 9457 problems (`application/problem+json`, with the legacy `error` field). A refused upload answers 413/422 with `deploy_id` and the log lines. Network staff (`role: admin`) can read every project, delete sites, projects and domains, and set quotas; they cannot publish into a tenant's site.
+Errors are RFC 9457 problems (`application/problem+json`, with the legacy `error` field). A refused upload answers 413/422 with `deploy_id` and the log lines; `503 upload.busy` (with `Retry-After`) when `HOST_MAX_CONCURRENT_UPLOADS` uploads are already being validated; `507 storage.host_full` while the disk has less than `HOST_MIN_FREE_BYTES` free. Network staff (`role: admin`) can read every project, site, deploy and log, delete sites, projects and domains, set quotas, and **take a site or project down** (451 on every host, content kept for review, members see the reason and cannot publish or delete around it); they cannot publish into a tenant's site.
 
-The three capability ids are proposals in [`docs/capabilities-proposal/`](docs/capabilities-proposal/) together with an updated [`docs/service-manifest-proposal.json`](docs/service-manifest-proposal.json). Until the lead releases them in `openvibe-contracts`, Host decides grants for exactly these ids with the library's own matching rule (`server/auth/capabilities.js`), and the CI contract check is non-blocking.
+The three capability ids and the service manifest are released in `openvibe-contracts` (since v0.24.0, identical in v0.30.1), and the CI contract check is blocking. [`docs/capabilities-proposal/`](docs/capabilities-proposal/) mirrors them; `host.site.manage` there also lists the four takedown routes, which the next Contracts release should add (see [docs/launch.md](docs/launch.md#the-window-in-this-order)).
 
 ### Activation and rollback
 
@@ -276,7 +277,7 @@ Server-rendered pages with the shared chrome (`openvibe-shared` v1.3.0: navbar a
 - OpenVibe.Network OAuth client **`host`**, redirect `https://openvibe.host/auth/callback`, scope `profile theme`. The same client is the service principal `svc:host`.
 - Grant `[host, events.event.publish, openvibe.events]`.
 - Callers of Host get `[<client>, host.site.manage | host.deploy.create | host.domain.manage, openvibe.host]` as needed. None exist yet (Codes, the expected first caller, is not built).
-- Release `docs/capabilities-proposal/*.json` and `docs/service-manifest-proposal.json` in the next `openvibe-contracts`, then make the CI contract check blocking again.
+- Released in `openvibe-contracts` v0.24.0 (CI contract check blocking). Next release: add the takedown routes to `host.site.manage.implementedBy` (docs/launch.md).
 
 ### Deploying Stage B (for the operator)
 
@@ -290,7 +291,7 @@ Nothing here has been done yet.
 6. **Unit.** `sudo cp deploy/systemd/openvibe-host.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-host`, then `curl -s http://127.0.0.1:4910/api/ready`.
 7. **nginx.** Add the `host` entry from [`host.example.json`](host.example.json) to `/etc/openvibe/host.json`, update `/usr/local/lib/openvibe-host`, then `sudo ovhost nginx tenants host` (review) and `sudo ovhost nginx tenants host --install` (writes `openvibe.host.conf` and `openvibe.host-custom-domains.conf`, `nginx -t`, reload; restored on failure). [`deploy/nginx/openvibe.host.conf`](deploy/nginx/openvibe.host.conf) is a reference copy.
 8. **Custom domains** (whenever tenants verify one): `sudo ovhost nginx tenants host` lists the verified domains still waiting for a certificate. For each, `sudo certbot certonly --webroot -w /var/www/certbot -d <hostname>` (the generated port-80 block already answers the ACME challenge), then `sudo ovhost nginx tenants host --install` again. Until then, the domain is verified but only answers over HTTP with the challenge. Certificates never pass through the Host API.
-9. **Launch.** The Sites placeholder stays until the launch rule below holds and the lead switches it. Until then [`deploy/nginx/openvibe.host-tenants-pending.conf`](deploy/nginx/openvibe.host-tenants-pending.conf) answers every `*.openvibe.host` name with a 404 over the wildcard certificate (installed 2026-09-23; without it the wildcard fell through to nginx's default server). Remove it in the same change that installs the tenant vhost.
+9. **Launch.** Follow [docs/launch.md](docs/launch.md). Until then [`deploy/nginx/openvibe.host-tenants-pending.conf`](deploy/nginx/openvibe.host-tenants-pending.conf) answers every `*.openvibe.host` name with a 404 over the wildcard certificate (installed 2026-09-23; without it the wildcard fell through to nginx's default server). `ovhost nginx tenants host --install` removes it in the same `nginx -t` and reload that installs the tenant vhost (`nginx.tenants.replaces`), and puts it back if the test fails.
 
 ### Not done yet (Stage B)
 
@@ -298,9 +299,10 @@ Nothing here has been done yet.
 - Objects live on the service's local disk, not in OpenVibe.Media; there is no replication and no backup beyond `ovhost backup host` (the SQLite database only).
 - Certificates for custom domains are issued by hand (step 8); there is no automatic ACME flow.
 - Projects are created in Host. When Network has projects (ADR-014), Host should accept only Network project ids and read membership from Network.
-- `openvibe.host` is not on the Public Suffix List. Listing it would make each tenant its own site in browsers, but it would also make `openvibe.host` itself a public suffix, which affects the dashboard's cookies. Evaluate before submitting. The protections above do not depend on it.
+- `openvibe.host` is not on the Public Suffix List, so a tenant page can still set `Domain=openvibe.host` cookies (a cookie bomb breaks the dashboard and other tenant sites for that visitor). The protections above do not depend on it. [docs/threat-review.md §5](docs/threat-review.md#5-the-public-suffix-list-question) records the decision (launch without it) and the recommended follow-up (dashboard off the tenant zone, then list the zone).
+- Tenant objects are not in `ovhost backup` (only `host.db`).
 - No per-site headers, redirects or SPA fallback configuration; no preview deploys; no deploy of a Git repository (uploads only).
-- No sitemap/robots/feed behaviour for tenant sites beyond what tenants upload themselves.
+- Tenant sites have no Host-provided sitemap/robots/feed: they publish their own (sandbox projects are `noindex`). The dashboard host serves `/robots.txt` and `/sitemap.xml` (front page and legal pages).
 - The Codes portal (Wave 20) does not exist, so there is no public developer onboarding for Host yet.
 
 ### Acceptance (what `npm test` demonstrates for Stage B)
@@ -312,7 +314,9 @@ Nothing here has been done yet.
 - **Custom domains** (`test/host-domains.test.js`): not served until verified; wrong or missing TXT stays pending; first verified proof wins; OpenVibe domains refused; removal and site deletion stop serving; background verification, pending expiry and lapse.
 - **No secrets in responses** (`test/host-secrets-dashboard.test.js`): no API, dashboard, readiness or event body contains the OAuth client secret, the form secret, an uploaded `.env`'s values or any credential-like string; response objects are allowlisted; plus the dashboard (chrome, forms, CSRF against same-site tenant origins, planted cookies) and machine endpoints.
 - **Lifecycle, headers, events** (`test/host-lifecycle.test.js`, `test/host-contracts-events.test.js`): content types, ETag/304, ranges, immutable caching, CSP, nosniff, custom 404, 405; valid event envelopes delivered by the relay with a Network service token; the proposals match the guarded routes.
-- **Tenant vhosts** (`test/nginx-tenants.test.js`): the wildcard vhost with the certificate path parameter, HTTPS only for verified domains that have a certificate, hostile database values refused before they reach nginx, transactional install, no key file read.
+- **Tenant vhosts** (`test/nginx-tenants.test.js`): the wildcard vhost with the certificate path parameter, HTTPS only for verified domains that have a certificate, hostile database values refused before they reach nginx, transactional install that removes the pending vhost in the same change, `www.` redirect, client address headers from `$remote_addr` only, no key file read.
+- **Abuse controls** (`test/host-abuse.test.js`): staff takedowns (451 with Clear-Site-Data on every host, content kept, members cannot publish or delete around them, lift), certificate-validation paths refused, uploads validated two at a time (503 + Retry-After), the disk floor (507), the per-person project cap, fingerprinted assets capped at an hour at a CDN.
+- The isolation test also covers cross-origin reads from a tenant page (no CORS grant anywhere), ETag/Range existence oracles, delegated service tokens, app principals and the dashboard.
 
 Not demonstrated yet: any of this on the production host.
 
@@ -345,6 +349,11 @@ following exist here (plan §12.12):
 The launch release removes the domain from `OpenVibe.Sites/sites.json`, switches routing and
 registers maturity in the ecosystem registry atomically. A placeholder is never counted as an
 implemented service.
+
+**Stage B against this rule (2026-09-23):** every item is met in code and tests. The evidence per
+item, the exact launch steps (tenant vhost with the pending vhost removed in the same change, Sites,
+Network registry), verification and rollback are in [docs/launch.md](docs/launch.md); the threat
+review is [docs/threat-review.md](docs/threat-review.md). The launch has not been run.
 
 ---
 
