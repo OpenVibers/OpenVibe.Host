@@ -25,6 +25,7 @@ The production instance is never touched.
 | 2026-09-23 05:23 | coupons | `/var/backups/openvibe/coupons/20260923-052329/` (`ovhost drill coupons`) | `pragma integrity_check` (coupons) = ok; drill instance `/api/ready` 200 after 1s; `/sitemaps/merchants.xml`, `/feed.json` identical to production; coupons 0 = 0; coupon_merchants 0 = 0; coupon_merchant_domains 0 = 0 | passed |
 | 2026-09-23 05:23 | codes | `/var/backups/openvibe/codes/20260923-052332/` (`ovhost drill codes`) | `pragma integrity_check` (codes) = ok; drill instance `/api/ready` 200 after 1s; `/sitemap.xml` identical to production; manifests 0 = 0; releases 0 = 0; trust 0 = 0 | passed |
 | 2026-09-23 05:23 | host | `/var/backups/openvibe/host/20260923-052335/` (`ovhost drill host`) | `pragma integrity_check` (host) = ok; drill instance `/api/ready` 200 after 1s; host_projects 0 = 0; host_sites 0 = 0; host_deploys 0 = 0; host_domains 0 = 0 | passed |
+| 2026-09-23 19:24 | openre | `/var/backups/openvibe/openre/20260923-192308/` (`ovhost drill openre`) | `pragma integrity_check` (openre) = ok; drill instance `/api/ready` 200 after 1s; `/api/health`, `/robots.txt` identical to production; stream_definitions 1 = 1; ingest_keys 1 = 1; destinations 0 = 0; migration_map 0 = 0 | passed |
 
 ## How a drill was run (community)
 
