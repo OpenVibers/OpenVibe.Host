@@ -181,7 +181,9 @@ function createTenantServer({ store, config, blobs, takedowns = null, log = cons
         }
         // Taken down by staff: nothing of the tenant's is served, on any of its hosts, until lifted.
         if (takedowns && takedowns.ofSite(site)) {
-            return plain(res, 451, 'This site is unavailable: OpenVibe.Host staff took it down after a report.');
+            // Clear-Site-Data asks the browser to drop what the site left behind for this visitor
+            // (caches, storage and service workers a phishing page may have installed).
+            return plain(res, 451, 'This site is unavailable: OpenVibe.Host staff took it down after a report.', { 'Clear-Site-Data': '"cache", "storage"' });
         }
         // Absolute-form request targets must agree with the Host header (or they would pick the site).
         let target = req.url || '/';

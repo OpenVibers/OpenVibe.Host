@@ -44,7 +44,7 @@ async function boot(opts = {}) {
         HOST_SITES_DOMAIN: 'openvibe.host',
         OV_NETWORK_URL: network.url, OV_NETWORK_INTERNAL_URL: network.url,
         OV_OAUTH_CLIENT_ID: 'host', OV_OAUTH_CLIENT_SECRET: SECRET, COOKIE_SECURE: 'false',
-        HOST_FORM_SECRET: 'test-form-secret', HOST_WORKER: 'off',
+        HOST_FORM_SECRET: 'test-form-secret', HOST_WORKER: 'off', HOST_MIN_FREE_BYTES: '0',
         ...(opts.env || {}),
     };
     const configLib = require('../../server/config');

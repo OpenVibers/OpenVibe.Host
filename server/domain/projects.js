@@ -81,7 +81,8 @@ function createProjects({ store, config, access, blobs, takedowns, log = console
             networkProjectId = String(input.network_project_id);
             if (!NETWORK_PROJECT_RE.test(networkProjectId)) throw new ApiError(422, 'project.invalid_network_project_id', 'network_project_id is not a project id');
         }
-        if (q.ownedCount.get(owner).n >= 50) throw new ApiError(429, 'quota.projects', 'you already own 50 projects');
+        const maxOwned = (config.projects && config.projects.maxPerOwner) || 10;
+        if (q.ownedCount.get(owner).n >= maxOwned) throw new ApiError(429, 'quota.projects', `you already own ${maxOwned} projects`);
         const id = newId('project', store.now());
         const now = store.now();
         try {

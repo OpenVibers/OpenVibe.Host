@@ -12,7 +12,7 @@
 const { createReadiness } = require('openvibe-shared/ready');
 const { CHARTER_TABLES } = require('./db');
 
-function createHostReadiness({ store, blobs, auth, outbox, release = null }) {
+function createHostReadiness({ store, blobs, auth, outbox, release = null, minFreeBytes = () => 0 }) {
     const { db } = store;
     return createReadiness({
         service: 'host',
@@ -27,6 +27,15 @@ function createHostReadiness({ store, blobs, auth, outbox, release = null }) {
                 },
             },
             { name: 'storage', required: true, check: () => blobs.writable() },
+            {
+                // Serving goes on; only new deploys are refused below the floor.
+                name: 'disk_headroom', required: false,
+                check: () => {
+                    const free = blobs.freeBytes();
+                    const floor = minFreeBytes();
+                    return free >= floor ? { ok: true, detail: { free_bytes: free } } : `${free} bytes free, below HOST_MIN_FREE_BYTES (${floor}): new deploys are refused`;
+                },
+            },
             {
                 name: 'network_jwks', required: false,
                 check: () => {

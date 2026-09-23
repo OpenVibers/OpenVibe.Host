@@ -95,13 +95,19 @@ function createBlobStore(root) {
         return n;
     }
 
+    /** Free bytes on the filesystem that holds the objects (shared with every other service on the host). */
+    function freeBytes() {
+        const s = fs.statfsSync(base);
+        return Number(s.bavail) * Number(s.bsize);
+    }
+
     function writable() {
         fs.accessSync(tmpDir, fs.constants.W_OK);
         fs.accessSync(projectsDir, fs.constants.W_OK);
         return true;
     }
 
-    return { root: base, pathFor, put, exists, remove, removeProject, list, sweepTmp, writable };
+    return { root: base, pathFor, put, exists, remove, removeProject, list, sweepTmp, writable, freeBytes };
 }
 
 module.exports = { createBlobStore, SHA_RE };

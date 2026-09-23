@@ -13,7 +13,7 @@ const { boot, check, done } = require('./stageb/boot');
 const { site: siteTar } = require('./stageb/tar');
 
 (async () => {
-    const t = await boot({ env: { HOST_MAX_CONCURRENT_UPLOADS: '1' } });
+    const t = await boot({ env: { HOST_MAX_CONCURRENT_UPLOADS: '1', HOST_MAX_PROJECTS_PER_OWNER: '4' } });
     const alice = t.user('alice');
     const staff = t.user('root', { role: 'admin' });
     const pa = await t.project(alice, 'A');
@@ -61,6 +61,7 @@ const { site: siteTar } = require('./stageb/tar');
                 assert.ok(!/ALPHA|js\(\)/.test(g.text), 'no tenant content');
                 assert.strictEqual(g.headers['cache-control'], 'no-store');
                 assert.strictEqual(g.headers.etag, undefined);
+                assert.strictEqual(g.headers['clear-site-data'], '"cache", "storage"', 'the visitor\'s browser drops what the site left behind');
             }
         }
         assert.strictEqual((await t.get('other.openvibe.host', '/')).text, 'OTHER', 'a site-level takedown leaves the project\'s other sites up');
@@ -163,6 +164,30 @@ const { site: siteTar } = require('./stageb/tar');
         const bad = await t.upload(alice, gamma.id, { '../x.html': 'no' });
         assert.strictEqual(bad.status, 422);
         assert.strictEqual(t.ctx.uploadGate.inFlight, 0);
+    });
+
+    await check('the shared disk: below HOST_MIN_FREE_BYTES deploys are refused (507) before the body is read; serving goes on; readiness says so', async () => {
+        const pd = await t.project(alice, 'D');
+        const delta = await t.site(alice, pd.id, 'delta');
+        await t.deploy(alice, delta.id, { 'index.html': 'DELTA' });
+        const saved = t.ctx.config.uploads.minFreeBytes;
+        t.ctx.config.uploads.minFreeBytes = Number.MAX_SAFE_INTEGER;
+        try {
+            const r = await t.upload(alice, delta.id, { 'index.html': 'MORE' });
+            assert.strictEqual(r.status, 507, r.text);
+            assert.strictEqual(r.json().code, 'storage.host_full');
+            assert.strictEqual((await t.get('delta.openvibe.host', '/')).text, 'DELTA');
+            const ready = (await t.api('GET', '/api/ready')).json();
+            const check = Array.isArray(ready.checks) ? ready.checks.find((c) => c.name === 'disk_headroom') : ready.checks.disk_headroom;
+            assert.ok(check && !check.ok && /new deploys are refused/.test(JSON.stringify(check)), JSON.stringify(ready));
+        } finally { t.ctx.config.uploads.minFreeBytes = saved; }
+        assert.strictEqual((await t.upload(alice, delta.id, { 'index.html': 'MORE' })).status, 201);
+    });
+
+    await check('one person owns at most HOST_MAX_PROJECTS_PER_OWNER projects (each gets its own quotas)', async () => {
+        const r = await t.api('POST', '/api/v1/projects', { as: alice, json: { name: 'fifth' } });
+        assert.strictEqual(r.status, 429, r.text);
+        assert.match(r.json().detail, /you already own 4 projects/);
     });
 
     await t.close();

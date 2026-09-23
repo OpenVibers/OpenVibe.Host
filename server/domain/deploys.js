@@ -23,7 +23,7 @@ const { principalOf, actorRef } = require('./access');
 const DAY = 24 * 3600 * 1000;
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${n} B`);
 
-function createDeploys({ store, access, projects, sites, blobs, outbox, takedowns, log = console }) {
+function createDeploys({ store, config = null, access, projects, sites, blobs, outbox, takedowns, log = console }) {
     const { db } = store;
     const q = {
         byId: db.prepare('SELECT * FROM host_deploys WHERE id = ?'),
@@ -75,6 +75,15 @@ function createDeploys({ store, access, projects, sites, blobs, outbox, takedown
     function precheck(viewer, siteId) {
         const { site, project } = sites.load(viewer, siteId, 'deploy');
         takedowns.assertOpen(site);
+        const minFree = config ? config.uploads.minFreeBytes : 0;
+        if (minFree > 0) {
+            let free = Infinity;
+            try { free = blobs.freeBytes(); } catch (err) { log.warn('[Host] could not read free disk space:', err.message); }
+            if (free < minFree) {
+                log.warn(`[Host] uploads refused: ${free} bytes free, HOST_MIN_FREE_BYTES is ${minFree}`);
+                throw new ApiError(507, 'storage.host_full', 'Host is short of disk space and is not accepting deploys right now; try again later');
+            }
+        }
         const limits = limitsFor(project);
         const recent = q.deploysSince.get(project.id, store.now() - DAY).n;
         if (recent >= limits.quota.deploysPerDay) {

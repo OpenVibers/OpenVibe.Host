@@ -76,7 +76,7 @@ function createApp(opts = {}) {
     const takedowns = createTakedowns({ store });
     const projects = createProjects({ store, config, access, blobs, takedowns, log });
     const sites = createSites({ store, config, access, projects, takedowns });
-    const deploys = createDeploys({ store, access, projects, sites, blobs, outbox, takedowns, log });
+    const deploys = createDeploys({ store, config, access, projects, sites, blobs, outbox, takedowns, log });
     const domains = createDomains({ store, config, access, projects, sites, outbox, resolver: opts.resolver, log });
     const auth = opts.auth || createAuthClient(config);
     const viewers = createViewerResolver({ auth, config });
@@ -129,7 +129,7 @@ function createApp(opts = {}) {
     // ── Machine endpoints ───────────────────────────────────
     app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'openvibe-host', version: VERSION }));
     app.get('/release.json', release.handler);
-    const readiness = createHostReadiness({ store, blobs, auth, outbox, release: release.release });
+    const readiness = createHostReadiness({ store, blobs, auth, outbox, release: release.release, minFreeBytes: () => config.uploads.minFreeBytes });
     app.get('/api/ready', readiness.handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));
     // The dashboard host: only the public front page and the legal pages are crawlable. Tenant sites

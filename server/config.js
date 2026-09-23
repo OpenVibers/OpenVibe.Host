@@ -76,6 +76,14 @@ function load(env = process.env) {
             maxUnpackedBytes: int(env.HOST_MAX_UNPACKED_BYTES, 256 * MiB),
             // Uploads read and validated at the same time, service-wide (each is held in memory).
             maxConcurrent: int(env.HOST_MAX_CONCURRENT_UPLOADS, 2),
+            // Uploads are refused while the object store's filesystem has less than this free. The
+            // disk is shared with every other service on the host (Live, Media, databases), so a
+            // tenant must never be able to fill it.
+            minFreeBytes: int(env.HOST_MIN_FREE_BYTES, 5 * 1024 * MiB),
+        },
+        // Projects one person may own (each gets the per-project quotas below).
+        projects: {
+            maxPerOwner: int(env.HOST_MAX_PROJECTS_PER_OWNER, 10),
         },
 
         // Per-project quotas (a row in host_quotas overrides them per project; only staff set it).
