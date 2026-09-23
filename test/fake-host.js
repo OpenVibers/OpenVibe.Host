@@ -27,6 +27,10 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         sqliteCalls: [],
         reads: [],
         onRestart: null, // (unit) -> void
+        onSystemdRun: null, // (spec) -> undefined | { code, stderr } ; spec = { unit, uid, cwd, props, argv, pid }
+        onKill: null, // (pid, signal) -> false to ignore the signal
+        systemdRuns: [],
+        nextPid: 40000,
     };
 
     // ── filesystem ──
@@ -186,6 +190,28 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         }
     }
 
+    // ── systemd-run (transient units: restore drills) ──
+    function systemdRunCmd(args) {
+        const spec = { unit: null, uid: null, cwd: null, props: [], argv: [], pid: null };
+        for (let i = 0; i < args.length; i++) {
+            const a = args[i];
+            if (a === '--') { spec.argv = args.slice(i + 1); break; }
+            if (a === '--unit') spec.unit = args[++i];
+            else if (a === '--description') i += 1;
+            else if (a === '-p') spec.props.push(args[++i]);
+            else if (a.startsWith('--uid=')) spec.uid = a.slice(6);
+            else if (a.startsWith('--working-directory=')) spec.cwd = a.slice(20);
+        }
+        spec.envFiles = spec.props.filter((p) => p.startsWith('EnvironmentFile=')).map((p) => p.slice(16));
+        spec.pid = host.nextPid++;
+        host.systemdRuns.push(spec);
+        const r = host.onSystemdRun ? host.onSystemdRun(spec) : undefined;
+        if (r && r.code) return { stdout: '', stderr: '', ...r };
+        if (!(r && r.exitedAtStart)) alivePids.add(spec.pid);
+        host.addUnit(spec.unit, { mainPid: spec.pid, active: r && r.exitedAtStart ? 'failed' : 'active', transient: true });
+        return { code: 0, stdout: '', stderr: '' };
+    }
+
     host.socketViolations = () => calls.filter((c) => c.cmd === 'systemctl' && ['stop', 'restart', 'kill', 'try-restart', 'reload-or-restart', 'disable', 'mask'].includes(c.args[0]) && String(c.args[1]).endsWith('.socket'));
     host.restarts = () => calls.filter((c) => c.cmd === 'systemctl' && c.args[0] === 'restart').map((c) => c.args[1]);
 
@@ -201,6 +227,15 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             case 'rm': rmTree(args[args.length - 1]); return { code: 0, stdout: '', stderr: '' };
             case 'install': { const src = args[args.length - 2]; const dest = args[args.length - 1]; put(dest, host.read(src)); return { code: 0, stdout: '', stderr: '' }; }
             case 'node': return { code: 0, stdout: '', stderr: '' };
+            case 'systemd-run': return systemdRunCmd(args);
+            case 'cp': {
+                const src = args[args.length - 2];
+                const dest = args[args.length - 1];
+                const e = get(src);
+                if (!e || e.type !== 'file') return { code: 1, stdout: '', stderr: `cp: cannot stat '${src}': No such file or directory` };
+                put(dest, e.content, { owner: opts.as || user, mode: 0o644 });
+                return { code: 0, stdout: '', stderr: '' };
+            }
             default: return { code: 127, stdout: '', stderr: `fake host: no ${cmd}` };
             }
         },
@@ -251,6 +286,18 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             put(dest, `backup of ${db}`, { owner: as || user, mode: 0o640 });
         },
         async listeners(port) { return listeners.get(port) || []; },
+        async kill(pid, signal = 'SIGTERM') {
+            calls.push({ cmd: 'kill', args: [signal, pid], as: null, privileged: true, cwd: null });
+            if (!alivePids.has(pid)) return false;
+            if (host.onKill && host.onKill(pid, signal) === false) return true;
+            alivePids.delete(pid);
+            for (const u of units.values()) if (u.mainPid === pid) { u.active = 'inactive'; u.sub = 'dead'; }
+            for (const [port, list] of listeners) {
+                const rest = list.filter((l) => l.pid !== pid);
+                if (rest.length) listeners.set(port, rest); else listeners.delete(port);
+            }
+            return true;
+        },
         async sleep(ms) { clock += ms; },
         now: () => clock,
         async isRoot() { return root; },

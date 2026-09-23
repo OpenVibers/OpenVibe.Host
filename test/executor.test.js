@@ -45,6 +45,27 @@ runTests([
         db.close();
     }),
 
+    test('drill primitives: integrity_check through the worker, kill() signals exactly one pid', async () => {
+        const dbPath = path.join(dir, 'restored.db');
+        const db = new Database(dbPath);
+        db.pragma('journal_mode = WAL');
+        db.exec('CREATE TABLE pastes (id INTEGER PRIMARY KEY); INSERT INTO pastes DEFAULT VALUES;');
+        db.close();
+        const me = await exec.userName();
+        assert.deepStrictEqual(await exec.sqlite(dbPath, 'PRAGMA integrity_check', { as: me }), [{ integrity_check: 'ok' }]);
+        assert.deepStrictEqual(await exec.sqlite(dbPath, 'SELECT count(*) AS n FROM "pastes"', { as: me }), [{ n: 1 }]);
+
+        const { spawn } = require('child_process');
+        const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+        const exited = new Promise((r) => child.on('exit', (code, signal) => r(signal)));
+        assert.strictEqual(await exec.pidAlive(child.pid), true);
+        assert.strictEqual(await exec.kill(child.pid, 'SIGTERM'), true);
+        assert.strictEqual(await exited, 'SIGTERM');
+        assert.strictEqual(await exec.kill(child.pid, 'SIGTERM'), false, 'a pid that is gone');
+        await assert.rejects(exec.kill(1, 'SIGTERM'), /refusing/);
+        await assert.rejects(exec.kill(0, 'SIGTERM'), /refusing/);
+    }),
+
     test('http, files, locks and run() behave as the fake host assumes', async () => {
         const server = http.createServer((req, res) => { res.writeHead(req.url === '/ok' ? 200 : 503); res.end(JSON.stringify({ host: req.headers.host })); });
         await new Promise((r) => server.listen(0, '127.0.0.1', r));

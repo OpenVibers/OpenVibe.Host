@@ -31,7 +31,7 @@ Stage A adds a few safety rules of its own:
 
 ## Owns
 
-- Stage A: the host inventory (services, units, env names, ports, probes, drain policy), environment validation, release install and rollback for git-checkout services, readiness and drain orchestration, the release log, certificate inventory, nginx vhost rendering and transactional install, config snapshots, SQLite backup hooks.
+- Stage A: the host inventory (services, units, env names, ports, probes, drain policy), environment validation, release install and rollback for git-checkout services, readiness and drain orchestration, the release log, certificate inventory, nginx vhost rendering and transactional install, config snapshots, SQLite backup hooks, restore drills.
 - Stage B: tenant projects (keyed by project id), static sites, immutable content-addressed deploy artifacts, activation and rollback, default and custom domains (DNS TXT verification), per-project quotas, upload/validation logs, the tenant vhosts (`ovhost nginx tenants`).
 - Later (Stage C): sandbox profiles, budgets, secret references, outbound policy.
 
@@ -56,11 +56,11 @@ Stage A adds a few safety rules of its own:
 
 | Stage | Scope | State |
 |---|---|---|
-| **A: operator plane** | `ovhost` CLI and library: inventory, validate, plan, deploy (`--wait-idle`/`--force`), automatic rollback, rollback, status, releases, certs, nginx render/install, snapshot, backup. No daemon and no server. Port **4910** is reserved for a later operator API. | **alpha**: written and tested (fake host, plus the real executor against temp SQLite/HTTP/git). Installed on the host; used read-only so far. |
+| **A: operator plane** | `ovhost` CLI and library: inventory, validate, plan, deploy (`--wait-idle`/`--force`), automatic rollback, rollback, status, releases, certs, nginx render/install, snapshot, backup, restore drill. No daemon and no server. Port **4910** is reserved for a later operator API. | **alpha**: written and tested (fake host, plus the real executor against temp SQLite/HTTP/git). Installed on the host; used read-only so far. |
 | **B: tenant static hosting** | The Host API service (port 4910): projects, sites, immutable content-addressed deploys, activation and rollback, `<site>.openvibe.host` and TXT-verified custom domains, quotas, upload logs, events, a server-rendered dashboard; tenant vhosts via `ovhost nginx tenants`. | **alpha**: written and tested (`npm test`, against a temp database, a mock Network and a DNS table). Not deployed. |
 | **C: sandboxed user code** | Isolation profiles, CPU/memory/time/network/storage budgets, secret references, outbound policy, metering, kill/revoke without touching platform services. | **not started**, deliberately. Blocked until isolation and metering are proven. Nothing in Stage B runs tenant code. |
 
-Not in Stage A yet (from the charter/roadmap list): container adapters, DNS adapters, certificate **renewal**, logs/metrics links, incident/maintenance controls, the release-manifest/active-client work in §15.18, `host.release.deployed|rolled_back` events (they need an Events outbox and a service principal), and the restore drills and cutover runbook that Wave 22 will add.
+Not in Stage A yet (from the charter/roadmap list): container adapters, DNS adapters, certificate **renewal**, logs/metrics links, incident/maintenance controls, the release-manifest/active-client work in §15.18, `host.release.deployed|rolled_back` events (they need an Events outbox and a service principal), and the Wave 22 cutover runbook. Restore drills (`ovhost drill`) are written and tested against the fake host but have not been run on the host yet.
 
 ## Acceptance (Stage A)
 
@@ -74,6 +74,7 @@ What the tests demonstrate (`npm test`, every system call made against `test/fak
 - The socket unit is **never stopped or restarted**, in any flow.
 - Only the service being deployed is restarted. Static-only changes (for example Live `public/`) are deployed without a restart, even while streams are live.
 - `nginx -t` failures restore the previous vhost state. `certs` never reads a key file. Snapshots contain no secret values or remote-URL credentials.
+- A **restore drill** restores the latest backup into a service-user-owned temp directory and requires `integrity_check = ok`. It starts a sandboxed second instance through `systemd-run` with the production env file plus an override file. It compares the declared paths and row counts with production, then stops the instance by its own pid and removes the directory. Failed integrity, a readiness timeout, an instance that dies, mismatches and a failed `systemd-run` are all reported, logged and cleaned up. It refuses to run without root or on a port already in use. A filesystem diff of the fake host shows it writes nothing outside the drill directory, its lock and its log, and it never reads the env file or passes on a secret-looking unit `Environment=`.
 
 Not demonstrated yet: any of this on the production host. The Wave 21 exit criterion ("deploy, restart and roll back one service without interrupting unrelated runtimes or protected sessions") still needs a run on the host, with evidence.
 
@@ -92,9 +93,10 @@ ovhost nginx render <service> [--variant http|sse|websocket] [--manifest <file>]
 ovhost nginx tenants <service> [--wildcard-cert <name|dir>] [--install]    Stage B tenant vhosts
 ovhost snapshot <service> [--out <file>]
 ovhost backup <service>
+ovhost drill <service> [--backup <dir>] [--keep]     restore drill (root only)
 ```
 
-Every command accepts `--json` and `--inventory <file>`. Exit codes: `0` ok · `1` usage/precondition (including a held lock) · `2` validation failed, nothing restarted · `3` not ready, rolled back and serving · `4` rollback failed, **manual intervention** · `5` protected sessions active (refused, or `--wait-idle` gave up).
+Every command accepts `--json` and `--inventory <file>`. `drill` exits `0` passed, `1` refused (not root, port in use, no backup, unsupported), `2` failed. Other exit codes: `0` ok · `1` usage/precondition (including a held lock) · `2` validation failed, nothing restarted · `3` not ready, rolled back and serving · `4` rollback failed, **manual intervention** · `5` protected sessions active (refused, or `--wait-idle` gave up).
 
 ### Deploy sequence
 
@@ -108,6 +110,25 @@ Every command accepts `--json` and `--inventory <file>`. Exit codes: `0` ok · `
 8. Start the socket if it is down, restart the service units, poll readiness.
 9. If readiness fails, run the automatic rollback (restore, reinstall, restart, poll).
 10. Append the release record to `<stateDir>/releases/<service>.jsonl`.
+
+### Restore drills (Wave 22)
+
+`sudo ovhost drill <service>` restores the latest `ovhost backup` (or `--backup <dir>`) and starts a second instance on a spare loopback port. It compares that instance with production, stops it and logs the result to `<stateDir>/drills/<service>.jsonl`. It also prints a Markdown row for [docs/restore-drills.md](docs/restore-drills.md), which covers the steps, the sandbox and the per-service status.
+
+Each inventory entry's `drill` block declares:
+
+- `port`: the service port + 10000 in the example;
+- `databases`: the env var that points the service at each restored copy;
+- `env`: overrides that turn side effects off. Values may use `{tmp}`, `{port}` and `{db:<name>}`;
+- `dirs` to create inside the drill directory;
+- `ready`: the readiness path;
+- `compare`: paths, plus volatile `ignore` keys where needed;
+- `counts`: `{ db, table }` pairs;
+- `supported: false` with a `reason` when a second instance cannot run without side effects.
+
+In `host.example.json`, 18 services have drill blocks. live, media, tools and games are marked unsupported, and the reasons are in the file.
+
+The sandbox blocks writes outside the drill directory and addresses beyond loopback. Loopback stays open, so the overrides are what keep a drill away from production services. Common overrides are `OV_OAUTH_CLIENT_SECRET=` (no service tokens) and `http://127.0.0.1:9` for URLs whose empty value would fall back to a production service.
 
 ### Inventory
 
@@ -127,7 +148,7 @@ Nothing here has been done yet. These are the steps:
    ```
    The tree must stay world-readable (default 0755/0644). The SQLite worker runs as `ubuntu` from this directory.
 2. **Inventory:** `sudo install -o root -g root -m 0640 host.example.json /etc/openvibe/host.json`, then correct it against the machine. Check the Community database path, the Tools unit list, and Events, which was not deployed as of 22 Sep.
-3. **State:** `/var/lib/openvibe-host` (root, 0750) holds the release logs, locks and snapshots. `/var/backups/openvibe/<service>` is created per service, owned by the service user, so the backup worker can write there. Both directories are created on first use.
+3. **State:** `/var/lib/openvibe-host` (root, 0750) holds the release logs, locks, snapshots and drill logs. `/var/lib/openvibe-drills` (root, 0711) holds one directory per running drill, owned by the service user and removed afterwards. `/var/backups/openvibe/<service>` is created per service, owned by the service user, so the backup worker can write there. Both directories are created on first use.
 4. **Run as root:** `sudo ovhost …`. `ovhost` drops to `ubuntu` for git/npm/SQLite (`runuser`) and needs root for `systemctl`, `nginx -t`, reading `/etc/openvibe/*.env` (names only) and writing vhosts. For least privilege, give operator accounts a sudoers rule for `/usr/local/bin/ovhost` alone instead of a general `ALL`. Do **not** grant it to the `ubuntu` service user if that account has no sudo today.
 5. **First run:** `sudo ovhost status`, then `sudo ovhost validate <each service>`, then `sudo ovhost plan live`, all read-only apart from `git fetch`. Adopt `deploy` one service at a time, starting with one that has no protected sessions.
 

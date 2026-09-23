@@ -3,6 +3,8 @@
   "host": "openvibe-oregon",
   "stateDir": "/var/lib/openvibe-host",
   "backupDir": "/var/backups/openvibe",
+  "drillDir": "/var/lib/openvibe-drills",
+  "_drill": "Restore drills (ovhost drill <service>): each service with a database has a drill block. The drill port is the service port + 10000 on 127.0.0.1. http://127.0.0.1:9 is a closed port, used where an empty value would fall back to a production service on loopback. An empty OV_OAUTH_CLIENT_SECRET stops a service from minting service tokens, so it cannot call other services with its identity. Loopback stays reachable from the drill sandbox (services need Network's public keys), so these overrides are what keep a drill away from production. _notes explain what is left on and why.",
   "nginx": {
     "sitesAvailable": "/etc/nginx/sites-available",
     "sitesEnabled": "/etc/nginx/sites-enabled",
@@ -25,7 +27,24 @@
       "ready": { "url": "http://127.0.0.1:4000/api/health", "timeoutSeconds": 30 },
       "noRestartPaths": ["docs/", "test/", "**/*.md"],
       "databases": [{ "name": "network", "path": "/opt/openvibe.network/data/network.db" }],
-      "nginx": { "vhost": "openvibe.network.conf", "repoVhost": "deploy/nginx/openvibe.network.conf", "variant": "http" }
+      "nginx": { "vhost": "openvibe.network.conf", "repoVhost": "deploy/nginx/openvibe.network.conf", "variant": "http" },
+      "drill": {
+        "port": 14000,
+        "ready": "/api/ready",
+        "databases": { "network": "DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "OV_EVENTS_INTERNAL_URL": "", "INTERNAL_API_KEY": "", "OV_TOOLS_INTERNAL_URL": "http://127.0.0.1:9", "AVATAR_PATH": "{tmp}/avatars" },
+        "dirs": ["{tmp}/avatars"],
+        "compare": [
+          "/api/health",
+          "/api/.well-known/jwks",
+          "/api/brand",
+          "/api/themes?limit=500",
+          "/api/domains",
+          "/api/v1/registry/capabilities"
+        ],
+        "counts": [{ "db": "network", "table": "users" }, { "db": "network", "table": "oauth_clients" }, { "db": "network", "table": "wallets" }, { "db": "network", "table": "coin_transactions" }],
+        "_notes": "OV_EVENTS_INTERNAL_URL empty stops the dev_audit relay; INTERNAL_API_KEY empty falls back to the placeholder key, which makes the chrome site-copy job (paid LLM call through Live), avatar import and Live analytics calls return early. No switch: the ecosystem poller GETs every service readiness and release.json on loopback every 60 s (read-only). Discord bot login and the Resend email queue are gated by settings in the copy and reach only remote hosts, which the sandbox blocks. JWT_PRIVATE_KEY/JWT_PUBLIC_KEY come from the production env file and are only read."
+      }
     },
     "live": {
       "repo": "/opt/openvibe.live",
@@ -55,7 +74,11 @@
       ],
       "_databasesNote": "analytics.db (1.7 GB, append-only pageviews) is left out of routine backups on purpose; add it here to include it.",
       "backupOnChange": ["server/db/migrations.js", "server/db/schema.sql"],
-      "nginx": { "vhost": "openvibe.live.conf", "repoVhost": "deploy/nginx/openvibe.live.conf", "variant": "websocket", "wsPaths": ["/ws/"], "maxBody": "3m" }
+      "nginx": { "vhost": "openvibe.live.conf", "repoVhost": "deploy/nginx/openvibe.live.conf", "variant": "websocket", "wsPaths": ["/ws/"], "maxBody": "3m" },
+      "drill": {
+        "supported": false,
+        "reason": "server/index.js opens data/analytics.db relative to the checkout (not movable by env) at module load: in the sandbox the checkout is read-only and boot fails, and without the sandbox the drill would write production's analytics database. It also always binds RTMP (RTMP_PORT and RTMP_PORT+8000), resumes restreams/RobotStreamer relays and AI jobs for rows in the copy, and runs Media reconcilers; several have no env switch. Needs a BindPaths over data/ plus DB-level switches before it can be drilled."
+      }
     },
     "media": {
       "repo": "/opt/openvibe.media",
@@ -74,7 +97,11 @@
       },
       "drain": { "policy": "refuse", "waitMaxSeconds": 43200, "pollSeconds": 60, "quietChecks": 2 },
       "databases": [{ "name": "media", "path": "/opt/openvibe.media/data/media.db" }],
-      "nginx": { "vhost": "openvibe.media.conf", "repoVhost": "deploy/nginx/openvibe.media.conf", "variant": "http" }
+      "nginx": { "vhost": "openvibe.media.conf", "repoVhost": "deploy/nginx/openvibe.media.conf", "variant": "http" },
+      "drill": {
+        "supported": false,
+        "reason": "Webhooks to Live (orphan-recording finalize at boot, clip re-cuts, storage alerts) read their URL from the apps table and have no env switch; the health job, junk sweep and clip jobs run ffmpeg against production files through absolute paths stored in the database; the tiering sweep and health job start on a timer with no switch. A side-effect-free instance needs the copy edited (webhook_url NULL, storage_tier off) first, which ovhost does not do."
+      }
     },
     "tools": {
       "repo": "/opt/openvibe.tools",
@@ -102,7 +129,11 @@
         { "name": "tools-maps-analytics", "path": "/opt/openvibe.tools/apps/maps/data/analytics.db" },
         { "name": "tools-text-analytics", "path": "/opt/openvibe.tools/apps/text/data/analytics.db" },
         { "name": "tools-yt-analytics", "path": "/opt/openvibe.tools/apps/yt/data/analytics.db" }
-      ]
+      ],
+      "drill": {
+        "supported": false,
+        "reason": "Eight units (gateway plus seven apps) run as separate processes and a drill starts one; yt, food and maps open apps/<app>/data/analytics.db relative to the checkout with no env override (read-only in the sandbox, production's file without it); the job runtimes prune and re-queue jobs at start with no switch. Its only databases are per-app analytics."
+      }
     },
     "community": {
       "repo": "/opt/openvibe.community",
@@ -118,7 +149,19 @@
         { "name": "community-legacy-path", "path": "/opt/openvibe.community/data/community.db" }
       ],
       "_databasesNote": "The repo unit puts the database in /var/lib/openvibe-community; the 22 Sep production snapshot found it under /opt/openvibe.community/data. Keep the one that exists (backup skips a missing path).",
-      "nginx": { "vhost": "openvibe.community.conf", "repoVhost": "deploy/nginx/openvibe.community.conf", "variant": "http" }
+      "nginx": { "vhost": "openvibe.community.conf", "repoVhost": "deploy/nginx/openvibe.community.conf", "variant": "http" },
+      "drill": {
+        "port": 14200,
+        "databases": { "community": "COMMUNITY_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "DISCORD_RELAY_ENABLED": "0", "OV_OAUTH_CLIENT_SECRET": "", "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9", "OV_MEDIA_INTERNAL_URL": "http://127.0.0.1:9" },
+        "compare": [
+          "/api/pastes?limit=5",
+          "/api/v1/spaces",
+          "/api/v1/pulse?limit=5"
+        ],
+        "counts": [{ "db": "community", "table": "pastes" }, { "db": "community", "table": "spaces" }, { "db": "community", "table": "threads" }, { "db": "community", "table": "posts" }],
+        "_notes": "If the host keeps the database at the legacy path, map \"community-legacy-path\" instead of \"community\" (and in counts). An empty client secret stops identity resolve-batch calls to Network; the dead Live URL makes a PASTES_AUTHORITY=live proxy fail visibly instead of matching production through production. Community has no events relay (EVENTS_URL is unused)."
+      }
     },
     "events": {
       "_note": "Not deployed as of the 22 Sep 2026 production snapshot (no events.env on the host).",
@@ -138,7 +181,14 @@
       },
       "drain": { "policy": "report" },
       "databases": [{ "name": "events", "path": "/var/lib/openvibe-events/events.db" }],
-      "nginx": { "vhost": "events.openvibe.network.conf", "repoVhost": "deploy/nginx/events.openvibe.network.conf", "variant": "sse", "ssePaths": ["/realtime/stream"], "certName": "openvibe.network" }
+      "nginx": { "vhost": "events.openvibe.network.conf", "repoVhost": "deploy/nginx/events.openvibe.network.conf", "variant": "sse", "ssePaths": ["/realtime/stream"], "certName": "openvibe.network" },
+      "drill": {
+        "port": 14300,
+        "databases": { "events": "EVENTS_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "EVENTS_WORKER": "off" },
+        "counts": [{ "db": "events", "table": "events" }, { "db": "events", "table": "subscriptions" }, { "db": "events", "table": "deliveries" }, { "db": "events", "table": "consumer_checkpoints" }],
+        "_notes": "EVENTS_WORKER=off stops signed deliveries to subscribers. /api/ready requires Network JWKS (read-only GET on loopback). The retention prune interval always runs but only touches the copy. No public read endpoint is stable enough to compare; row counts only."
+      }
     },
     "games": {
       "repo": "/opt/openvibe.games",
@@ -148,7 +198,11 @@
       "envFile": "/etc/openvibe/games.env",
       "port": 8000,
       "ready": { "url": "http://127.0.0.1:8000/healthz", "timeoutSeconds": 60 },
-      "databases": [{ "name": "world", "path": "/opt/openvibe.games/data/world.db" }]
+      "databases": [{ "name": "world", "path": "/opt/openvibe.games/data/world.db" }],
+      "drill": {
+        "supported": false,
+        "reason": "Not reviewed: a pnpm workspace with a TypeScript build whose runtime side effects (world simulation loop, realtime ports) have not been read, so no side-effect-free overrides can be declared without guessing."
+      }
     },
     "sites": {
       "repo": "/opt/openvibe.sites",
@@ -168,7 +222,317 @@
       "ready": { "url": "http://127.0.0.1:4910/api/ready", "timeoutSeconds": 30 },
       "noRestartPaths": ["docs/", "test/", "**/*.md"],
       "databases": [{ "name": "host", "path": "/var/lib/openvibe-host-api/host.db" }],
-      "nginx": { "tenants": { "sitesDomain": "openvibe.host", "dashboardDomain": "openvibe.host", "wildcardCert": "openvibe.host", "database": "/var/lib/openvibe-host-api/host.db", "maxUpload": "110m" } }
+      "nginx": { "tenants": { "sitesDomain": "openvibe.host", "dashboardDomain": "openvibe.host", "wildcardCert": "openvibe.host", "database": "/var/lib/openvibe-host-api/host.db", "maxUpload": "110m" } },
+      "drill": {
+        "port": 14910,
+        "databases": { "host": "HOST_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "HOST_WORKER": "off", "EVENTS_URL": "", "OV_OAUTH_CLIENT_SECRET": "", "HOST_STORAGE_DIR": "{tmp}/objects" },
+        "dirs": ["{tmp}/objects"],
+        "counts": [{ "db": "host", "table": "host_projects" }, { "db": "host", "table": "host_sites" }, { "db": "host", "table": "host_deploys" }, { "db": "host", "table": "host_domains" }],
+        "_notes": "Restores host.db only: `ovhost backup host` does not copy the content-addressed objects, so tenant content cannot be compared (every /api/v1 read needs auth). HOST_WORKER=off stops DNS rechecks and the object sweep."
+      }
+    },
+    "billing": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.billing",
+      "units": ["openvibe-billing.service"],
+      "unitSources": { "openvibe-billing.service": "deploy/systemd/openvibe-billing.service" },
+      "envFile": "/etc/openvibe/billing.env",
+      "env": { "required": "from-example" },
+      "port": 4600,
+      "ready": { "url": "http://127.0.0.1:4600/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "billing", "path": "/var/lib/openvibe-billing/billing.db" }],
+      "drill": {
+        "port": 14600,
+        "databases": { "billing": "BILLING_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "BILLING_JOBS": "off", "EVENTS_URL": "", "OV_OAUTH_CLIENT_SECRET": "" },
+        "compare": ["/api/v1/rates"],
+        "counts": [{ "db": "billing", "table": "accounts" }, { "db": "billing", "table": "transactions" }, { "db": "billing", "table": "ledger_entries" }, { "db": "billing", "table": "subscriptions" }, { "db": "billing", "table": "payment_intents" }],
+        "_notes": "BILLING_JOBS=off stops provider-event settlement, the renewal sweep and the outbox relay. Payment providers are called only on incoming requests (and are remote, which the sandbox blocks). /api/health is not compared: it reports the relay state, which the drill turns off."
+      }
+    },
+    "chat": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.chat",
+      "units": ["openvibe-chat.service"],
+      "unitSources": { "openvibe-chat.service": "deploy/systemd/openvibe-chat.service" },
+      "envFile": "/etc/openvibe/chat.env",
+      "env": { "required": "from-example" },
+      "port": 4400,
+      "ready": { "url": "http://127.0.0.1:4400/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "chat", "path": "/var/lib/openvibe-chat/chat.db" }],
+      "drill": {
+        "port": 14400,
+        "databases": { "chat": "CHAT_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "EVENTS_URL": "", "LIVE_MIRROR": "0", "OV_OAUTH_CLIENT_SECRET": "", "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9", "CHAT_CACHE_DIR": "{tmp}/cache", "SOUNDS_PATH": "{tmp}/sounds" },
+        "dirs": ["{tmp}/cache", "{tmp}/sounds"],
+        "compare": ["/api/chat/filters/friendly"],
+        "counts": [{ "db": "chat", "table": "dm_conversations" }, { "db": "chat", "table": "dm_messages" }, { "db": "chat", "table": "emotes" }, { "db": "chat", "table": "moderation_actions" }],
+        "_notes": "An empty client secret and a dead Live URL stop the 2 s Live projection sync and the effects POSTed to Live. History endpoints are not compared: cosmetics come from Live (cut off here) and expired messages are swept at boot, so chat_messages is not counted either."
+      }
+    },
+    "search": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.search",
+      "units": ["openvibe-search.service"],
+      "unitSources": { "openvibe-search.service": "deploy/systemd/openvibe-search.service" },
+      "envFile": "/etc/openvibe/search.env",
+      "env": { "required": "from-example" },
+      "port": 4710,
+      "ready": { "url": "http://127.0.0.1:4710/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "search", "path": "/var/lib/openvibe-search/search.db" }],
+      "drill": {
+        "port": 14710,
+        "databases": { "search": "SEARCH_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "EVENTS_URL": "", "SEARCH_EVENTS_SECRET": "", "OV_OAUTH_CLIENT_SECRET": "" },
+        "compare": [
+          "/api/v1/search?q=openvibe&limit=10",
+          "/api/v1/suggest?q=open&limit=10"
+        ],
+        "counts": [{ "db": "search", "table": "documents" }, { "db": "search", "table": "doc_acl" }, { "db": "search", "table": "doc_facets" }],
+        "_notes": "/api/ready needs the Network public key (read-only JWKS GET on loopback). No switch: the 6-hourly outbox prune (copy only)."
+      }
+    },
+    "sources": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.sources",
+      "units": ["openvibe-sources.service"],
+      "unitSources": { "openvibe-sources.service": "deploy/systemd/openvibe-sources.service" },
+      "envFile": "/etc/openvibe/sources.env",
+      "env": { "required": "from-example" },
+      "port": 4720,
+      "ready": { "url": "http://127.0.0.1:4720/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "sources", "path": "/var/lib/openvibe-sources/sources.db" }],
+      "drill": {
+        "port": 14720,
+        "databases": { "sources": "SOURCES_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "SOURCES_WORKER": "off", "EVENTS_URL": "", "OV_OAUTH_CLIENT_SECRET": "" },
+        "counts": [{ "db": "sources", "table": "sources" }, { "db": "sources", "table": "items" }, { "db": "sources", "table": "item_revisions" }, { "db": "sources", "table": "fetch_runs" }],
+        "_notes": "SOURCES_WORKER=off stops the crawler (feeds, sitemaps, robots.txt; production may allow loopback sources). Every /api/v1 read needs a service token, so row counts only."
+      }
+    },
+    "wiki": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.wiki",
+      "units": ["openvibe-wiki.service"],
+      "unitSources": { "openvibe-wiki.service": "deploy/systemd/openvibe-wiki.service" },
+      "envFile": "/etc/openvibe/wiki.env",
+      "env": { "required": "from-example" },
+      "port": 4800,
+      "ready": { "url": "http://127.0.0.1:4800/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "wiki", "path": "/var/lib/openvibe-wiki/wiki.db" }],
+      "drill": {
+        "port": 14800,
+        "databases": { "wiki": "WIKI_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "EVENTS_URL": "", "OV_OAUTH_CLIENT_SECRET": "", "OV_MEDIA_INTERNAL_URL": "", "OV_SOURCES_INTERNAL_URL": "", "WIKI_SCHEDULE_INTERVAL_MS": "2147483647" },
+        "compare": [
+          "/api/v1/spaces",
+          "/feed.json"
+        ],
+        "counts": [{ "db": "wiki", "table": "wiki_spaces" }, { "db": "wiki", "table": "wiki_pages" }, { "db": "wiki", "table": "wiki_page_revisions" }],
+        "_notes": "The schedule worker has no off switch; the interval is set to the largest value Node accepts (anything larger becomes 1 ms). An empty client secret also stops Community thread creation on page views."
+      }
+    },
+    "blog": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.blog",
+      "units": ["openvibe-blog.service"],
+      "unitSources": { "openvibe-blog.service": "deploy/systemd/openvibe-blog.service" },
+      "envFile": "/etc/openvibe/blog.env",
+      "env": { "required": "from-example" },
+      "port": 4810,
+      "ready": { "url": "http://127.0.0.1:4810/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "blog", "path": "/var/lib/openvibe-blog/blog.db" }],
+      "drill": {
+        "port": 14810,
+        "databases": { "blog": "BLOG_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "BLOG_WORKER": "off", "EVENTS_URL": "", "OV_OAUTH_CLIENT_SECRET": "", "OV_MEDIA_INTERNAL_URL": "http://127.0.0.1:9", "OV_COMMUNITY_INTERNAL_URL": "http://127.0.0.1:9" },
+        "compare": [
+          "/api/v1/blogs/openvibe/posts?limit=10",
+          "/feed.json"
+        ],
+        "counts": [{ "db": "blog", "table": "blogs" }, { "db": "blog", "table": "blog_posts" }, { "db": "blog", "table": "blog_post_revisions" }],
+        "_notes": "An empty client secret stops Community thread creation and Network identity lookups on page reads; author names then come from the subject_projections cache in the copy."
+      }
+    },
+    "tips": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.tips",
+      "units": ["openvibe-tips.service"],
+      "unitSources": { "openvibe-tips.service": "deploy/systemd/openvibe-tips.service" },
+      "envFile": "/etc/openvibe/tips.env",
+      "env": { "required": "from-example" },
+      "port": 4610,
+      "ready": { "url": "http://127.0.0.1:4610/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "tips", "path": "/var/lib/openvibe-tips/tips.db" }],
+      "drill": {
+        "port": 14610,
+        "databases": { "tips": "TIPS_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "TIPS_JOBS": "off", "EVENTS_URL": "", "TIPS_EVENTS_SECRET": "", "TIPS_CHAT_ADAPTER": "none", "OV_OAUTH_CLIENT_SECRET": "", "BILLING_URL": "http://127.0.0.1:9", "LIVE_INTERNAL_URL": "http://127.0.0.1:9" },
+        "compare": ["/sitemap.xml"],
+        "counts": [{ "db": "tips", "table": "creator_tip_profiles" }, { "db": "tips", "table": "tip_interactions" }, { "db": "tips", "table": "tip_goals" }],
+        "_notes": "Money: TIPS_JOBS=off stops due Billing transfers and chat deliveries, BILLING_URL points at a closed port (an empty value falls back to production Billing), TIPS_EVENTS_SECRET empty refuses funding webhooks. /api/ready needs the Network public key (read-only JWKS GET on loopback)."
+      }
+    },
+    "vip": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.vip",
+      "units": ["openvibe-vip.service"],
+      "unitSources": { "openvibe-vip.service": "deploy/systemd/openvibe-vip.service" },
+      "envFile": "/etc/openvibe/vip.env",
+      "env": { "required": "from-example" },
+      "port": 4620,
+      "ready": { "url": "http://127.0.0.1:4620/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "vip", "path": "/var/lib/openvibe-vip/vip.db" }],
+      "drill": {
+        "port": 14620,
+        "databases": { "vip": "VIP_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "VIP_JOBS": "off", "EVENTS_URL": "", "VIP_EVENTS_SECRET": "", "OV_OAUTH_CLIENT_SECRET": "", "BILLING_URL": "http://127.0.0.1:9", "VIP_CHECKOUT_PROVIDERS": "" },
+        "compare": [
+          "/api/v1/creators/network",
+          "/api/v1/plans?creator=network",
+          "/api/v1/perks?creator=network"
+        ],
+        "counts": [{ "db": "vip", "table": "vip_creators" }, { "db": "vip", "table": "vip_plans" }, { "db": "vip", "table": "vip_memberships" }],
+        "_notes": "VIP_FORM_SECRET must stay as production sets it (the service exits without it). BILLING_URL points at a closed port: the Billing client has no off switch and an empty value falls back to production Billing."
+      }
+    },
+    "news": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.news",
+      "units": ["openvibe-news.service"],
+      "unitSources": { "openvibe-news.service": "deploy/systemd/openvibe-news.service" },
+      "envFile": "/etc/openvibe/news.env",
+      "env": { "required": "from-example" },
+      "port": 4820,
+      "ready": { "url": "http://127.0.0.1:4820/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "news", "path": "/var/lib/openvibe-news/news.db" }],
+      "drill": {
+        "port": 14820,
+        "databases": { "news": "NEWS_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "NEWS_WORKER": "off", "EVENTS_URL": "", "NEWS_EVENTS_SECRET": "", "OV_AI_INTERNAL_URL": "", "OV_OAUTH_CLIENT_SECRET": "", "OV_SOURCES_INTERNAL_URL": "http://127.0.0.1:9" },
+        "compare": [
+          "/api/v1/stories?limit=10",
+          "/api/v1/topics"
+        ],
+        "counts": [{ "db": "news", "table": "news_topics" }, { "db": "news", "table": "news_stories" }, { "db": "news", "table": "news_source_items" }]
+      }
+    },
+    "reviews": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.reviews",
+      "units": ["openvibe-reviews.service"],
+      "unitSources": { "openvibe-reviews.service": "deploy/systemd/openvibe-reviews.service" },
+      "envFile": "/etc/openvibe/reviews.env",
+      "env": { "required": "from-example" },
+      "port": 4830,
+      "ready": { "url": "http://127.0.0.1:4830/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "reviews", "path": "/var/lib/openvibe-reviews/reviews.db" }],
+      "drill": {
+        "port": 14830,
+        "databases": { "reviews": "REVIEWS_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "REVIEWS_SOURCES_SYNC": "false", "EVENTS_URL": "", "REVIEWS_EVENTS_SECRET": "", "OV_OAUTH_CLIENT_SECRET": "", "OV_SOURCES_INTERNAL_URL": "" },
+        "compare": [
+          "/api/v1/entities?limit=10",
+          "/feed.json"
+        ],
+        "counts": [{ "db": "reviews", "table": "review_entities" }, { "db": "reviews", "table": "review_signals" }, { "db": "reviews", "table": "review_summaries" }],
+        "_notes": "reconcileIndex() at boot may write index revisions and outbox rows into the copy (no switch; copy only)."
+      }
+    },
+    "deals": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.deals",
+      "units": ["openvibe-deals.service"],
+      "unitSources": { "openvibe-deals.service": "deploy/systemd/openvibe-deals.service" },
+      "envFile": "/etc/openvibe/deals.env",
+      "env": { "required": "from-example" },
+      "port": 4840,
+      "ready": { "url": "http://127.0.0.1:4840/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "deals", "path": "/var/lib/openvibe-deals/deals.db" }],
+      "drill": {
+        "port": 14840,
+        "databases": { "deals": "DEALS_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "DEALS_WORKER": "off", "DEALS_IMPORT": "off", "EVENTS_URL": "", "DEALS_EVENTS_SECRET": "", "OV_OAUTH_CLIENT_SECRET": "", "OV_COMMUNITY_INTERNAL_URL": "http://127.0.0.1:9", "OV_SOURCES_INTERNAL_URL": "http://127.0.0.1:9" },
+        "compare": [{ "path": "/api/v1/offers?sort=new&page=1", "ignore": ["age_ms"] }],
+        "counts": [{ "db": "deals", "table": "deal_offers" }, { "db": "deals", "table": "deal_products" }, { "db": "deals", "table": "deal_votes" }],
+        "_notes": "The client secret MUST be empty: with it, an anonymous GET /d/:slug can create a thread in production Community. Offers carry freshness.age_ms (now - observed_at), ignored in the comparison."
+      }
+    },
+    "coupons": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.coupons",
+      "units": ["openvibe-coupons.service"],
+      "unitSources": { "openvibe-coupons.service": "deploy/systemd/openvibe-coupons.service" },
+      "envFile": "/etc/openvibe/coupons.env",
+      "env": { "required": "from-example" },
+      "port": 4850,
+      "ready": { "url": "http://127.0.0.1:4850/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "coupons", "path": "/var/lib/openvibe-coupons/coupons.db" }],
+      "drill": {
+        "port": 14850,
+        "databases": { "coupons": "COUPONS_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "COUPONS_WORKER": "off", "EVENTS_URL": "", "OV_OAUTH_CLIENT_SECRET": "", "OV_SOURCES_INTERNAL_URL": "" },
+        "compare": [
+          "/sitemaps/merchants.xml",
+          "/feed.json"
+        ],
+        "counts": [{ "db": "coupons", "table": "coupons" }, { "db": "coupons", "table": "coupon_merchants" }, { "db": "coupons", "table": "coupon_merchant_domains" }]
+      }
+    },
+    "trade": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.trade",
+      "units": ["openvibe-trade.service"],
+      "unitSources": { "openvibe-trade.service": "deploy/systemd/openvibe-trade.service" },
+      "envFile": "/etc/openvibe/trade.env",
+      "env": { "required": "from-example" },
+      "port": 4860,
+      "ready": { "url": "http://127.0.0.1:4860/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "trade", "path": "/var/lib/openvibe-trade/trade.db" }],
+      "drill": {
+        "port": 14860,
+        "databases": { "trade": "TRADE_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "TRADE_WORKER": "off", "EVENTS_URL": "", "TRADE_EVENTS_WEBHOOK_SECRET": "", "OV_OAUTH_CLIENT_SECRET": "", "OV_SOURCES_INTERNAL_URL": "http://127.0.0.1:9" },
+        "compare": [
+          "/api/v1/instruments?limit=10",
+          "/feed.json"
+        ],
+        "counts": [{ "db": "trade", "table": "trade_instruments" }, { "db": "trade", "table": "trade_market_observations" }, { "db": "trade", "table": "trade_source_documents" }]
+      }
+    },
+    "codes": {
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "repo": "/opt/openvibe.codes",
+      "units": ["openvibe-codes.service"],
+      "unitSources": { "openvibe-codes.service": "deploy/systemd/openvibe-codes.service" },
+      "envFile": "/etc/openvibe/codes.env",
+      "env": { "required": "from-example" },
+      "port": 4900,
+      "ready": { "url": "http://127.0.0.1:4900/api/ready", "timeoutSeconds": 30 },
+      "noRestartPaths": ["docs/", "test/", "**/*.md"],
+      "databases": [{ "name": "codes", "path": "/var/lib/openvibe-codes/codes.db" }],
+      "drill": {
+        "port": 14900,
+        "databases": { "codes": "CODES_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "EVENTS_URL": "", "OV_OAUTH_CLIENT_SECRET": "" },
+        "compare": ["/sitemap.xml"],
+        "counts": [{ "db": "codes", "table": "manifests" }, { "db": "codes", "table": "releases" }, { "db": "codes", "table": "trust" }],
+        "_notes": "Left on (read-only): JWKS and registry GETs to Network on loopback. The docs pages carry their boot time, so they are not compared."
+      }
     }
   }
 }

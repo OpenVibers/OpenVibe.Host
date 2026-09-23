@@ -27,7 +27,7 @@
     "host.domain.verified"
   ],
   "stages": {
-    "A": "alpha: ovhost CLI installed on the production host 2026-09-23 (/usr/local/bin/ovhost, inventory /etc/openvibe/host.json); used read-only (status, validate) so far \u2014 no service deploy has moved to it",
+    "A": "alpha: ovhost CLI installed on the production host 2026-09-23 (/usr/local/bin/ovhost, inventory /etc/openvibe/host.json); used read-only (status, validate) so far — no service deploy has moved to it; restore drills (`ovhost drill`, Wave 22) written and tested against the fake host, not yet run on the host",
     "B": "alpha: tenant static hosting service written and tested (tenant isolation, traversal/symlink refusal, quotas, atomic rollback, TXT-verified custom domains, no secrets in responses); not deployed",
     "C": "not started (deliberately: blocked until isolation and metering are proven)"
   },
