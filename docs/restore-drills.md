@@ -139,6 +139,50 @@ Supported with declared overrides (the table above records which have passed on 
   stay out of every ovhost command: they are `workerUnits`, which are listed and never restarted.
   Run it after the OpenRe release with `OPENRE_DRILL` is deployed (OpenRe `docs/cutover.md`
   phase C).
+- live (not run yet). Needs OpenVibe.Live `8a58aea` or later; `drill.requires` refuses an older
+  checkout. The production unit's ExecStart starts with `LIVE_DRILL=1`, `DB_PATH` on the copy and
+  `DATA_DIR={tmp}/data`. In that mode (Live `server/drill.js`, `docs/deploy.md#restore-drills`) Live
+  refuses to start unless `DB_PATH` and `DATA_DIR` are outside the checkout and `/opt/openvibe.live`,
+  `HOST` is loopback, `PORT` is not 3000 and no socket was handed over by systemd. It writes only
+  under `DATA_DIR` (a fresh `analytics.db`, empty data directories; the per-location `*_PATH` values
+  in `live.env` are ignored) and the copy. It starts only its HTTP server:
+  - no RTMP, SRT, WHIP, SFU or JSMPEG listener, and no TURN credential;
+  - no WebSocket: upgrades get 403;
+  - no jobs loop, restream or relay resume, AI job, Media reconciler, Events outbox, chat bridge,
+    identity sync, deploy notice, star job or registry refresh.
+
+  Every method but GET, HEAD and OPTIONS answers 403. Outbound connections, `fetch`, programs other
+  than `git`, UDP sockets and other listeners are refused in-process, so Media, Community and
+  Network look down to it. `rs-companion.db` is not restored: the server never opens it. Compared:
+  - `/api/themes` and `/api/emotes/global`, byte for byte;
+  - `/api/streams` and `/api/streams/channel/japaneseoldguy/live`, without the values production
+    changes while someone is live (viewer counts, heartbeats, live thumbnails, recording state);
+  - `/api/streams/recently-online?limit=20`, without `vod_thumbnail`, the one value it asks Media for.
+
+  Counts: `users`, `channels`, `managed_streams`, `streams`, `follows`, `chat_messages`. Not
+  compared: `/release.json`, which production computes at its own boot, so a `public/`-only deploy
+  without a restart makes it differ; and the home statistics, which are cached for 30 s and windowed
+  by the clock. Any existing channel can replace `japaneseoldguy`.
+- media (not run yet). Needs OpenVibe.Media `6e74eb0` or later (`drill.requires`). `MEDIA_DRILL=1`
+  with `DB_PATH` on the copy. Media then refuses to start unless `DB_PATH` is outside the checkout
+  and `/opt/openvibe.media`, `HOST` is loopback and `PORT` is not 4100. It starts only its HTTP
+  server:
+  - no app seeding or JWKS refresh;
+  - no tiering sweep, health job, junk sweep, clip re-cuts, copy verification, jobs worker, invariant
+    scans, disk guardian, thumbnail cleanup, object purge, backfill or orphan-recording finalize;
+  - no Events relay and no webhook (the `apps` table's URLs are production's).
+
+  It writes no file and creates no directory. It never opens a file path from the database: every
+  byte route (`/v` and `/c` bytes, `/t`, `/a`, `/f`, `/o`, paste screenshots, live frames) answers
+  503, while watch pages and `/browse` render from the copy. Every method but GET, HEAD and OPTIONS
+  answers 403 and `/auth/*` 503. Connections, `fetch`, programs other than `git` (no ffmpeg or
+  ffprobe), UDP and other listeners are refused in-process. `/api/ready` drops the storage and
+  remote-tier checks and reports `"mode": "drill"`. The storage paths from `media.env` are moved
+  under `{tmp}/storage`, which is never created, as a second switch. `THUMBNAILS_PATH` stays
+  production's, read-only in the sandbox, because `/browse` counts that directory in its tab bar;
+  the drill lists it and serves none of it. Compared byte for byte: `/browse?tab=videos` and
+  `/browse?tab=clips`. Counts: `media_objects`, `vods`, `clips`, `apps`. Production caches the tab
+  counts for 60 s, so take the backup right before the drill.
 
 Services that are not deployed yet (everything except network, live, media, tools, community and
 games as of 22 Sep) have entries built from their repositories' `deploy/` directories.
@@ -217,9 +261,13 @@ side-effect-free.
 
 Marked `drill: { supported: false }`, with the reason in the inventory:
 
-- **live:** `data/analytics.db` is opened relative to the checkout at boot. It is read-only in the
-  sandbox, and without the sandbox it would be production's file. RTMP always binds. Restreams, relays,
-  AI jobs and Media reconcilers resume from rows in the copy.
-- **media:** webhooks to Live take their URL from the `apps` table and have no env switch. The health
-  job, junk sweep and clip jobs run ffmpeg against production files through absolute paths stored in
-  the database.
+- **ai:** a drill must start AI with every provider key blanked, or queued and new runs would call
+  paid providers. Backups work.
+
+Until 23 Sep 2026 live and media were unsupported too:
+- **live:** `data/analytics.db` was opened relative to the checkout at boot. RTMP always bound.
+  Restreams, relays, AI jobs and Media reconcilers resumed from rows in the copy.
+- **media:** webhooks to Live took their URL from the `apps` table. The health job, junk sweep and
+  clip jobs ran ffmpeg against production files through absolute paths stored in the database.
+
+`LIVE_DRILL` and `MEDIA_DRILL` (above) replace those reasons.

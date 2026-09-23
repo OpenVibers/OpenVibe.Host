@@ -77,8 +77,30 @@
       "backupOnChange": ["server/db/migrations.js", "server/db/schema.sql"],
       "nginx": { "vhost": "openvibe.live.conf", "repoVhost": "deploy/nginx/openvibe.live.conf", "variant": "websocket", "wsPaths": ["/ws/"], "maxBody": "3m" },
       "drill": {
-        "supported": false,
-        "reason": "server/index.js opens data/analytics.db relative to the checkout (not movable by env) at module load: in the sandbox the checkout is read-only and boot fails, and without the sandbox the drill would write production's analytics database. It also always binds RTMP (RTMP_PORT and RTMP_PORT+8000), resumes restreams/RobotStreamer relays and AI jobs for rows in the copy, and runs Media reconcilers; several have no env switch. Needs a BindPaths over data/ plus DB-level switches before it can be drilled."
+        "_notes": "Needs OpenVibe.Live 8a58aea or later (LIVE_DRILL, server/drill.js; requires checks the deployed checkout). LIVE_DRILL=1 refuses to start unless DB_PATH and DATA_DIR are outside the checkout and /opt/openvibe.live, HOST is loopback and PORT is not 3000, and never takes over the systemd socket. It then serves HTTP only: no RTMP/SRT/WHIP/SFU/JSMPEG listener, no WebSocket (upgrades get 403), no TURN credential, no jobs loop, restream or relay resume, AI job, Media reconciler, Events outbox, chat bridge, identity sync, deploy notice, star job or registry refresh. Every method but GET/HEAD/OPTIONS answers 403; net, fetch, child_process (git only), dgram and listen are guarded, so every other service looks down to it. All its files go to DATA_DIR ({tmp}/data: a fresh analytics.db and empty data directories; the per-location *_PATH values in live.env are ignored in a drill). rs-companion.db is not restored: the server never opens it. Compared: DB-only public reads; ignore lists drop what production changes in memory or every few seconds while someone is live (viewer counts, heartbeats, live thumbnails, recording state) and the one Media lookup (recently-online vod_thumbnail). /api/streams/channel/japaneseoldguy/live is the star channel: any channel that exists works. /release.json is not compared: production computes it at its own boot, so a public/-only deploy without a restart would make it differ. EVENTS_URL, the client secret and MEDIA_URL are blanked as a second switch. Not run on the host yet.",
+        "port": 13000,
+        "databases": { "live": "DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "LIVE_DRILL": "1", "DATA_DIR": "{tmp}/data", "EVENTS_URL": "", "OV_OAUTH_CLIENT_SECRET": "", "MEDIA_URL": "http://127.0.0.1:9" },
+        "dirs": ["{tmp}/data"],
+        "requires": [
+          { "file": "server/drill.js", "contains": "LIVE_DRILL" },
+          { "file": "server/paths.js", "contains": "DATA_DIR" }
+        ],
+        "compare": [
+          "/api/themes",
+          "/api/emotes/global",
+          { "path": "/api/streams", "ignore": ["viewer_count", "peak_viewers", "external_viewer_count", "total_viewer_count", "last_heartbeat", "thumbnail_url"] },
+          { "path": "/api/streams/recently-online?limit=20", "ignore": ["vod_thumbnail"] },
+          { "path": "/api/streams/channel/japaneseoldguy/live", "ignore": ["viewer_count", "peak_viewers", "last_heartbeat", "thumbnail_url", "server_clip", "endpoint"] }
+        ],
+        "counts": [
+          { "db": "live", "table": "users" },
+          { "db": "live", "table": "channels" },
+          { "db": "live", "table": "managed_streams" },
+          { "db": "live", "table": "streams" },
+          { "db": "live", "table": "follows" },
+          { "db": "live", "table": "chat_messages" }
+        ]
       }
     },
     "media": {
@@ -100,8 +122,36 @@
       "databases": [{ "name": "media", "path": "/opt/openvibe.media/data/media.db" }],
       "nginx": { "vhost": "openvibe.media.conf", "repoVhost": "deploy/nginx/openvibe.media.conf", "variant": "http" },
       "drill": {
-        "supported": false,
-        "reason": "Webhooks to Live (orphan-recording finalize at boot, clip re-cuts, storage alerts) read their URL from the apps table and have no env switch; the health job, junk sweep and clip jobs run ffmpeg against production files through absolute paths stored in the database; the tiering sweep and health job start on a timer with no switch. A side-effect-free instance needs the copy edited (webhook_url NULL, storage_tier off) first, which ovhost does not do."
+        "_notes": "Needs OpenVibe.Media 6e74eb0 or later (MEDIA_DRILL, server/drill.js; requires checks the deployed checkout). MEDIA_DRILL=1 refuses to start unless DB_PATH is outside the checkout and /opt/openvibe.media, HOST is loopback and PORT is not 4100. It then serves HTTP only: no app seeding or JWKS refresh, no tiering sweep, health job, junk sweep, clip re-cuts, copy verification, jobs worker, invariant scans, disk guardian, thumbnail cleanup, object purge, backfill, orphan-recording finalize or Events relay, and no webhook (the apps table's URLs are production's). It writes no file and creates no directory, and never opens a file path from the database: every byte route (/v and /c bytes, /t, /a, /f, /o, paste screenshots, live frames) answers 503; watch pages and /browse render from the copy. Every method but GET/HEAD/OPTIONS answers 403, /auth/* 503; net, fetch, child_process (git only: no ffmpeg or ffprobe), dgram and listen are guarded. /api/ready drops the storage and remote-tier checks (mode: drill). The storage paths from media.env move under {tmp}/storage (never created) as a second switch; THUMBNAILS_PATH stays production's, read-only in the sandbox, because /browse counts the thumbnail directory in its tab bar (the drill lists it and serves none of it). /browse caches its tab counts for 60 s in production: take the backup right before the drill. EVENTS_URL and the client secret are blanked too. Not run on the host yet.",
+        "port": 14100,
+        "databases": { "media": "DB_PATH" },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "MEDIA_DRILL": "1",
+          "VOD_PATH": "{tmp}/storage/vods",
+          "CLIPS_PATH": "{tmp}/storage/clips",
+          "PASTES_PATH": "{tmp}/storage/pastes",
+          "ASSETS_PATH": "{tmp}/storage/assets",
+          "FILES_PATH": "{tmp}/storage/files",
+          "OBJECTS_PATH": "{tmp}/storage/objects",
+          "EVENTS_URL": "",
+          "OV_OAUTH_CLIENT_SECRET": ""
+        },
+        "requires": [
+          { "file": "server/drill.js", "contains": "MEDIA_DRILL" },
+          { "file": "server/public/routes.js", "contains": "refuseBytes" }
+        ],
+        "compare": [
+          "/browse?tab=videos",
+          "/browse?tab=clips"
+        ],
+        "counts": [
+          { "db": "media", "table": "media_objects" },
+          { "db": "media", "table": "vods" },
+          { "db": "media", "table": "clips" },
+          { "db": "media", "table": "apps" }
+        ]
       }
     },
     "tools": {

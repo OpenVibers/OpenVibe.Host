@@ -350,8 +350,9 @@ The drill:
 
 Record the result in [restore-drills.md](restore-drills.md) and note "off-host" in the Backup column.
 
-For services without a drill (live, media, ai), download the copy and check it by
-hand:
+For a service without a drill (ai), or for live and media until the release with their drill
+switch is deployed (`LIVE_DRILL`, `MEDIA_DRILL`; `drill.requires` refuses an older checkout), download the
+copy and check it by hand:
 
 ```
 sudo ovhost restore-download live latest --out /var/lib/openvibe-restore/check-live
