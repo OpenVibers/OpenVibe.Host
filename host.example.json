@@ -200,7 +200,7 @@
       "units": ["openvibe-games.service"],
       "envFile": "/etc/openvibe/games.env",
       "port": 8000,
-      "ready": { "url": "http://127.0.0.1:8000/healthz", "timeoutSeconds": 60 },
+      "ready": { "url": "http://127.0.0.1:8000/api/ready", "timeoutSeconds": 60 },
       "databases": [{ "name": "world", "path": "/opt/openvibe.games/data/world.db" }],
       "drill": {
         "supported": false,
