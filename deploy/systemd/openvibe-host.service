@@ -1,0 +1,41 @@
+[Unit]
+Description=OpenVibe.Host Stage B: tenant static hosting (dashboard, API and *.openvibe.host sites)
+# Network (sign-in, JWKS, service tokens) and Events (the outbox relay) should be up first, but Host
+# degrades gracefully without them: tenant sites keep serving; sign-in, API calls and events wait
+# (see /api/ready).
+After=network.target
+Wants=openvibe-network.service
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/openvibe.host
+EnvironmentFile=/etc/openvibe/host.env
+Environment=NODE_ENV=production
+Environment=PORT=4910
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/env node /opt/openvibe.host/server/index.js
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# Host's database and content-addressed objects. NOT /var/lib/openvibe-host: that is ovhost's own
+# root-owned state directory (release logs, locks, snapshots).
+StateDirectory=openvibe-host-api
+StateDirectoryMode=0750
+Environment=HOST_DB_PATH=/var/lib/openvibe-host-api/host.db
+Environment=HOST_STORAGE_DIR=/var/lib/openvibe-host-api/objects
+
+[Install]
+WantedBy=multi-user.target

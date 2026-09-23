@@ -2,21 +2,40 @@
   "repository": "OpenVibers/OpenVibe.Host",
   "stage": "alpha",
   "code": true,
-  "wave": "W21 Stage A",
+  "wave": "W21 Stage A + Stage B",
   "plan": "OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026)",
-  "runtime": "node 22, CLI only (no server)",
-  "port": null,
-  "portReserved": 4910,
+  "runtime": "node 22; Stage A: CLI (ovhost); Stage B: express 4 + better-sqlite3 11 service",
+  "port": 4910,
   "domain": "openvibe.host",
-  "contracts": "openvibe-contracts v0.7.0",
-  "capabilities": [],
+  "tenantDomain": "*.openvibe.host",
+  "packages": [
+    "openvibe-contracts v0.19.0",
+    "openvibe-sdk v0.2.2",
+    "openvibe-shared v1.3.0"
+  ],
+  "capabilities": [
+    "host.site.manage",
+    "host.deploy.create",
+    "host.domain.manage"
+  ],
   "capabilitiesRegistered": false,
+  "serviceManifestRegistered": "stage A manifest only (v0.10.0); the Stage B proposal is in docs/service-manifest-proposal.json",
+  "events": [
+    "host.deploy.created",
+    "host.deploy.activated",
+    "host.deploy.failed",
+    "host.domain.verified"
+  ],
   "stages": {
-    "A": "alpha: ovhost CLI written and tested against a fake host; not installed on the production host",
-    "B": "not started",
-    "C": "not started"
+    "A": "alpha: ovhost CLI written and tested against a fake host; installedOnHost is left as the Stage A commit recorded it (the lead updates it)",
+    "B": "alpha: tenant static hosting service written and tested (tenant isolation, traversal/symlink refusal, quotas, atomic rollback, TXT-verified custom domains, no secrets in responses); not deployed",
+    "C": "not started (deliberately: blocked until isolation and metering are proven)"
   },
+  "artifactStorage": "local disk, content-addressed per project (not OpenVibe.Media yet)",
+  "customDomainCertificates": "operator-issued (certbot), not automated",
   "installedOnHost": false,
+  "deployed": false,
+  "placeholderInSites": true,
   "adoptedByServices": [],
   "updated": "2026-09-22"
 }
