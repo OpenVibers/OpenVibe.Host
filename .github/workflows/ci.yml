@@ -19,6 +19,4 @@ jobs:
       - name: contract check (openvibe-contracts)
         # The published host manifest (contracts v0.7.0) is still the charter placeholder with range
         # ^0.1.0, so this step fails until docs/service-manifest-proposal.json is released in
-        # OpenVibe.Contracts. Remove continue-on-error in the same change that bumps the dependency.
-        continue-on-error: true
         run: npx openvibe-contracts-check --service host --src lib

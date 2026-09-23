@@ -16,7 +16,7 @@
   "repository": "github:OpenVibers/OpenVibe.Host",
   "dependencies": {
     "better-sqlite3": "^11.10.0",
-    "openvibe-contracts": "https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.7.0"
+    "openvibe-contracts": "https://codeload.github.com/OpenVibers/OpenVibe.Contracts/tar.gz/refs/tags/v0.10.0"
   },
   "engines": {
     "node": ">=20.0.0"
