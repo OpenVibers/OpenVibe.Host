@@ -45,7 +45,13 @@ runTests([
         const call = host.sqliteCalls.find((c) => c.op === 'backup');
         assert.strictEqual(call.as, 'ubuntu');
         assert.strictEqual(call.db, '/opt/openvibe.media/data/media.db');
-        assert.strictEqual(host.files.get(res.dir).owner, 'ubuntu', 'backup dir owned by the service user');
+        assert.strictEqual(call.dest, '/var/backups/openvibe.staging/media-20260922-120000/media.db', 'the worker writes into its staging directory');
+        // Backups hold user data: root:root, directories 0700, files 0600.
+        for (const d of ['/var/backups/openvibe', '/var/backups/openvibe/media', res.dir]) {
+            assert.deepStrictEqual([host.files.get(d).owner, host.files.get(d).mode], ['root', 0o700], d);
+        }
+        assert.deepStrictEqual([host.files.get(res.files[0].dest).owner, host.files.get(res.files[0].dest).mode], ['root', 0o600]);
+        assert.strictEqual(host.files.has('/var/backups/openvibe.staging/media-20260922-120000'), false, 'staging directory removed');
         const log = host.read('/var/lib/openvibe-host/backups/media.jsonl');
         assert.strictEqual(JSON.parse(log.trim()).files[0].dest, res.files[0].dest);
         // A second backup in the same second never overwrites the first.

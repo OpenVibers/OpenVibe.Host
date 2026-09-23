@@ -155,9 +155,10 @@ runTests([
 
         const calls = host.calls.slice(callsBefore);
         // The copy is made as the service user; integrity and counts run as the service user.
-        const cp = calls.find((c) => c.cmd === 'cp');
-        assert.strictEqual(cp.as, 'ubuntu');
-        assert.deepStrictEqual(cp.args.slice(-2), [`${host.backupDir}/community.db`, `${tmp}/db/community.db`]);
+        // Backups are root-only: root copies, and the copy belongs to the service user, 0600.
+        const cp = calls.find((c) => c.cmd === 'install' && c.args.includes(`${tmp}/db/community.db`));
+        assert.strictEqual(cp.privileged, true);
+        assert.deepStrictEqual(cp.args, ['-o', 'ubuntu', '-m', '0600', '-T', '--', `${host.backupDir}/community.db`, `${tmp}/db/community.db`]);
         const integrity = host.sqliteCalls.find((c) => /integrity_check/.test(c.sql));
         assert.deepStrictEqual([integrity.db, integrity.as], [`${tmp}/db/community.db`, 'ubuntu']);
 
@@ -368,7 +369,7 @@ runTests([
         host = await drillScenario({ backup: false });
         r = await host.cli('drill', 'community');
         assert.strictEqual(r.code, 1);
-        assert.match(r.out, /no ovhost backup recorded for community/);
+        assert.match(r.out, /no good ovhost backup recorded for community/);
 
         host = await drillScenario({ backup: false });
         host.ensureDir('/srv/old-backup');

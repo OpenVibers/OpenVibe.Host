@@ -7,6 +7,7 @@
  */
 const crypto = require('crypto');
 const path = require('path');
+const { Readable, Writable } = require('stream');
 
 function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', start = Date.parse('2026-09-22T12:00:00Z') } = {}) {
     const files = new Map(); // path -> { type: 'file'|'dir'|'symlink', content, mode, owner, target }
@@ -31,6 +32,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         onKill: null, // (pid, signal) -> false to ignore the signal
         systemdRuns: [],
         nextPid: 40000,
+        streamPiece: 4096, // readStream() yields files in pieces of this size
     };
 
     // ── filesystem ──
@@ -225,7 +227,41 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             case 'systemctl': return systemctlCmd(args);
             case 'nginx': return { stdout: '', ...host.nginxTest() };
             case 'rm': rmTree(args[args.length - 1]); return { code: 0, stdout: '', stderr: '' };
-            case 'install': { const src = args[args.length - 2]; const dest = args[args.length - 1]; put(dest, host.read(src)); return { code: 0, stdout: '', stderr: '' }; }
+            case 'install': {
+                const src = args[args.length - 2];
+                const dest = args[args.length - 1];
+                const o = args.indexOf('-o');
+                const m = args.indexOf('-m');
+                const e = get(src);
+                if (!e || e.type !== 'file') return { code: 1, stdout: '', stderr: `install: cannot stat '${src}': No such file or directory` };
+                put(dest, e.content, { owner: o >= 0 ? args[o + 1] : 'root', mode: m >= 0 ? parseInt(args[m + 1], 8) : 0o755 });
+                return { code: 0, stdout: '', stderr: '' };
+            }
+            case 'chown': {
+                const e = files.get(path.resolve(args[args.length - 1]));
+                if (!e) return { code: 1, stdout: '', stderr: 'chown: no such file' };
+                e.owner = args.filter((a) => !a.startsWith('-'))[0].split(':')[0];
+                return { code: 0, stdout: '', stderr: '' };
+            }
+            case 'chmod': {
+                const e = files.get(path.resolve(args[args.length - 1]));
+                if (!e) return { code: 1, stdout: '', stderr: 'chmod: no such file' };
+                e.mode = parseInt(args.filter((a) => !a.startsWith('-'))[0], 8);
+                return { code: 0, stdout: '', stderr: '' };
+            }
+            case 'mv': {
+                const src = path.resolve(args[args.length - 2]);
+                const dest = path.resolve(args[args.length - 1]);
+                if (!files.has(src)) return { code: 1, stdout: '', stderr: `mv: cannot stat '${src}'` };
+                if (files.has(dest)) return { code: 1, stdout: '', stderr: `mv: '${dest}' exists` };
+                ensureDir(path.dirname(dest));
+                for (const k of [...files.keys()]) {
+                    if (k !== src && !k.startsWith(`${src}/`)) continue;
+                    files.set(dest + k.slice(src.length), files.get(k));
+                    files.delete(k);
+                }
+                return { code: 0, stdout: '', stderr: '' };
+            }
             case 'node': return { code: 0, stdout: '', stderr: '' };
             case 'systemd-run': return systemdRunCmd(args);
             case 'cp': {
@@ -241,6 +277,29 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         },
         async readFile(p) { host.reads.push(path.resolve(p)); const e = get(p); return e && e.type === 'file' ? (Buffer.isBuffer(e.content) ? e.content.toString('utf8') : String(e.content)) : null; },
         async writeFile(p, content, { mode = 0o644 } = {}) { put(p, content, { mode, owner: user }); },
+        readStream(p) {
+            const e = get(p);
+            if (!e || e.type !== 'file') {
+                const r = new Readable({ read() {} });
+                process.nextTick(() => r.destroy(Object.assign(new Error(`ENOENT: no such file or directory, open '${p}'`), { code: 'ENOENT' })));
+                return r;
+            }
+            host.reads.push(path.resolve(p));
+            const buf = Buffer.isBuffer(e.content) ? e.content : Buffer.from(String(e.content));
+            // Small pieces, so chunking and part boundaries are exercised.
+            const pieces = [];
+            for (let i = 0; i < buf.length; i += host.streamPiece) pieces.push(buf.subarray(i, i + host.streamPiece));
+            return Readable.from(pieces);
+        },
+        writeStream(p, { mode = 0o600 } = {}) {
+            if (files.has(path.resolve(p))) throw Object.assign(new Error(`EEXIST: file already exists, open '${p}'`), { code: 'EEXIST' });
+            const parts = [];
+            put(p, Buffer.alloc(0), { mode, owner: user });
+            return new Writable({
+                write(chunk, _enc, cb) { parts.push(Buffer.from(chunk)); cb(); },
+                final(cb) { put(p, Buffer.concat(parts), { mode, owner: user }); cb(); },
+            });
+        },
         async appendFile(p, text) { const prev = host.read(p) || ''; put(p, prev + text, { mode: 0o640, owner: user }); },
         async removeFile(p) { files.delete(path.resolve(p)); },
         async symlink(target, p) { ensureDir(path.dirname(p)); files.set(path.resolve(p), { type: 'symlink', target, owner: user, mode: 0o777 }); },
@@ -250,7 +309,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             const e = get(p);
             if (!e) return null;
             const size = e.type === 'file' ? Buffer.byteLength(Buffer.isBuffer(e.content) ? e.content : String(e.content)) : 4096;
-            return { mode: e.mode, uid: e.owner === 'root' ? 0 : 1000, gid: 0, owner: e.owner, isFile: e.type === 'file', isDir: e.type === 'dir', isSymlink: !!l && l.type === 'symlink', size };
+            return { mode: e.mode, uid: e.owner === 'root' ? 0 : 1000, gid: 0, owner: e.owner, isFile: e.type === 'file', isDir: e.type === 'dir', isSymlink: !!l && l.type === 'symlink', size, nlink: e.nlink || 1 };
         },
         async readdir(p) {
             const abs = path.resolve(p);
@@ -283,7 +342,10 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             host.sqliteCalls.push({ op: 'backup', db, dest, as });
             calls.push({ cmd: 'sqlite-backup', args: [db, dest], as: as || null, privileged: false, cwd: null });
             if (files.has(path.resolve(dest))) throw new Error(`refusing to overwrite ${dest}`);
-            put(dest, `backup of ${db}`, { owner: as || user, mode: 0o640 });
+            const parent = files.get(path.dirname(path.resolve(dest)));
+            if (as && parent && parent.owner !== as) throw new Error(`cannot open ${dest}: permission denied (directory owned by ${parent.owner}, worker runs as ${as})`);
+            if (host.onSqliteBackup) { const r = host.onSqliteBackup(db, dest, as); if (r instanceof Error) throw r; }
+            put(dest, host.backupContent ? host.backupContent(db) : `backup of ${db}`, { owner: as || user, mode: 0o600 });
         },
         async listeners(port) { return listeners.get(port) || []; },
         async kill(pid, signal = 'SIGTERM') {

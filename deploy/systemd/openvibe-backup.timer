@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily OpenVibe backups (03:30 UTC, up to 15 min later)
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/backups.md
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+RandomizedDelaySec=15min
+AccuracySec=1min
+# A run missed while the host was down happens at the next boot.
+Persistent=true
+Unit=openvibe-backup.service
+
+[Install]
+WantedBy=timers.target

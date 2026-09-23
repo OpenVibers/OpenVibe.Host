@@ -31,14 +31,14 @@ Stage A adds a few safety rules of its own:
 
 ## Owns
 
-- Stage A: the host inventory (services, units, env names, ports, probes, drain policy), environment validation, release install and rollback for git-checkout services, readiness and drain orchestration, the release log, certificate inventory, nginx vhost rendering and transactional install, config snapshots, SQLite backup hooks, restore drills.
+- Stage A: the host inventory (services, units, env names, ports, probes, drain policy), environment validation, release install and rollback for git-checkout services, readiness and drain orchestration, the release log, certificate inventory, nginx vhost rendering and transactional install, config snapshots, scheduled SQLite backups with retention and encrypted off-host copies, restore drills.
 - Stage B: tenant projects (keyed by project id), static sites, immutable content-addressed deploy artifacts, activation and rollback, default and custom domains (DNS TXT verification), per-project quotas, upload/validation logs, the tenant vhosts (`ovhost nginx tenants`).
 - Later (Stage C): sandbox profiles, budgets, secret references, outbound policy.
 
 ## Does not own
 
 - Product business logic. Host calls product hooks (`build`) and reads product endpoints (`/api/ready`, `/api/streams`). It never embeds product rules.
-- Secrets. `ovhost` reads env files only to learn variable **names** and whether each one is empty. It never stores, prints or snapshots a value.
+- Secrets. `ovhost` reads service env files only to learn variable **names** and whether each one is empty. It never stores, prints or snapshots a value. The one exception is its own `/etc/openvibe/backup.env` (root-only): it reads the `BACKUP_*` values there to reach the backup bucket, and never prints or stores them.
 - Platform-wide credentials for hosted code (never).
 - Certificate issuance/renewal (certbot does this today). Stage A only takes inventory; Stage B never handles a certificate or key through its API.
 - Projects as an identity concept: ADR-014 puts projects in OpenVibe.Network. Until Network has them, Host creates a `prj_` project for its owner and records `network_project_id` when one is given.
@@ -76,6 +76,15 @@ What the tests demonstrate (`npm test`, every system call made against `test/fak
 - `nginx -t` failures restore the previous vhost state. `certs` never reads a key file. Snapshots contain no secret values or remote-URL credentials.
 - A **restore drill** restores the latest backup into a service-user-owned temp directory and requires `integrity_check = ok`. It starts a sandboxed second instance through `systemd-run` with the production env file plus an override file. It compares the declared paths and row counts with production, then stops the instance by its own pid and removes the directory. Failed integrity, a readiness timeout, an instance that dies, mismatches and a failed `systemd-run` are all reported, logged and cleaned up. It refuses to run without root or on a port already in use. A filesystem diff of the fake host shows it writes nothing outside the drill directory, its lock and its log, and it never reads the env file or passes on a secret-looking unit `Environment=`.
 
+- **Backups:**
+  - `backup --all` backs up every service with databases. One failing service leaves the others backed up and exits 2.
+  - Retention keeps the newest good backup of each of the last 7 days and 4 ISO weeks. A service whose backups keep failing never loses its last good ones. Directories ovhost did not record are never touched.
+  - Every backup directory is root 0700 and every copy is root 0600, with no `-wal`/`-shm`. A copy that is a link is refused.
+  - Off-host copies round-trip through AES-256-GCM. Tampering, truncation, swapped objects, a forged manifest and another key are all refused.
+  - Uploads go to a mocked S3 client (PutObject, or multipart with abort on failure). Off-host pruning never runs after a failed upload and always keeps the newest 7 runs.
+  - `restore-download` never overwrites and refuses any directory near a database or checkout.
+  - No secret value appears in any output, summary, request or manifest.
+
 Not demonstrated yet: any of this on the production host. The Wave 21 exit criterion ("deploy, restart and roll back one service without interrupting unrelated runtimes or protected sessions") still needs a run on the host, with evidence.
 
 ## Using ovhost
@@ -93,6 +102,9 @@ ovhost nginx render <service> [--variant http|sse|websocket] [--manifest <file>]
 ovhost nginx tenants <service> [--wildcard-cert <name|dir>] [--install]    Stage B tenant vhosts
 ovhost snapshot <service> [--out <file>]
 ovhost backup <service>
+ovhost backup --all [--offsite] [--no-prune] [--keep-daily <n>] [--keep-weekly <n>]
+ovhost offsite push [--run <run>] | offsite list [<service>] | offsite check
+ovhost restore-download <service> <run|latest> [--out <dir>] [--from-host <name>]
 ovhost drill <service> [--backup <dir>] [--keep]     restore drill (root only)
 ```
 
@@ -110,6 +122,18 @@ Every command accepts `--json` and `--inventory <file>`. `drill` exits `0` passe
 8. Start the socket if it is down, restart the service units, poll readiness.
 9. If readiness fails, run the automatic rollback (restore, reinstall, restart, poll).
 10. Append the release record to `<stateDir>/releases/<service>.jsonl`.
+
+### Backups
+
+`sudo ovhost backup --all --offsite` runs daily from `deploy/systemd/openvibe-backup.timer` (03:30 UTC). It works like this:
+
+- It backs up every service that declares databases. A failing service never stops the others; exit `2` if anything failed.
+- It keeps the last 7 daily and 4 weekly good backups per service.
+- It writes a JSON summary to `<stateDir>/backup-runs/<run>.json`.
+- It encrypts every copy on the host (AES-256-GCM, Node crypto, with a key that stays on the host) and uploads it to S3-compatible storage (Backblaze B2). Off-host copies are kept for 30 days.
+- Backups are `root:root`: directories 0700, files 0600, no `-wal`/`-shm`.
+
+`ovhost restore-download` fetches, verifies and decrypts a run into a new root-only directory, and never touches a live database. See [docs/backups.md](docs/backups.md) for the install steps, the env names (`/etc/openvibe/backup.env`), the encryption format and the restore procedure.
 
 ### Restore drills (Wave 22)
 
@@ -148,9 +172,10 @@ Nothing here has been done yet. These are the steps:
    ```
    The tree must stay world-readable (default 0755/0644). The SQLite worker runs as `ubuntu` from this directory.
 2. **Inventory:** `sudo install -o root -g root -m 0640 host.example.json /etc/openvibe/host.json`, then correct it against the machine. Check the Community database path, the Tools unit list, and Events, which was not deployed as of 22 Sep.
-3. **State:** `/var/lib/openvibe-host` (root, 0750) holds the release logs, locks, snapshots and drill logs. `/var/lib/openvibe-drills` (root, 0711) holds one directory per running drill, owned by the service user and removed afterwards. `/var/backups/openvibe/<service>` is created per service, owned by the service user, so the backup worker can write there. Both directories are created on first use.
+3. **State:** `/var/lib/openvibe-host` (root, 0750) holds the release logs, locks, snapshots, drill logs and backup run summaries. `/var/lib/openvibe-drills` (root, 0711) holds one directory per running drill, owned by the service user and removed afterwards. `/var/backups/openvibe` and everything in it is root-only (directories 0700, files 0600). The backup worker writes as the service user into its own directory under `/var/backups/openvibe.staging` (root, 0711), and root takes each copy over from there. All of these are created on first use.
 4. **Run as root:** `sudo ovhost …`. `ovhost` drops to `ubuntu` for git/npm/SQLite (`runuser`) and needs root for `systemctl`, `nginx -t`, reading `/etc/openvibe/*.env` (names only) and writing vhosts. For least privilege, give operator accounts a sudoers rule for `/usr/local/bin/ovhost` alone instead of a general `ALL`. Do **not** grant it to the `ubuntu` service user if that account has no sudo today.
 5. **First run:** `sudo ovhost status`, then `sudo ovhost validate <each service>`, then `sudo ovhost plan live`, all read-only apart from `git fetch`. Adopt `deploy` one service at a time, starting with one that has no protected sessions.
+6. **Scheduled backups:** see [docs/backups.md](docs/backups.md#installing-on-the-host-operator) (bucket, key, `/etc/openvibe/backup.env`, `openvibe-backup.timer`).
 
 ## Stage B: tenant static hosting
 

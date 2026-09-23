@@ -42,6 +42,20 @@ instance could also still reach production Network over loopback (JWKS, service 
 resolve-batch). The inventory's `community` drill block now also empties `OV_OAUTH_CLIENT_SECRET` and
 points `OV_LIVE_INTERNAL_URL` and `OV_MEDIA_INTERNAL_URL` at a closed port.
 
+## Drilling an off-host copy
+
+Scheduled backups and their encrypted off-host copies are described in [backups.md](backups.md).
+To drill a copy from the bucket, not the local disk, download it first. The directory
+`restore-download` writes has the layout `--backup` expects:
+
+```
+sudo ovhost restore-download community latest --out /var/lib/openvibe-restore/drill-community
+sudo ovhost drill community --backup /var/lib/openvibe-restore/drill-community
+sudo rm -rf /var/lib/openvibe-restore/drill-community
+```
+
+Write "off-host" and the run id in the Backup column of the table above.
+
 ## Running a drill with `ovhost drill`
 
 ```
@@ -57,7 +71,9 @@ block (see `host.example.json`):
 1. **Restore.** The command picks the latest `ovhost backup` from `<stateDir>/backups/<service>.jsonl`,
    or the `--backup` directory. It copies every database named in `drill.databases` into
    `/var/lib/openvibe-drills/<service>-<stamp>/db/`, a directory owned by the service user (mode 0700).
-   The copy is made as the service user. `PRAGMA integrity_check` must return `ok` for each copy;
+   Backups are root-only (directories 0700, files 0600, see [backups.md](backups.md)), so root makes
+   the copy with `install -o <service user> -m 0600`, and the copy belongs to the service user.
+   `PRAGMA integrity_check`, run as the service user, must return `ok` for each copy;
    otherwise the drill fails before anything starts.
 2. **Start.** A second instance starts from the production checkout through `systemd-run`, as the
    service user. It uses the production unit's `ExecStart` and `WorkingDirectory`, the production

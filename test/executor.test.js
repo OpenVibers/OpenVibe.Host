@@ -45,6 +45,24 @@ runTests([
         db.close();
     }),
 
+    test('sqlite backup of a WAL database: one 0600 file in rollback-journal mode, no -wal/-shm left', async () => {
+        const src = path.join(dir, 'wal-src.db');
+        const db = new Database(src);
+        db.pragma('journal_mode = WAL');
+        db.exec('CREATE TABLE t (x); INSERT INTO t VALUES (1), (2), (3);');
+        const out = fs.mkdtempSync(path.join(dir, 'bk-'));
+        const dest = path.join(out, 'wal.db');
+        await exec.sqliteBackup(src, dest);
+        db.close();
+        assert.deepStrictEqual(fs.readdirSync(out), ['wal.db']);
+        assert.strictEqual(fs.statSync(dest).mode & 0o777, 0o600);
+        const copy = new Database(dest, { readonly: true });
+        assert.strictEqual(copy.pragma('journal_mode', { simple: true }), 'delete');
+        assert.strictEqual(copy.prepare('SELECT count(*) AS n FROM t').get().n, 3);
+        copy.close();
+        assert.deepStrictEqual(fs.readdirSync(out), ['wal.db'], 'reading the copy leaves no side files');
+    }),
+
     test('drill primitives: integrity_check through the worker, kill() signals exactly one pid', async () => {
         const dbPath = path.join(dir, 'restored.db');
         const db = new Database(dbPath);

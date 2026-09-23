@@ -1,0 +1,24 @@
+[Unit]
+Description=OpenVibe backups: every service's SQLite databases, then an encrypted off-host copy
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/backups.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root: ovhost drops to each service user for the SQLite backup (runuser) and is the only reader of
+# /etc/openvibe/backup.env, the encryption key and the root-only backups. The env file is read by
+# ovhost itself, not loaded into this unit's environment.
+User=root
+ExecStart=/usr/local/bin/ovhost backup --all --offsite
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+# media.db and live.db are the large ones; the SQLite worker's own limit is 6 h per database.
+TimeoutStartSec=6h
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full

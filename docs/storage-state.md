@@ -59,7 +59,9 @@ Sources:
    - Games `/healthz` (the inventory now uses `/api/ready`, 2026-09-23; Network, Media and Tools too).
 
    The inventory should point at `/api/ready` where one exists. Games has none.
-4. **Two services have no ovhost inventory entry, so no `ovhost backup` and no drill**: AI (`ai.db`) and
+4. *(Fixed: the inventory has had AI and OpenRe entries since `f0dbd0c`, and both are in the scheduled
+   `ovhost backup --all` with off-host copies, [backups.md](backups.md). Their drills are still unsupported.)*
+   **Two services have no ovhost inventory entry, so no `ovhost backup` and no drill**: AI (`ai.db`) and
    OpenRe.Stream (`openre.db`). Whether they are backed up any other way is unknown. Check the host's cron
    and timers.
 5. **The inventory's Tools backup list is incomplete.** It names the seven `analytics.db` files only.

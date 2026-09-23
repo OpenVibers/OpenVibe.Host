@@ -271,7 +271,9 @@ runTests([
         const b = host.sqliteCalls.find((c) => c.op === 'backup');
         assert.ok(b, 'backup taken');
         assert.strictEqual(b.as, 'ubuntu');
-        assert.match(b.dest, /^\/var\/backups\/openvibe\/live\/\d{8}-\d{6}\/live\.db$/);
+        assert.match(b.dest, /^\/var\/backups\/openvibe\.staging\/live-\d{8}-\d{6}\/live\.db$/, 'the worker writes to its staging directory');
+        const dir = [...host.files.keys()].find((k) => /^\/var\/backups\/openvibe\/live\/\d{8}-\d{6}\/live\.db$/.test(k));
+        assert.ok(dir, 'the copy ends up under /var/backups/openvibe/live/<stamp>/');
         const backupIdx = host.calls.findIndex((c) => c.cmd === 'sqlite-backup');
         const restartIdx = host.calls.findIndex((c) => c.cmd === 'systemctl' && c.args[0] === 'restart');
         assert.ok(backupIdx < restartIdx, 'backup before restart');
