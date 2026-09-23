@@ -551,17 +551,26 @@
       "drill": { "supported": false, "reason": "Not written yet: a drill must start AI with every provider key blanked, or queued and new runs would call paid providers. Backups work." }
     },
     "openre": {
-      "_note": "Release layout: the service runs from /opt/openre.stream/current and deploys with its own deploy/deploy.sh (release | api | workers). The templated ingest and restream workers belong to the session coordinator; ovhost never restarts them.",
+      "_note": "Release layout: the service runs from /opt/openre.stream/current and deploys with its own deploy/scripts/deploy.sh (release | api | workers). units are the API and the session coordinator. workerUnits are the transport workers: one instance per release (openre-rtmp-ingest@<release>), started by deploy.sh workers, drained by the coordinator when a newer generation is ready, and exiting on their own. ovhost lists them in status/validate and never starts, stops or restarts them (the inventory refuses a worker unit in units).",
       "repo": "/opt/openre.stream",
       "layout": "release",
       "units": ["openre-api.service", "openre-session-coordinator.service"],
+      "workerUnits": ["openre-rtmp-ingest@.service", "openre-restream-worker@.service"],
       "envFile": "/etc/openvibe/openre.env",
       "env": { "required": "from-example" },
       "port": 4500,
       "ready": { "url": "http://127.0.0.1:4500/api/ready", "timeoutSeconds": 30 },
       "noRestartPaths": ["docs/", "test/", "**/*.md"],
       "databases": [{ "name": "openre", "path": "/var/lib/openre/openre.db" }],
-      "drill": { "supported": false, "reason": "The session coordinator reconciles slots and starts workers at boot; a drill needs a switch that keeps it away from live ingest slots." }
+      "drill": {
+        "port": 14500,
+        "command": ["/usr/bin/node", "server/index.js"],
+        "databases": { "openre": "OPENRE_DB_PATH" },
+        "env": { "PORT": "{port}", "HOST": "127.0.0.1", "OPENRE_DRILL": "1", "EVENTS_URL": "", "OV_OAUTH_CLIENT_SECRET": "", "MEDIA_URL": "http://127.0.0.1:9", "MEDIA_API_KEY": "", "OPENRE_RECORDING": "off" },
+        "compare": ["/api/health", "/robots.txt"],
+        "counts": [{ "db": "openre", "table": "stream_definitions" }, { "db": "openre", "table": "ingest_keys" }, { "db": "openre", "table": "destinations" }, { "db": "openre", "table": "migration_map" }],
+        "_notes": "Only openre-api starts (command; the working directory and the non-secret Environment= come from openre-api.service). It never runs a transport, a coordinator or the event relay in any mode. OPENRE_DRILL=1 (OpenRe 5e86ea7 and later) also makes it read-only: writes, /play/ (which would pull from production's worker on loopback) and sign-in (which would redeem codes at Network) answer 503. The coordinator and the workers refuse to start. The event relay and Media calls are off. EVENTS_URL and OV_OAUTH_CLIENT_SECRET empty and MEDIA_URL on the closed port are the same switches for releases before 5e86ea7. Left on (read-only): the Network JWKS GET on loopback. Not compared: ingest_sessions and workers (they change whenever someone streams or a generation rolls over) and /api/ready (it reports live worker heartbeats)."
+      }
     }
   }
 }

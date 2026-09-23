@@ -29,7 +29,7 @@ State markers:
 | C | AI → OpenVibe.AI (Wave 13) | **DONE** 2026-09-23 ~15:40 UTC (`AI_SERVICE=remote`) | AI [`docs/migration.md`](https://github.com/OpenVibers/OpenVibe.AI/blob/main/docs/migration.md) | Unset `AI_SERVICE`, restart Live |
 | D | Events delivery signature v2 | **IN PROGRESS**: Events sends v2; consumer deploys unknown; v1 still sent | Events [`docs/replay-window-rollout.md`](https://github.com/OpenVibers/OpenVibe.Events/blob/main/docs/replay-window-rollout.md) | The consumer redeploys its previous release; replay the DLQ |
 | E | Money → OpenVibe.Billing | **BLOCKED (owner)**: PowerChat dashboard. Billing runs in shadow. | Billing [`docs/live-cutover.md`](https://github.com/OpenVibers/OpenVibe.Billing/blob/main/docs/live-cutover.md) | Depends on the step reached. After step 9 there is **no tool** |
-| F | RTMP ingest → OpenRe.Stream | **BLOCKED (owner)**: DNS `ingest.openre.stream` and port 1936. OpenRe is deployed. | OpenRe [`README.md` "Cutover runbook"](https://github.com/OpenVibers/OpenRe.Stream/blob/main/README.md#cutover-runbook) | Per slot `{"authority":"live"}`. All slots: unset `OPENRE_URL` |
+| F | RTMP ingest → OpenRe.Stream | **BLOCKED (owner)**: port 1936 at the provider edge. DNS `ingest.openre.stream` is done and OpenRe is deployed. | OpenRe [`docs/cutover.md`](https://github.com/OpenVibers/OpenRe.Stream/blob/main/docs/cutover.md) (steps, checks and rollback; `scripts/cutover-preflight.js`) | Per slot `{"authority":"live"}` + `set-definition-state.js --state disabled`. All slots: unset `OPENRE_URL` |
 | G | Retire the shims | **NOT STARTED**. Dated in [compatibility-register.md](compatibility-register.md) | Network [`docs/retirement.md`](https://github.com/OpenVibers/OpenVibe.Network/blob/main/docs/retirement.md) | per entry |
 
 The remaining order is D → E → F → G.
@@ -320,7 +320,7 @@ Live carries the integration (`f0ca18b`). It is inert until `OPENRE_URL` is set.
 defaults to `live` on every slot (`server/openre/schema.js:5-7`), and only RTMP moves
 (`server/openre/authority.js:18`). WHIP, JSMPEG and SFU are **not ported** (OpenRe `README.md:207-209`).
 
-**Once, before the first slot** (OpenRe `README.md:188-194`):
+**Once, before the first slot.** OpenRe's [`docs/cutover.md`](https://github.com/OpenVibers/OpenRe.Stream/blob/main/docs/cutover.md) supersedes the table below: it has the exact commands, the owner and agent steps (A1–A7), and a read-only preflight whose output on 2026-09-23 settles the "Unknown" rows (no subscription, no `OPENRE_*` in `live.env`).
 
 | Step | State |
 |---|---|

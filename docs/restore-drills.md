@@ -130,6 +130,14 @@ Supported with declared overrides (not yet run on the host with `ovhost drill`):
 - coupons
 - trade
 - codes
+- openre (not run yet). Only openre-api starts (`drill.command`), with `OPENRE_DRILL=1`. From OpenRe
+  `5e86ea7` on, that makes it read-only: writes, `/play/` and sign-in answer 503. The coordinator
+  and every transport worker refuse to start in a drill, and the event relay and Media calls are
+  off. The API never runs a transport or the relay in any case. Empty `EVENTS_URL` and
+  `OV_OAUTH_CLIENT_SECRET`, plus `MEDIA_URL` on the closed port, cover older releases. The workers
+  stay out of every ovhost command: they are `workerUnits`, which are listed and never restarted.
+  Run it after the OpenRe release with `OPENRE_DRILL` is deployed (OpenRe `docs/cutover.md`
+  phase C).
 
 Services that are not deployed yet (everything except network, live, media, tools, community and
 games as of 22 Sep) have entries built from their repositories' `deploy/` directories.

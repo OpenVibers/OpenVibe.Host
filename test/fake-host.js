@@ -188,6 +188,13 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         case 'stop': if (u) { u.active = 'inactive'; u.sub = 'dead'; } return { code: 0, stdout: '', stderr: '' };
         case 'reload': case 'daemon-reload': return { code: 0, stdout: '', stderr: '' };
         case 'is-active': return { code: u && u.active === 'active' ? 0 : 3, stdout: '', stderr: '' };
+        case 'list-units': {
+            // systemctl list-units --all --plain --no-legend --no-pager <glob>
+            const glob = args[args.length - 1];
+            const re = new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+            const rows = [...units.entries()].filter(([name]) => re.test(name)).map(([name, x]) => `${name} ${x.load} ${x.active} ${x.sub} ${name}`);
+            return { code: 0, stdout: rows.length ? `${rows.join('\n')}\n` : '', stderr: '' };
+        }
         default: return { code: 1, stdout: '', stderr: `fake systemctl: ${action}` };
         }
     }
