@@ -2,7 +2,7 @@
 
 > The network's deployment/control plane first; then isolated hosting for community sites, bots and mods.
 
-**Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It has **not** been installed on the production host yet, and no service's deploy has moved to it. Stage B (tenant static hosting) is a service, written and tested, **not deployed**. Stage C (sandboxed user code) is **not started**.
+**Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It is installed on the production host (2026-09-23, `/usr/local/bin/ovhost`, inventory `/etc/openvibe/host.json`) and used read-only (`status`, `validate`); no service's deploy has moved to it yet. Stage B (tenant static hosting) is a service, written and tested, **not deployed**. Stage C (sandboxed user code) is **not started**.
 **Domain:** `openvibe.host` (dashboard and API) and `*.openvibe.host` (tenant sites). The domain keeps its placeholder page on [OpenVibe.Sites](https://github.com/OpenVibers/OpenVibe.Sites) until Stage B is deployed and launched (see [Launch rule](#launch-rule)).
 **Plan:** OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026), §15.3 and §15.17; roadmap Wave 21.
 **License:** AGPL-3.0 (same as every OpenVibe service).
@@ -56,7 +56,7 @@ Stage A adds a few safety rules of its own:
 
 | Stage | Scope | State |
 |---|---|---|
-| **A: operator plane** | `ovhost` CLI and library: inventory, validate, plan, deploy (`--wait-idle`/`--force`), automatic rollback, rollback, status, releases, certs, nginx render/install, snapshot, backup. No daemon and no server. Port **4910** is reserved for a later operator API. | **alpha**: written and tested (fake host, plus the real executor against temp SQLite/HTTP/git). Not installed on the host. |
+| **A: operator plane** | `ovhost` CLI and library: inventory, validate, plan, deploy (`--wait-idle`/`--force`), automatic rollback, rollback, status, releases, certs, nginx render/install, snapshot, backup. No daemon and no server. Port **4910** is reserved for a later operator API. | **alpha**: written and tested (fake host, plus the real executor against temp SQLite/HTTP/git). Installed on the host; used read-only so far. |
 | **B: tenant static hosting** | The Host API service (port 4910): projects, sites, immutable content-addressed deploys, activation and rollback, `<site>.openvibe.host` and TXT-verified custom domains, quotas, upload logs, events, a server-rendered dashboard; tenant vhosts via `ovhost nginx tenants`. | **alpha**: written and tested (`npm test`, against a temp database, a mock Network and a DNS table). Not deployed. |
 | **C: sandboxed user code** | Isolation profiles, CPU/memory/time/network/storage budgets, secret references, outbound policy, metering, kill/revoke without touching platform services. | **not started**, deliberately. Blocked until isolation and metering are proven. Nothing in Stage B runs tenant code. |
 

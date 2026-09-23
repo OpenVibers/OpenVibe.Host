@@ -27,13 +27,13 @@
     "host.domain.verified"
   ],
   "stages": {
-    "A": "alpha: ovhost CLI written and tested against a fake host; installedOnHost is left as the Stage A commit recorded it (the lead updates it)",
+    "A": "alpha: ovhost CLI installed on the production host 2026-09-23 (/usr/local/bin/ovhost, inventory /etc/openvibe/host.json); used read-only (status, validate) so far \u2014 no service deploy has moved to it",
     "B": "alpha: tenant static hosting service written and tested (tenant isolation, traversal/symlink refusal, quotas, atomic rollback, TXT-verified custom domains, no secrets in responses); not deployed",
     "C": "not started (deliberately: blocked until isolation and metering are proven)"
   },
   "artifactStorage": "local disk, content-addressed per project (not OpenVibe.Media yet)",
   "customDomainCertificates": "operator-issued (certbot), not automated",
-  "installedOnHost": false,
+  "installedOnHost": true,
   "deployed": false,
   "placeholderInSites": true,
   "adoptedByServices": [],

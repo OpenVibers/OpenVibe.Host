@@ -20,5 +20,4 @@ jobs:
       # proposals in docs/capabilities-proposal/ until the lead releases them in openvibe-contracts;
       # until then the check reports them as undefined. Make this step blocking again with that release.
       - name: contract check (openvibe-contracts)
-        continue-on-error: true
         run: npx openvibe-contracts-check --service host --src lib --src server
