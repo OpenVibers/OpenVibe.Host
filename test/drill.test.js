@@ -109,6 +109,83 @@ async function drillScenario({ drill: drillOverrides, backup = true } = {}) {
     return host;
 }
 
+/** A Tools-like service: a gateway and apps, each app its own unit and port, data directories. */
+function appsEntry(drill = {}) {
+    const d = {
+        port: 14016,
+        unit: 'openvibe-apps-docs.service',
+        productionPort: 4016,
+        databases: { 'docs-analytics': { env: 'DATA_DIR', dir: true }, 'docs-jobs': { env: 'DATA_DIR', dir: true }, 'yt-analytics': { dir: '{tmp}/yt-data' } },
+        env: { PORT: '{port}', HOST: '127.0.0.1', TOOLS_JOB_RESULTS: 'local', EVENTS_PUBLISH: 'off' },
+        bind: [{ from: '{tmp}/yt-data', to: '/opt/openvibe.apps/apps/yt/data' }],
+        requires: [{ file: 'apps/_shared/jobs/index.js', contains: 'TOOLS_JOB_RESULTS' }],
+        ready: '/api/ready',
+        compare: ['/release.json'],
+        counts: [{ db: 'docs-jobs', table: 'tool_jobs' }],
+        ...drill,
+    };
+    for (const [k, v] of Object.entries(d)) if (v === null) delete d[k];
+    return {
+        owner: 'ubuntu',
+        repo: '/opt/openvibe.apps',
+        units: ['openvibe-apps.service', 'openvibe-apps-docs.service', 'openvibe-apps-yt.service'],
+        envFile: '/etc/openvibe/apps.env',
+        port: 4001,
+        ready: { url: 'http://127.0.0.1:4001/api/ready', timeoutSeconds: 30 },
+        databases: [
+            { name: 'docs-analytics', path: '/opt/openvibe.apps/apps/docs/data/analytics.db' },
+            { name: 'docs-jobs', path: '/opt/openvibe.apps/apps/docs/data/jobs.db' },
+            { name: 'yt-analytics', path: '/opt/openvibe.apps/apps/yt/data/analytics.db' },
+        ],
+        drill: d,
+    };
+}
+
+async function appsScenario({ switchInCheckout = true, drill } = {}) {
+    const host = scenario();
+    const doc = JSON.parse(host.read('/etc/openvibe/host.json'));
+    doc.services.apps = appsEntry(drill);
+    host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
+    const repo = host.createRepo('/opt/openvibe.apps', { owner: 'ubuntu' });
+    const sha = repo.commit({
+        'package.json': '{"name":"apps"}',
+        'apps/_shared/jobs/index.js': switchInCheckout ? "const want = env.TOOLS_JOB_RESULTS || 'local';" : 'jobs();',
+    }, { message: 'initial' });
+    repo.publish(sha);
+    repo.checkout(sha);
+    const unit = (name, dir, port) => {
+        host.addUnit(name, { mainPid: 3000 + port });
+        host.alivePids.add(3000 + port);
+        host.listeners.set(port, [{ pid: 3000 + port, process: 'node' }]);
+        host.put(`/etc/systemd/system/${name}`, ['[Service]', 'User=ubuntu', `WorkingDirectory=/opt/openvibe.apps/apps/${dir}`, 'Environment=NODE_ENV=production', `Environment=PORT=${port}`, `ExecStart=/usr/bin/env node /opt/openvibe.apps/apps/${dir}/server/index.js`, ''].join('\n'));
+    };
+    unit('openvibe-apps.service', 'gateway', 4001);
+    unit('openvibe-apps-docs.service', 'docs', 4016);
+    unit('openvibe-apps-yt.service', 'yt', 4013);
+    host.put('/etc/openvibe/apps.env', `OV_OAUTH_CLIENT_SECRET=${SECRET}\n`, { mode: 0o600 });
+    for (const db of appsEntry().databases) host.put(db.path, `sqlite-${db.name}`, { owner: 'ubuntu', mode: 0o640 });
+    host.http.set('http://127.0.0.1:4001/release.json', () => ({ status: 200, body: '{"service":"gateway"}' }));
+    host.http.set('http://127.0.0.1:4016/release.json', () => ({ status: 200, body: '{"service":"docs"}' }));
+    host.sqliteHandler = (db, sql) => {
+        if (/integrity_check/.test(sql)) return [{ integrity_check: 'ok' }];
+        if (/count\(\*\)/.test(sql)) return [{ n: 3 }];
+        return [{ n: 0 }];
+    };
+    host.onSystemdRun = (spec) => {
+        const envFile = spec.envFiles[spec.envFiles.length - 1];
+        host.drillEnv = host.read(envFile);
+        host.listeners.set(14016, [{ pid: spec.pid, process: 'node' }]);
+        const alive = (fn) => () => (host.alivePids.has(spec.pid) ? fn() : { status: 0, error: 'ECONNREFUSED' });
+        host.http.set('http://127.0.0.1:14016/api/ready', alive(() => ({ status: 200, body: { status: 'ready' } })));
+        host.http.set('http://127.0.0.1:14016/release.json', alive(() => ({ status: 200, body: '{"service":"docs"}' })));
+        return undefined;
+    };
+    const b = await host.cli('backup', 'apps', '--json');
+    assert.strictEqual(b.code, 0, b.out);
+    host.advance(60 * 1000);
+    return host;
+}
+
 /** Every file entry as "type:owner:mode:content", to diff the fake filesystem. */
 function fsSnapshot(host) {
     const m = new Map();
@@ -382,6 +459,71 @@ runTests([
         assert.strictEqual(JSON.parse(r.out).backup, '/srv/old-backup');
         r = await host.cli('drill', 'community', '--backup', 'relative/dir');
         assert.strictEqual(r.code, 1);
+    }),
+
+    test('one app of a multi-unit service: drill.unit, data-directory databases, a bind mount, its own production port', async () => {
+        const host = await appsScenario();
+        const r = await host.cli('drill', 'apps');
+        assert.strictEqual(r.code, 0, r.out);
+        const rec = JSON.parse(host.read('/var/lib/openvibe-host/drills/apps.jsonl').trim().split('\n').pop());
+        assert.strictEqual(rec.result, 'passed', JSON.stringify(rec.failure));
+        const tmp = rec.dir;
+        // Data-directory databases keep their production file names under {tmp}/data.
+        assert.deepStrictEqual(rec.databases.map((d) => [d.name, d.copy]).sort(), [['docs-analytics', `${tmp}/data/analytics.db`], ['docs-jobs', `${tmp}/data/jobs.db`], ['yt-analytics', `${tmp}/yt-data/analytics.db`]].sort());
+        const run = host.systemdRuns[0];
+        // The docs unit's ExecStart and WorkingDirectory, not the gateway's.
+        assert.strictEqual(run.cwd, '/opt/openvibe.apps/apps/docs');
+        assert.deepStrictEqual(run.argv, ['/usr/bin/env', 'node', '/opt/openvibe.apps/apps/docs/server/index.js']);
+        assert.ok(run.props.includes('Environment=NODE_ENV=production'));
+        assert.ok(!run.props.some((p) => p.startsWith('Environment=PORT=')), 'the unit\'s PORT never reaches the drill');
+        assert.ok(run.props.includes(`BindPaths=${tmp}/yt-data:/opt/openvibe.apps/apps/yt/data`), run.props.join('\n'));
+        const env = host.drillEnv;
+        assert.match(env, new RegExp(`^DATA_DIR=${tmp}/data$`, 'm'));
+        assert.match(env, /^PORT=14016$/m);
+        assert.ok(!/analytics\.db/.test(env), 'a data-directory database is found by its file name, not an env var');
+        // Compared with the docs app's production port, not the gateway's.
+        assert.deepStrictEqual(rec.compare.map((c) => [c.path, c.match]), [['/release.json', true]]);
+        assert.ok(host.calls.some((c) => c.cmd === 'curl' && c.args[0] === 'http://127.0.0.1:4016/release.json'));
+        assert.ok(!host.calls.some((c) => c.cmd === 'curl' && c.args[0].startsWith('http://127.0.0.1:4001/')));
+        assert.ok(!host.restarts().length, 'nothing restarted');
+    }),
+
+    test('requires: a checkout without the drill switch is refused before anything is created', async () => {
+        const host = await appsScenario({ switchInCheckout: false });
+        const before = fsSnapshot(host);
+        const r = await host.cli('drill', 'apps');
+        assert.strictEqual(r.code, 1, r.out);
+        assert.match(r.out, /TOOLS_JOB_RESULTS in apps\/_shared\/jobs\/index\.js/);
+        assert.match(r.out, /Deploy a release with the drill switch first/);
+        assert.strictEqual(host.systemdRuns.length, 0);
+        assert.deepStrictEqual(changedPaths(before, fsSnapshot(host)), []);
+    }),
+
+    test('inventory: unit, productionPort, bind, requires and data-directory databases are validated', () => {
+        const entry = appsEntry();
+        const inv = (drill) => normalise({ services: { apps: { ...entry, drill: { ...entry.drill, ...drill } } } });
+        assert.strictEqual(inv({}).services.apps.drill.unit, 'openvibe-apps-docs.service');
+        assert.throws(() => inv({ unit: 'openvibe-live.service' }), /unit must be one of apps's units/);
+        assert.throws(() => inv({ productionPort: 14016 }), /productionPort must differ/);
+        assert.throws(() => inv({ bind: [{ from: '/tmp/x', to: '/opt/openvibe.apps/apps/yt/data' }] }), /bind\[0\]\.from/);
+        assert.throws(() => inv({ bind: [{ from: '{tmp}/x', to: '/etc/openvibe' }] }), /inside the checkout/);
+        assert.throws(() => inv({ bind: [{ from: '{tmp}/x', to: '/opt/openvibe.apps/../etc' }] }), /plain absolute path/);
+        assert.throws(() => inv({ requires: [{ file: '../etc/passwd', contains: 'x' }] }), /inside the checkout/);
+        assert.throws(() => inv({ requires: [{ file: 'a.js' }] }), /contains/);
+        assert.throws(() => inv({ databases: { 'docs-analytics': { env: 'DATA_DIR' } } }), /"dir": true/);
+        assert.throws(() => inv({ databases: { 'docs-analytics': { env: 'DATA_DIR', dir: true }, 'yt-analytics': { dir: true } } }), /would both be \{tmp\}\/data\/analytics\.db/);
+        assert.throws(() => inv({ databases: { 'docs-analytics': { env: 'DATA_DIR', dir: '/var/lib/x' } } }), /dir must be true or/);
+        assert.throws(() => inv({ databases: { 'docs-analytics': { env: 'DATA_DIR', dir: true }, 'docs-jobs': { env: 'DATA_DIR', dir: '{tmp}/other' } } }), /two different places/);
+        const multi = { ...entry, drill: { ...entry.drill } };
+        delete multi.drill.unit;
+        normalise({ services: { apps: multi } });   // valid inventory; the drill itself refuses (below)
+    }),
+
+    test('several units and neither drill.unit nor drill.command: refused', async () => {
+        const host = await appsScenario({ drill: { unit: null } });
+        const r = await host.cli('drill', 'apps');
+        assert.strictEqual(r.code, 1, r.out);
+        assert.match(r.out, /set drill\.unit/);
     }),
 
     test('inventory: drill blocks are validated', () => {

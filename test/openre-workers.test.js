@@ -92,7 +92,7 @@ runTests([
         assert.strictEqual(o.drill.env.OPENRE_DRILL, '1');
         for (const k of ['EVENTS_URL', 'OV_OAUTH_CLIENT_SECRET', 'MEDIA_API_KEY']) assert.strictEqual(o.drill.env[k], '', k);
         assert.strictEqual(o.drill.env.MEDIA_URL, 'http://127.0.0.1:9');
-        assert.deepStrictEqual(o.drill.databases, { openre: 'OPENRE_DB_PATH' });
+        assert.deepStrictEqual(o.drill.databases, { openre: { env: 'OPENRE_DB_PATH', dir: false } });
         // every other service keeps an empty list
         assert.deepStrictEqual(inv.services.live.workerUnits, []);
     }),

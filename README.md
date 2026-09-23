@@ -150,7 +150,7 @@ Each inventory entry's `drill` block declares:
 - `counts`: `{ db, table }` pairs;
 - `supported: false` with a `reason` when a second instance cannot run without side effects.
 
-In `host.example.json`, 24 services have drill blocks, and 19 can be drilled. live, media, tools, games and ai are marked unsupported, and the reasons are in the file. `command` (an absolute argv) is required when a service has several units, as openre does: only `openre-api` runs in its drill.
+In `host.example.json`, 24 services have drill blocks, and 21 can be drilled. live, media and ai are marked unsupported, and the reasons are in the file. For a service with several units, `unit` (as tools does: only the docs app runs) or `command` (an absolute argv, as openre does: only `openre-api` runs) says which one process the drill starts. `productionPort` says which production port to compare against, `databases` entries can be data directories (`{ "env": "DATA_DIR", "dir": true }`), `bind` redirects paths a service opens relative to its checkout into the drill directory (`BindPaths=`, in the drill unit's own mount namespace), and `requires` refuses the drill unless the deployed checkout has each switch the overrides rely on. The Tools and Games drills rely only on switches those repositories already have. [docs/restore-drills.md](docs/restore-drills.md) lists what each repository could add to make its drill stricter.
 
 The sandbox blocks writes outside the drill directory and addresses beyond loopback. Loopback stays open, so the overrides are what keep a drill away from production services. Common overrides are `OV_OAUTH_CLIENT_SECRET=` (no service tokens) and `http://127.0.0.1:9` for URLs whose empty value would fall back to a production service.
 

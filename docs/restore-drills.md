@@ -143,6 +143,78 @@ Supported with declared overrides (not yet run on the host with `ovhost drill`):
 Services that are not deployed yet (everything except network, live, media, tools, community and
 games as of 22 Sep) have entries built from their repositories' `deploy/` directories.
 
+- tools (not run yet): the **docs** app alone. Tools runs eight units; `drill.unit` picks
+  `openvibe-tools-docs.service`, whose ExecStart, WorkingDirectory and Environment= the drill copies,
+  and `drill.productionPort` (4016) is what the comparison reads, not the gateway's 4001. docs takes a
+  data DIRECTORY (`DATA_DIR`), so both restored copies land in `{tmp}/data/` under their production
+  names (`analytics.db`, `jobs.db`). Existing Tools switches make it side-effect-free:
+  `TOOLS_JOB_RESULTS=local` (the job pruner would otherwise delete production Media objects for
+  expired jobs in the copy), `EVENTS_PUBLISH=off` and an empty `EVENTS_URL` (the copy's pending outbox
+  rows would be republished), `TOOLS_JOBS_CONCURRENCY=0` (no job runs), `UPLOADS_DIR`/`OUTPUT_DIR`
+  under `{tmp}`, an empty `OV_OAUTH_CLIENT_SECRET`. Job recovery and pruning, analytics aggregation
+  and upload retention still run, on the copy only. `drill.requires` refuses the drill unless the
+  deployed checkout has those switches. Compares `/release.json`; counts `tool_jobs`.
+- games (not run yet): Reviewed against OpenVibe.Games `7863fc6`. One HTTP listener; `/ws` and
+  `/editor-ws` are upgrades on it. tsx runs `src/main.ts` directly, with no build. The unit sets
+  `DB_PATH` with `Environment=`, and that value never reaches the drill because the drill sets
+  `DB_PATH` itself. `EVENTS_PUBLISH=off` stops the outbox relay, `MEDIA_MIRROR=off` stops the
+  map-asset mirror, and an empty `OV_OAUTH_CLIENT_SECRET` stops every service call. The 30 Hz tick
+  loop keeps running because readiness needs recent ticks, and it flushes the world into the copy
+  only. `map.json` stays production's file, which is read-only in the sandbox. `drill.requires`
+  checks that `apps/server/src/config.ts` has both switches. The drill compares `/map.json` and
+  `/api/v1/mods` and counts `players` and `mods`, which the simulation does not write. There is no
+  Games backup yet, so run `sudo ovhost backup games` first.
+
+### What the drill block can declare for multi-process and checkout-relative services
+
+- `unit`: which of the service's units to start (its ExecStart, WorkingDirectory and non-secret
+  Environment=). It is required when there are several units and no `command`.
+- `productionPort`: the production port the compare paths are read from. The default is the service's
+  port.
+- `databases.<name>: { "env": "DATA_DIR", "dir": true }`, or `"dir": "{tmp}/<name>"`: the copy keeps
+  its production file name inside that directory, and the env var, if one is given, points at the
+  directory.
+- `bind: [{ "from": "{tmp}/…", "to": "<path inside the checkout>" }]`: `BindPaths=` in the drill
+  unit's own mount namespace. Use it for files a service opens relative to its checkout with no env
+  override: the restored copy appears at the production path for the drill instance only. Tools yt,
+  maps and food open `apps/<app>/data/analytics.db` this way. Drill one of them with
+  `unit: openvibe-tools-<app>.service`, a `databases` entry with `"dir": "{tmp}/app-data"`, and
+  `bind: [{ "from": "{tmp}/app-data", "to": "/opt/openvibe.tools/apps/<app>/data" }]`. For yt, also
+  set `YT_PROXY=`. Before first use, check on the host that `BindPaths=` works together with
+  `ProtectSystem=strict` in a `systemd-run` transient unit.
+- `requires: [{ "file": "<path in the checkout>", "contains": "<text>" }]`: the drill refuses before
+  it creates anything unless the deployed checkout has every switch its overrides rely on. An older
+  release would ignore the override and run its side effects.
+
+### What Tools and Games should add (product side, not Host)
+
+These make the drills stricter and quieter. Neither is needed for the drills above to be
+side-effect-free.
+
+- **Tools `TOOLS_DRILL=1`:**
+  - `_shared/jobs/system.js:576-585`: skip `recover()`, `prune()`, the prune interval and `kick()`.
+  - `_shared/jobs/index.js:83-105`: force local results and no outbox.
+  - `_shared/analytics/tracker.js:81,105-118`: no startup `DELETE` of rate tracking, no
+    flush/aggregate/prune timers, and a no-op middleware.
+  - The `retention.startCleanup()` calls (img `:273`, docs `:323`, audio `:307`), and yt's
+    `startCleanup()` and `startUpstreamProbe()` (`:280-281`, which spawns yt-dlp against YouTube).
+  - `_shared/observe.js:95-105`: no `writableDir` probe writes.
+  - A `DATA_DIR` override in yt `index.js:26`, maps `:25` and food `:20`, so those apps no longer
+    need `bind`.
+
+  With these, the restored copies stay byte-stable during a drill, and row counts other than
+  `tool_jobs` become comparable.
+- **Games `GAMES_DRILL=1`:**
+  - `config.ts:60-99`: force the client secret, OAuth, `networkAuthUrl`, `eventsUrl` and `mediaUrl`
+    to null.
+  - `config.ts:77-79`: refuse to start unless `HOST` is loopback and `DB_PATH` is not the production
+    path.
+  - `main.ts:252`: refuse `/ws` and `/editor-ws` upgrades.
+  - Return 403 for map, map-asset and mod writes (`httpServer.ts:161,231` and the `routes.ts` write
+    branches), and for `/auth/*` (`httpServer.ts:333`).
+  - Optionally skip the periodic flush (`gameServer.ts:2320,2502`) and the prune timer
+    (`main.ts:148`), so world tables can be counted too.
+
 Marked `drill: { supported: false }`, with the reason in the inventory:
 
 - **live:** `data/analytics.db` is opened relative to the checkout at boot. It is read-only in the
@@ -151,6 +223,3 @@ Marked `drill: { supported: false }`, with the reason in the inventory:
 - **media:** webhooks to Live take their URL from the `apps` table and have no env switch. The health
   job, junk sweep and clip jobs run ffmpeg against production files through absolute paths stored in
   the database.
-- **tools:** eight units. yt, food and maps open `analytics.db` relative to the checkout. The job
-  runtimes re-queue and prune with no switch.
-- **games:** its runtime side effects have not been reviewed.

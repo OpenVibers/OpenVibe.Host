@@ -135,8 +135,35 @@
         { "name": "tools-img-jobs", "path": "/opt/openvibe.tools/apps/img/data/jobs.db" }
       ],
       "drill": {
-        "supported": false,
-        "reason": "Eight units (gateway plus seven apps) run as separate processes and a drill starts one; yt, food and maps open apps/<app>/data/analytics.db relative to the checkout with no env override (read-only in the sandbox, production's file without it); the job runtimes prune and re-queue jobs at start with no switch. Its only databases are per-app analytics."
+        "_notes": "Drills ONE app: docs (both database kinds; spawns no external program; every path has an env override). Its unit's ExecStart/WorkingDirectory come from drill.unit, and the comparison runs against docs' own port. DATA_DIR takes a directory, so both copies land in {tmp}/data under their production names. TOOLS_JOB_RESULTS=local keeps the job pruner from deleting production Media objects for expired jobs in the copy; EVENTS_PUBLISH=off keeps the copy's pending outbox rows from being republished; TOOLS_JOBS_CONCURRENCY=0 runs no job. What still runs, on the copy only: job recovery and pruning, analytics aggregation, upload retention (all under {tmp}). yt, maps and food open data/analytics.db relative to the checkout: drill one with drill.unit + a {tmp} data dir + bind over apps/<app>/data (plus YT_PROXY= for yt) until Tools adds DATA_DIR there. Not run on the host yet.",
+        "port": 14016,
+        "unit": "openvibe-tools-docs.service",
+        "productionPort": 4016,
+        "databases": {
+          "tools-docs-analytics": { "env": "DATA_DIR", "dir": true },
+          "tools-docs-jobs": { "env": "DATA_DIR", "dir": true }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "UPLOADS_DIR": "{tmp}/uploads",
+          "OUTPUT_DIR": "{tmp}/output",
+          "TOOLS_JOBS_CONCURRENCY": "0",
+          "TOOLS_JOB_RESULTS": "local",
+          "EVENTS_PUBLISH": "off",
+          "EVENTS_URL": "",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "MEDIA_URL": "http://127.0.0.1:9"
+        },
+        "dirs": ["{tmp}/uploads", "{tmp}/output"],
+        "requires": [
+          { "file": "apps/docs/server/config.js", "contains": "DATA_DIR" },
+          { "file": "apps/_shared/jobs/index.js", "contains": "TOOLS_JOB_RESULTS" },
+          { "file": "apps/_shared/jobs/events.js", "contains": "EVENTS_PUBLISH" }
+        ],
+        "ready": "/api/ready",
+        "compare": ["/release.json"],
+        "counts": [{ "db": "tools-docs-jobs", "table": "tool_jobs" }]
       }
     },
     "community": {
@@ -204,8 +231,28 @@
       "ready": { "url": "http://127.0.0.1:8000/api/ready", "timeoutSeconds": 60 },
       "databases": [{ "name": "world", "path": "/opt/openvibe.games/data/world.db" }],
       "drill": {
-        "supported": false,
-        "reason": "Not reviewed: a pnpm workspace with a TypeScript build whose runtime side effects (world simulation loop, realtime ports) have not been read, so no side-effect-free overrides can be declared without guessing."
+        "_notes": "Reviewed 2026-09-23 (OpenVibe.Games 7863fc6): one HTTP listener (PORT/HOST; /ws and /editor-ws are upgrades on it), tsx runs src/main.ts with no build, and the unit's DB_PATH (Environment=) never reaches the drill because the drill sets it. EVENTS_PUBLISH=off stops the outbox relay, MEDIA_MIRROR=off the map-asset mirror, an empty OV_OAUTH_CLIENT_SECRET every service call. The 30 Hz tick loop keeps running (readiness needs it) and flushes the world into the copy only; map.json stays production's file, read-only in the sandbox. Count only tables the simulation does not write. Not run on the host yet; take `ovhost backup games` first.",
+        "port": 18000,
+        "databases": { "world": "DB_PATH" },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "EVENTS_PUBLISH": "off",
+          "EVENTS_URL": "",
+          "MEDIA_MIRROR": "off",
+          "TMPDIR": "{tmp}/tmp"
+        },
+        "dirs": ["{tmp}/tmp"],
+        "requires": [
+          { "file": "apps/server/src/config.ts", "contains": "EVENTS_PUBLISH" },
+          { "file": "apps/server/src/config.ts", "contains": "MEDIA_MIRROR" }
+        ],
+        "compare": ["/map.json", "/api/v1/mods"],
+        "counts": [
+          { "db": "world", "table": "players" },
+          { "db": "world", "table": "mods" }
+        ]
       }
     },
     "sites": {

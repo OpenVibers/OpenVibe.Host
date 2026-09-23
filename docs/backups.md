@@ -350,7 +350,7 @@ The drill:
 
 Record the result in [restore-drills.md](restore-drills.md) and note "off-host" in the Backup column.
 
-For services without a drill (live, media, tools, games, ai), download the copy and check it by
+For services without a drill (live, media, ai), download the copy and check it by
 hand:
 
 ```
