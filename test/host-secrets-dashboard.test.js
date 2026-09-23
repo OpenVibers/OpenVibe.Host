@@ -145,6 +145,8 @@ const ORIGIN = 'https://openvibe.host';
         assert.match(ready.text, /relay off/);
         const rel = await t.api('GET', '/release.json');
         assert.strictEqual(rel.json().service, 'host');
+        assert.deepStrictEqual(require('openvibe-contracts').validate('registry.release-manifest@1', rel.json()).errors, []);
+        assert.strictEqual(rel.json().metrics_url, '/release-metrics');
         const m = await t.api('GET', '/metrics');
         assert.strictEqual(m.status, 200);
         assert.match(m.text, /http_requests_total\{method="GET",route="tenant_site"/);

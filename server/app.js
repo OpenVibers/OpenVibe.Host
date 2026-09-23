@@ -128,7 +128,8 @@ function createApp(opts = {}) {
 
     // ── Machine endpoints ───────────────────────────────────
     app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'openvibe-host', version: VERSION }));
-    app.get('/release.json', release.handler);
+    // GET /release.json (ADR-016) and POST /release-metrics: open tabs' update reports into /metrics.
+    release.mount(app, { registry: registry });
     const readiness = createHostReadiness({ store, blobs, auth, outbox, release: release.release, minFreeBytes: () => config.uploads.minFreeBytes });
     app.get('/api/ready', readiness.handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));

@@ -46,10 +46,10 @@ Stage A adds a few safety rules of its own:
 
 ## Depends on
 
-- OpenVibe.Contracts (`openvibe-contracts` v0.24.0; `host.*` capabilities and the `host` manifest are released there and unchanged in v0.30.1): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
+- OpenVibe.Contracts (`openvibe-contracts` v0.32.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
-- OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.2.2 transactional outbox.
-- `openvibe-shared` v1.3.0 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
+- OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.5.0 transactional outbox.
+- `openvibe-shared` v1.5.0 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
 - OpenVibe.Media: not yet. The roadmap stores artifacts "through Media where practical"; Stage B keeps them on local disk for now (see [Not done yet](#not-done-yet-stage-b)).
 
 ## Stages
@@ -245,7 +245,7 @@ People present their Network user JWT as a Bearer token. Services and apps prese
 
 Errors are RFC 9457 problems (`application/problem+json`, with the legacy `error` field). A refused upload answers 413/422 with `deploy_id` and the log lines; `503 upload.busy` (with `Retry-After`) when `HOST_MAX_CONCURRENT_UPLOADS` uploads are already being validated; `507 storage.host_full` while the disk has less than `HOST_MIN_FREE_BYTES` free. Network staff (`role: admin`) can read every project, site, deploy and log, delete sites, projects and domains, set quotas, and **take a site or project down** (451 on every host, content kept for review, members see the reason and cannot publish or delete around it); they cannot publish into a tenant's site.
 
-The three capability ids and the service manifest are released in `openvibe-contracts` (since v0.24.0, identical in v0.30.1), and the CI contract check is blocking. [`docs/capabilities-proposal/`](docs/capabilities-proposal/) mirrors them; `host.site.manage` there also lists the four takedown routes, which the next Contracts release should add (see [docs/launch.md](docs/launch.md#the-window-in-this-order)).
+The three capability ids and the service manifest are released in `openvibe-contracts` (since v0.24.0; v0.32.0 adds the takedown routes to `host.site.manage`), and the CI contract check is blocking. [`docs/capabilities-proposal/`](docs/capabilities-proposal/) mirrors them; `host.site.manage` there also lists the four takedown routes, which the next Contracts release should add (see [docs/launch.md](docs/launch.md#the-window-in-this-order)).
 
 ### Activation and rollback
 
@@ -253,7 +253,7 @@ Activation is one SQLite transaction: a compare-and-set on the site's `active_de
 
 ### Events
 
-Through the `openvibe-sdk` v0.2.2 transactional outbox (`event_outbox`), inside the transaction that makes the change:
+Through the `openvibe-sdk` v0.5.0 transactional outbox (`event_outbox`), inside the transaction that makes the change:
 
 | Event | When | Payload |
 |---|---|---|
@@ -266,7 +266,7 @@ The relay publishes with Host's service token (`events.event.publish`, audience 
 
 ### Dashboard
 
-Server-rendered pages with the shared chrome (`openvibe-shared` v1.3.0: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
+Server-rendered pages with the shared chrome (`openvibe-shared` v1.5.0: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
 
 ### Observability
 
@@ -277,7 +277,7 @@ Server-rendered pages with the shared chrome (`openvibe-shared` v1.3.0: navbar a
 - OpenVibe.Network OAuth client **`host`**, redirect `https://openvibe.host/auth/callback`, scope `profile theme`. The same client is the service principal `svc:host`.
 - Grant `[host, events.event.publish, openvibe.events]`.
 - Callers of Host get `[<client>, host.site.manage | host.deploy.create | host.domain.manage, openvibe.host]` as needed. None exist yet (Codes, the expected first caller, is not built).
-- Released in `openvibe-contracts` v0.24.0 (CI contract check blocking). Next release: add the takedown routes to `host.site.manage.implementedBy` (docs/launch.md).
+- Released in `openvibe-contracts` v0.24.0 (CI contract check blocking); v0.32.0 adds the takedown routes to `host.site.manage.implementedBy`.
 
 ### Deploying Stage B (for the operator)
 

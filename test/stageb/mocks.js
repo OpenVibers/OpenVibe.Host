@@ -63,8 +63,9 @@ async function startNetwork() {
     function serviceToken(client, cap, extra = {}) {
         return sign({ sub: `svc:${client}`, aud: ['openvibe.host'], cap, ...extra });
     }
+    // An app token carries its developer project and env, as Network's do (identity.service-token-claims 1.2.0).
     function appToken(appId, cap, extra = {}) {
-        return sign({ sub: `app:${appId}`, actor_type: 'app', aud: ['openvibe.host'], cap, ...extra });
+        return sign({ sub: `app:${appId}`, actor_type: 'app', aud: ['openvibe.host'], cap, project_id: 'prj_01J8ZQ4Y7N3M2K1H0G9F8E7D6C', env: 'production', ...extra });
     }
     return { ...srv, publicPem, addUser, userToken, fedcmAssertion, serviceToken, appToken, sign };
 }

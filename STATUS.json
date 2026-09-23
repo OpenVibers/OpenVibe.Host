@@ -9,9 +9,9 @@
   "domain": "openvibe.host",
   "tenantDomain": "*.openvibe.host",
   "packages": [
-    "openvibe-contracts v0.24.0 (host.* capabilities and manifest released; unchanged in v0.30.1)",
-    "openvibe-sdk v0.2.2",
-    "openvibe-shared v1.3.0"
+    "openvibe-contracts v0.32.0 (host.* capabilities and manifest released in v0.24.0; v0.32.0 adds the takedown routes to host.site.manage)",
+    "openvibe-sdk v0.5.0",
+    "openvibe-shared v1.5.0"
   ],
   "capabilities": [
     "host.site.manage",
@@ -38,6 +38,6 @@
   "placeholderInSites": true,
   "adoptedByServices": [],
   "updated": "2026-09-23",
-  "capabilitiesNote": "released in openvibe-contracts v0.24.0 and identical in v0.30.1; the next release should add the four takedown routes to host.site.manage.implementedBy (docs/launch.md)",
+  "capabilitiesNote": "released in openvibe-contracts v0.24.0; v0.32.0 adds the four takedown routes to host.site.manage.implementedBy",
   "launchReady": true
 }

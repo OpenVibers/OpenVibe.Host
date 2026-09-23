@@ -36,7 +36,10 @@ function createViewerResolver({ auth, config }) {
     async function fromServiceToken(req, token) {
         const publicKey = await auth.ensureKey();
         if (!publicKey) throw new ViewerError(503, 'identity.unavailable', 'the Network signing key is not loaded yet');
-        const r = serviceAuth.verifyServiceToken(token, { publicKey, issuer: config.networkUrl, audience: AUDIENCE });
+        // acceptSandbox: Host takes sandbox tokens itself and confines them to sandbox projects
+        // (projects.js/access.js answer 403 environment.sandbox_token elsewhere); openvibe-contracts
+        // >= 0.26.0 refuses them before that unless the receiver opts in.
+        const r = serviceAuth.verifyServiceToken(token, { publicKey, issuer: config.networkUrl, audience: AUDIENCE, acceptSandbox: true });
         if (!r.ok) throw new ViewerError(401, r.code, r.reason);
         const sub = r.claims.sub;
         if (sub.startsWith('mod:')) throw new ViewerError(403, 'principal.not_allowed', 'mods cannot manage hosted sites');
