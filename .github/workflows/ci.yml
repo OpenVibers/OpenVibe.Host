@@ -15,7 +15,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm test
       - name: syntax check
-        run: for f in bin/ovhost lib/*.js lib/commands/*.js server/*.js server/*/*.js; do node --check "$f"; done
+        run: for f in bin/ovhost lib/*.js lib/commands/*.js server/*.js server/*/*.js; do node --check "$f"; done && for f in scripts/*.sh; do bash -n "$f"; done
       # Stage B's capabilities (host.site.manage, host.deploy.create, host.domain.manage) are
       # proposals in docs/capabilities-proposal/ until the lead releases them in openvibe-contracts;
       # until then the check reports them as undefined. Make this step blocking again with that release.

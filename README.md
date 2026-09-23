@@ -85,7 +85,7 @@ What the tests demonstrate (`npm test`, every system call made against `test/fak
   - `restore-download` never overwrites and refuses any directory near a database or checkout.
   - No secret value appears in any output, summary, request or manifest.
 
-Not demonstrated yet: any of this on the production host. The Wave 21 exit criterion ("deploy, restart and roll back one service without interrupting unrelated runtimes or protected sessions") still needs a run on the host, with evidence.
+Not demonstrated yet: any of this on the production host. The Wave 21 exit criterion ("deploy, restart and roll back one service without interrupting unrelated runtimes or protected sessions") still needs a run on the host, with evidence. [`scripts/d41-proof.sh`](scripts/d41-proof.sh) is that run, written and tested against the fake host (`test/d41-proof.test.js`) but **not run yet**. It deploys, rolls back and redeploys `sources` through `ovhost`, and proves from `systemctl show` (MainPID, InvocationID, ActiveEnterTimestamp) that every other unit, the Live socket included, kept its process. See [docs/d41-proof.md](docs/d41-proof.md).
 
 ## Using ovhost
 
@@ -93,6 +93,7 @@ Not demonstrated yet: any of this on the production host. The Wave 21 exit crite
 ovhost status [<service>...]            unit state, sha, readiness, protected sessions
 ovhost validate <service>               env NAMES, unit files, port, vhost + nginx -t, deps
 ovhost env-names <service>              names declared in the checkout's .env.example
+ovhost show [<service>...]              the inventory as ovhost reads it (repo, owner, units, socket, workers, probes)
 ovhost plan <service> [--to <sha>] [--no-fetch]
 ovhost deploy <service> [--wait-idle] [--force] [--restart] [--to <sha>] [--install-units] [--ready-timeout <s>]
 ovhost rollback <service> [--to <sha>] [--wait-idle] [--force]

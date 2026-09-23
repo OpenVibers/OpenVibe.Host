@@ -92,7 +92,15 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         return false;
     }
     function resolveRef(repo, ref) {
-        const r = ref.replace(/\^\{commit\}$/, '');
+        const r0 = ref.replace(/\^\{commit\}$/, '');
+        // <ref>^ and <ref>~<n>: first parents.
+        const up = /^(.*?)(\^+|~(\d+))$/.exec(r0);
+        if (up && up[1]) {
+            let sha = resolveRef(repo, up[1]);
+            for (let n = up[3] ? Number(up[3]) : up[2].length; sha && n > 0; n--) sha = repo.commits.get(sha).parent || null;
+            return sha;
+        }
+        const r = r0;
         if (r === 'HEAD') return repo.head;
         if (repo.remoteRefs[r]) return repo.remoteRefs[r];
         if (repo.commits.has(r)) return r;
@@ -112,6 +120,12 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             if (rest[0] === '--verify') { const s = resolveRef(repo, rest[1]); return s ? ok(`${s}\n`) : fail(`fatal: Needed a single revision (${rest[1]})`); }
             return ok(`${resolveRef(repo, rest[0])}\n`);
         case 'cat-file': return resolveRef(repo, rest[1]) ? ok() : fail('bad object');
+        case 'merge-base': {
+            if (rest[0] !== '--is-ancestor') return fail('fake git: merge-base --is-ancestor only');
+            const a = resolveRef(repo, rest[1]);
+            const b = resolveRef(repo, rest[2]);
+            return a && b && isAncestor(repo, a, b) ? ok() : fail('');
+        }
         case 'status': {
             const head = repo.commits.get(repo.head).files;
             const dirty = Object.entries(head).filter(([f, c]) => host.read(path.join(repo.path, f)) !== c).map(([f]) => ` M ${f}`);
