@@ -28,6 +28,9 @@ The production instance is never touched.
 | 2026-09-23 19:24 | openre | `/var/backups/openvibe/openre/20260923-192308/` (`ovhost drill openre`) | `pragma integrity_check` (openre) = ok; drill instance `/api/ready` 200 after 1s; `/api/health`, `/robots.txt` identical to production; stream_definitions 1 = 1; ingest_keys 1 = 1; destinations 0 = 0; migration_map 0 = 0 | passed |
 | 2026-09-23 23:07 | live | `/var/backups/openvibe/live/20260923-230748/` (`ovhost drill live`) | `pragma integrity_check` (live) = ok; drill instance `/api/ready` 200 after 1s; `/api/themes`, `/api/emotes/global`, `/api/streams`, `/api/streams/recently-online?limit=20`, `/api/streams/channel/japaneseoldguy/live` identical to production (JSON without volatile keys where declared); users 352 = 352; channels 123 = 123; managed_streams 103 = 103; streams 2477 = 2477; follows 62 = 62; chat_messages 70864 = 70864 | passed |
 | 2026-09-23 23:07 | media | `/var/backups/openvibe/media/20260923-230757/` (`ovhost drill media`) | `pragma integrity_check` (media) = ok; drill instance `/api/ready` 200 after 1s; `/browse?tab=videos`, `/browse?tab=clips` identical to production; media_objects 3056 = 3056; vods 906 = 906; clips 315 = 315; apps 7 = 7 | passed |
+| 2026-09-24 05:40 | ai | `/var/backups/openvibe/ai/20260924-054015/` (`ovhost drill ai`) | `pragma integrity_check` (ai) = ok; drill instance `/api/ready` 200 after 1s; `/api/health` identical to production; providers 3 = 3; models 9 = 9; routes 19 = 19; templates 26 = 26; workflows 47 = 47; quotas 5 = 5; citations 0 = 0 | passed |
+| 2026-09-24 05:40 | games | `/var/backups/openvibe/games/20260924-054054/` (`ovhost drill games`) | `pragma integrity_check` (world) = ok; drill instance `/api/ready` 200 after 2s; `/map.json`, `/api/v1/mods` identical to production; players 28 = 28; mods 0 = 0 | passed |
+| 2026-09-24 05:41 | tools | `/var/backups/openvibe/tools/20260924-054102/` (`ovhost drill tools`) | `pragma integrity_check` (tools-docs-analytics) = ok; `pragma integrity_check` (tools-docs-jobs) = ok; drill instance `/api/ready` 200 after 1s; `/release.json` identical to production (JSON without volatile keys where declared); tool_jobs 0 = 0 | passed |
 
 ## How a drill was run (community)
 
@@ -189,7 +192,13 @@ Supported with declared overrides (the table above records which have passed on 
 Services that are not deployed yet (everything except network, live, media, tools, community and
 games as of 22 Sep) have entries built from their repositories' `deploy/` directories.
 
-- tools (not run yet): the **docs** app alone. Tools runs eight units; `drill.unit` picks
+- ai (passed 2026-09-24 05:40 UTC): AI starts with AI_ENABLED=0 and every provider key, base URL
+  and the HTTP seam blanked, so no run can reach a paid provider; OV_OAUTH_CLIENT_SECRET and
+  EVENTS_URL are blanked (no service calls, no events) and WHISPER_BIN too (no transcription). Boot
+  marks interrupted runs failed in the restored copy only. `/api/health` is compared; the counts cover
+  configuration and citations, because runs, requests and usage grow by the minute (integrity_check
+  covers them).
+- tools (passed 2026-09-24 05:41 UTC): the **docs** app alone. Tools runs eight units; `drill.unit` picks
   `openvibe-tools-docs.service`, whose ExecStart, WorkingDirectory and Environment= the drill copies,
   and `drill.productionPort` (4016) is what the comparison reads, not the gateway's 4001. docs takes a
   data DIRECTORY (`DATA_DIR`), so both restored copies land in `{tmp}/data/` under their production
@@ -200,7 +209,7 @@ games as of 22 Sep) have entries built from their repositories' `deploy/` direct
   under `{tmp}`, an empty `OV_OAUTH_CLIENT_SECRET`. Job recovery and pruning, analytics aggregation
   and upload retention still run, on the copy only. `drill.requires` refuses the drill unless the
   deployed checkout has those switches. Compares `/release.json`; counts `tool_jobs`.
-- games (not run yet): Reviewed against OpenVibe.Games `7863fc6`. One HTTP listener; `/ws` and
+- games (passed 2026-09-24 05:40 UTC): Reviewed against OpenVibe.Games `7863fc6`. One HTTP listener; `/ws` and
   `/editor-ws` are upgrades on it. tsx runs `src/main.ts` directly, with no build. The unit sets
   `DB_PATH` with `Environment=`, and that value never reaches the drill because the drill sets
   `DB_PATH` itself. `EVENTS_PUBLISH=off` stops the outbox relay, `MEDIA_MIRROR=off` stops the

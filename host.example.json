@@ -212,7 +212,7 @@
           { "file": "apps/_shared/jobs/events.js", "contains": "EVENTS_PUBLISH" }
         ],
         "ready": "/api/ready",
-        "compare": ["/release.json"],
+        "compare": [{ "path": "/release.json", "ignore": ["booted_at"] }],
         "counts": [{ "db": "tools-docs-jobs", "table": "tool_jobs" }]
       }
     },
@@ -281,7 +281,7 @@
       "ready": { "url": "http://127.0.0.1:8000/api/ready", "timeoutSeconds": 60 },
       "databases": [{ "name": "world", "path": "/opt/openvibe.games/data/world.db" }],
       "drill": {
-        "_notes": "Reviewed 2026-09-23 (OpenVibe.Games 7863fc6): one HTTP listener (PORT/HOST; /ws and /editor-ws are upgrades on it), tsx runs src/main.ts with no build, and the unit's DB_PATH (Environment=) never reaches the drill because the drill sets it. EVENTS_PUBLISH=off stops the outbox relay, MEDIA_MIRROR=off the map-asset mirror, an empty OV_OAUTH_CLIENT_SECRET every service call. The 30 Hz tick loop keeps running (readiness needs it) and flushes the world into the copy only; map.json stays production's file, read-only in the sandbox. Count only tables the simulation does not write. Not run on the host yet; take `ovhost backup games` first.",
+        "_notes": "Reviewed 2026-09-23 (OpenVibe.Games 7863fc6): one HTTP listener (PORT/HOST; /ws and /editor-ws are upgrades on it), tsx runs src/main.ts with no build, and the unit's DB_PATH (Environment=) never reaches the drill because the drill sets it. EVENTS_PUBLISH=off stops the outbox relay, MEDIA_MIRROR=off the map-asset mirror, an empty OV_OAUTH_CLIENT_SECRET every service call. The 30 Hz tick loop keeps running (readiness needs it) and flushes the world into the copy only; map.json stays production's file, read-only in the sandbox. Count only tables the simulation does not write. Passed on the host 2026-09-24 05:40 UTC (take `ovhost backup games` first).",
         "port": 18000,
         "databases": { "world": "DB_PATH" },
         "env": {
@@ -645,7 +645,39 @@
       "ready": { "url": "http://127.0.0.1:4700/api/ready", "timeoutSeconds": 30 },
       "noRestartPaths": ["docs/", "test/", "**/*.md"],
       "databases": [{ "name": "ai", "path": "/var/lib/openvibe-ai/ai.db" }],
-      "drill": { "supported": false, "reason": "Not written yet: a drill must start AI with every provider key blanked, or queued and new runs would call paid providers. Backups work." }
+      "drill": {
+        "_notes": "Every provider key, base URL and the HTTP seam are blanked and AI_ENABLED=0, so no run can reach a paid provider; OV_OAUTH_CLIENT_SECRET and EVENTS_URL are blanked (no service calls, no events); WHISPER_BIN is blanked (no transcription). Boot marks interrupted runs failed in the restored copy only. Counts cover configuration and citations only: runs, requests and usage grow by the minute, so they are checked by integrity_check, not by an equal count. Passed on the host 2026-09-24 05:40 UTC.",
+        "port": 14700,
+        "databases": { "ai": "AI_DB_PATH" },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "BASE_URL": "http://127.0.0.1:{port}",
+          "AI_ENABLED": "0",
+          "AI_PROVIDER": "",
+          "AI_API_KEY": "",
+          "AI_BASE_URL": "",
+          "AI_MODEL": "",
+          "AI_FALLBACK_PROVIDER": "",
+          "AI_FALLBACK_API_KEY": "",
+          "AI_FALLBACK_BASE_URL": "",
+          "AI_HTTP_SEAM_URL": "",
+          "WHISPER_BIN": "",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "EVENTS_URL": "",
+          "AI_STUB_FALLBACK": "1"
+        },
+        "compare": ["/api/health"],
+        "counts": [
+          { "db": "ai", "table": "providers" },
+          { "db": "ai", "table": "models" },
+          { "db": "ai", "table": "routes" },
+          { "db": "ai", "table": "templates" },
+          { "db": "ai", "table": "workflows" },
+          { "db": "ai", "table": "quotas" },
+          { "db": "ai", "table": "citations" }
+        ]
+      }
     },
     "openre": {
       "_note": "Release layout: the service runs from /opt/openre.stream/current and deploys with its own deploy/scripts/deploy.sh (release | api | workers). units are the API and the session coordinator. workerUnits are the transport workers: one instance per release (openre-rtmp-ingest@<release>), started by deploy.sh workers, drained by the coordinator when a newer generation is ready, and exiting on their own. ovhost lists them in status/validate and never starts, stops or restarts them (the inventory refuses a worker unit in units).",
