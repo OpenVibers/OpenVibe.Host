@@ -11,6 +11,7 @@ const out = render({ services: {
     noport: {},
 } }, { interval: '15s' });
 assert.ok(out.includes('scrape_interval: 15s'));
+assert.ok(out.includes("rule_files:\n  - '/etc/prometheus/rules/*.yml'"), 'alert rules');
 assert.ok(out.includes("- targets: ['127.0.0.1:9100']"), 'node-exporter');
 assert.ok(out.includes("  - job_name: live\n    metrics_path: /metrics\n    static_configs:\n      - targets: ['127.0.0.1:3000']\n        labels:\n          service: live\n          process: live\n"));
 assert.ok(out.includes("      - targets: ['127.0.0.1:4012']\n        labels:\n          service: tools\n          process: tools-img\n"), 'declared extra process');

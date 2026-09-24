@@ -8,7 +8,8 @@
  *   "sites": { …, "metrics": false }                                              nothing to scrape
  *
  * Every target is 127.0.0.1 (the services answer /metrics only to direct loopback callers), and
- * node-exporter (host CPU, memory, disk) is scraped on 127.0.0.1:9100.
+ * node-exporter (host CPU, memory, disk) is scraped on 127.0.0.1:9100. Alert rules are read from
+ * /etc/prometheus/rules/*.yml (deploy/prometheus/openvibe-rules.yml).
  *
  *   node scripts/prometheus-config.js [--inventory /etc/openvibe/host.json] [--interval 30s] > prometheus.yml
  */
@@ -40,6 +41,8 @@ function render(inventory, { interval = '30s' } = {}) {
         'global:',
         `  scrape_interval: ${interval}`,
         '  scrape_timeout: 10s',
+        'rule_files:',
+        "  - '/etc/prometheus/rules/*.yml'",
         'scrape_configs:',
         '  - job_name: node',
         '    static_configs:',

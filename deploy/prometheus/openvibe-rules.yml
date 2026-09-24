@@ -1,0 +1,32 @@
+# OpenVibe alert rules (roadmap Track O), loaded by the host's Prometheus (rule_files in the config
+# scripts/prometheus-config.js renders). Firing alerts are read at GET 127.0.0.1:9090/api/v1/alerts;
+# no notifier is configured yet.
+groups:
+  - name: openvibe
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $labels.process }} ({{ $labels.instance }}) has not answered /metrics for 5 minutes"
+      - alert: HighErrorRate
+        expr: |
+          sum by (service) (rate(http_requests_total{status=~"5.."}[10m]))
+            / clamp_min(sum by (service) (rate(http_requests_total[10m])), 0.05) > 0.05
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "{{ $labels.service }}: more than 5% of requests answered 5xx for 10 minutes"
+      - alert: DiskAlmostFull
+        expr: node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} < 0.10
+        for: 10m
+        labels: { severity: page }
+        annotations:
+          summary: "Root filesystem has less than 10% free ({{ $value | humanizePercentage }})"
+      - alert: MemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.08
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Less than 8% of memory available for 10 minutes"
