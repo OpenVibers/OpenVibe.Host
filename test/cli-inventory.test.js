@@ -23,7 +23,10 @@ runTests([
         assert.strictEqual(inv.services.live.protected.url, 'http://127.0.0.1:3000/api/streams');
         assert.match(inv.services.media.protected.sql, /is_recording = 1/);
         assert.strictEqual(inv.services.games.managed, false);
-        for (const s of Object.values(inv.services)) assert.strictEqual(s.owner, 'ubuntu', `${s.id} checkout owner`);
+        // Live's release layout (C-76) is root-owned worktrees; its service and drills still run as ubuntu.
+        for (const s of Object.values(inv.services)) assert.strictEqual(s.owner, s.id === 'live' ? 'root' : 'ubuntu', `${s.id} checkout owner`);
+        assert.strictEqual(inv.services.live.runAs, 'ubuntu');
+        assert.strictEqual(inv.services.live.repo, '/opt/openvibe.live/current');
         const text = JSON.stringify(raw);
         assert.ok(!/(sk_|ghp_|BEGIN [A-Z ]*PRIVATE KEY|password\s*[:=]\s*\S)/i.test(text), 'no secret values in the example');
     }),

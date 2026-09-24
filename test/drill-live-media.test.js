@@ -47,13 +47,13 @@ async function liveHost({ switchInCheckout = true, drillBodies = null } = {}) {
     doc.services.live = JSON.parse(JSON.stringify(EXAMPLE.services.live));
     host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
     if (switchInCheckout) {
-        host.put('/opt/openvibe.live/server/drill.js', "const enabled = parse(process.env.LIVE_DRILL);\n", { owner: 'ubuntu' });
-        host.put('/opt/openvibe.live/server/paths.js', "return path.resolve(process.env.DATA_DIR || './data');\n", { owner: 'ubuntu' });
+        host.put('/opt/openvibe.live/current/server/drill.js', "const enabled = parse(process.env.LIVE_DRILL);\n", { owner: 'root' });
+        host.put('/opt/openvibe.live/current/server/paths.js', "return path.resolve(process.env.DATA_DIR || './data');\n", { owner: 'root' });
     }
     host.put('/etc/systemd/system/openvibe-live.service', [
-        '[Service]', 'Type=simple', 'User=ubuntu', 'WorkingDirectory=/opt/openvibe.live', 'EnvironmentFile=/etc/openvibe/live.env',
+        '[Service]', 'Type=simple', 'User=ubuntu', 'WorkingDirectory=/opt/openvibe.live/current', 'EnvironmentFile=/etc/openvibe/live.env',
         'Environment=NODE_ENV=production', 'Environment=PATH=/usr/local/bin:/usr/bin:/bin',
-        'ExecStart=/usr/bin/env node /opt/openvibe.live/server/index.js', 'ReadWritePaths=/opt/openvibe.live/data', '',
+        'ExecStart=/usr/bin/env node /opt/openvibe.live/current/server/index.js', 'ReadWritePaths=/opt/openvibe.live/shared/data', '',
     ].join('\n'));
     host.put('/etc/systemd/system/openvibe-live.service.d/socket.conf', '[Unit]\nRequires=openvibe-live.socket\nAfter=openvibe-live.socket\n');
     const unit = host.units.get('openvibe-live.service');
@@ -173,8 +173,8 @@ runTests([
 
         assert.strictEqual(host.systemdRuns.length, 1);
         const run = host.systemdRuns[0];
-        assert.deepStrictEqual(run.argv, ['/usr/bin/env', 'node', '/opt/openvibe.live/server/index.js']);
-        assert.strictEqual(run.cwd, '/opt/openvibe.live');
+        assert.deepStrictEqual(run.argv, ['/usr/bin/env', 'node', '/opt/openvibe.live/current/server/index.js']);
+        assert.strictEqual(run.cwd, '/opt/openvibe.live/current');
         assert.deepStrictEqual(run.envFiles, ['/etc/openvibe/live.env', `${rec.dir}/drill.env`]);
         for (const p of ['SocketBindAllow=tcp:13000', 'SocketBindDeny=any', 'IPAddressDeny=any', 'IPAddressAllow=localhost', 'ProtectSystem=strict', `ReadWritePaths=${rec.dir}`, 'Environment=NODE_ENV=production']) assert.ok(run.props.includes(p), p);
         assert.ok(!run.props.some((p) => /BindPaths=|ReadWritePaths=\/opt/.test(p)), 'no bind mounts; production\'s data directory is not writable');
