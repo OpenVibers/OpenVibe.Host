@@ -29,7 +29,7 @@ State markers:
 | C | AI → OpenVibe.AI (Wave 13) | **DONE** 2026-09-23 ~15:40 UTC (`AI_SERVICE=remote`) | AI [`docs/migration.md`](https://github.com/OpenVibers/OpenVibe.AI/blob/main/docs/migration.md) | Unset `AI_SERVICE`, restart Live |
 | D | Events delivery signature v2 | **IN PROGRESS**: Events sends v2; consumer deploys unknown; v1 still sent | Events [`docs/replay-window-rollout.md`](https://github.com/OpenVibers/OpenVibe.Events/blob/main/docs/replay-window-rollout.md) | The consumer redeploys its previous release; replay the DLQ |
 | E | Money → OpenVibe.Billing | **BLOCKED (owner)**: PowerChat dashboard. Billing runs in shadow. | Billing [`docs/live-cutover.md`](https://github.com/OpenVibers/OpenVibe.Billing/blob/main/docs/live-cutover.md) | Depends on the step reached. After step 9 there is **no tool** |
-| F | RTMP ingest → OpenRe.Stream | **BLOCKED (owner)**: port 1936 at the provider edge. DNS `ingest.openre.stream` is done and OpenRe is deployed. | OpenRe [`docs/cutover.md`](https://github.com/OpenVibers/OpenRe.Stream/blob/main/docs/cutover.md) (steps, checks and rollback; `scripts/cutover-preflight.js`) | Per slot `{"authority":"live"}` + `set-definition-state.js --state disabled`. All slots: unset `OPENRE_URL` |
+| F | RTMP ingest → OpenRe.Stream | **BLOCKED (owner)**: broadcaster windows and the per-slot rehearsal. DNS `ingest.openre.stream` is done, port 1936 is open (2026-09-23) and OpenRe is deployed. | OpenRe [`docs/cutover.md`](https://github.com/OpenVibers/OpenRe.Stream/blob/main/docs/cutover.md) (steps, checks and rollback; `scripts/cutover-preflight.js`) | Per slot `{"authority":"live"}` + `set-definition-state.js --state disabled`. All slots: unset `OPENRE_URL` |
 | G | Retire the shims | **NOT STARTED**. Dated in [compatibility-register.md](compatibility-register.md) | Network [`docs/retirement.md`](https://github.com/OpenVibers/OpenVibe.Network/blob/main/docs/retirement.md) | per entry |
 
 The remaining order is D → E → F → G.
@@ -55,7 +55,12 @@ These actions need the owner's accounts or physical presence. Nothing in this ru
    **DNS only (grey cloud)**. RTMP cannot go through Cloudflare's proxy (OpenRe `README.md:145`,
    `deploy/nginx/openre.stream.conf:15-17`).
 3. **Port 1936/tcp, for step F.** Open it in the host firewall **and** at the provider edge (OpenRe
-   `README.md:145,160`).
+   `README.md:145,160`). *Done 2026-09-23: 1936 answers from outside since 19:24 UTC.*
+3a. **DNS changes in a cutover (any step that moves a hostname).** A day before: lower the record's TTL to 60 s
+   and write down the current records (`dig +noall +answer <name> A AAAA CNAME` into the step's notes). At the
+   switch: change the record, then watch the new target for 30 minutes (readiness, error rate, the step's own
+   checks) before calling the step done. Keep the old target running until the old TTL has passed twice over;
+   only then decommission it, and put the TTL back.
 4. **Broadcaster windows, for step F.** For each slot, agree a maintenance window with its broadcaster.
    The slot is offline, and the broadcaster regenerates the key and pastes the new server into OBS
    (ADR-009).
@@ -308,7 +313,7 @@ PowerChat delivery lands in exactly one ledger.
 
 Read the full list before choosing the day. VIP checkout stays closed until this cutover.
 
-## F. RTMP ingest → OpenRe.Stream: BLOCKED on the owner (DNS, port 1936, broadcaster windows)
+## F. RTMP ingest → OpenRe.Stream: BLOCKED on the owner (rehearsal and broadcaster windows; DNS and port 1936 are done)
 
 OpenRe is deployed. The API is `openre-api` on 127.0.0.1:4500. The other units are
 `openre-session-coordinator`, `openre-rtmp-ingest@<sha>` and `openre-restream-worker@<sha>`. The database
