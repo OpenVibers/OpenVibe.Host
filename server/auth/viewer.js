@@ -7,7 +7,8 @@
  *   { kind: 'user', subject: 'usr_…', staff, user }
  *       API: a Network user JWT in `Authorization: Bearer` (cookies are ignored on /api/v1).
  *       Dashboard: the __Host- session cookie (never the navbar's ov_token, which a tenant
- *       subdomain could plant). role 'admin' makes the viewer staff.
+ *       subdomain could plant). staff = the contracts staff map's staff.site.configure (ADR-022):
+ *       quotas, takedowns, and maintaining or deleting any project (never deploying to it).
  *   { kind: 'service', service: 'svc:codes' | 'app:app_…', claims, subject, env }
  *       A Network client-credentials token for audience openvibe.host. A first-party service
  *       (svc:) may name the person it acts for with X-OV-Subject; an app (app:) always acts as
@@ -21,8 +22,7 @@ const contracts = require('openvibe-contracts');
 const { sessionToken, bearerToken, claimsToUser, decodeJwtPayload } = require('./sso');
 const { checkCapability } = require('./capabilities');
 
-const { ids, serviceAuth, http } = contracts;
-const STAFF_ROLES = new Set(['admin']);
+const { ids, serviceAuth, http, staff: staffMap } = contracts;
 const PRINCIPAL_SUB = /^(svc|app|mod):/;
 const AUDIENCE = 'openvibe.host';
 
@@ -64,7 +64,7 @@ function createViewerResolver({ auth, config }) {
         if (claims.typ !== undefined || claims.nonce !== undefined) return null;
         const subject = ids.isSubjectId('user', claims.subject_id) ? claims.subject_id : null;
         if (!subject) return null;
-        return { kind: 'user', subject, staff: STAFF_ROLES.has(claims.role), user: claimsToUser(claims) };
+        return { kind: 'user', subject, staff: staffMap.can(claims, 'staff.site.configure'), user: claimsToUser(claims) };
     }
 
     async function resolveApi(req) {
@@ -112,4 +112,4 @@ function guard(cap) {
     };
 }
 
-module.exports = { createViewerResolver, guard, ANONYMOUS, ViewerError, STAFF_ROLES, AUDIENCE };
+module.exports = { createViewerResolver, guard, ANONYMOUS, ViewerError, AUDIENCE };
