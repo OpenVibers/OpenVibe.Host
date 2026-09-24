@@ -49,7 +49,7 @@ const ORIGIN = 'https://openvibe.host';
     await check('the signed-out home page is server-rendered with the shared chrome and useful without JavaScript', async () => {
         const r = await t.api('GET', '/');
         assert.strictEqual(r.status, 200);
-        assert.match(r.text, /<script src="https:\/\/openvibe\.network\/shared\/navbar\.js" defer>/);
+        assert.match(r.text, /<script src="\/shared\/navbar\.js\?v=[0-9a-f]{12}" defer>/);
         assert.match(r.text, /<noscript><nav aria-label="Site"/);
         assert.match(r.text, /id="ov-footer"/);
         assert.match(r.text, /Sign in with OpenVibe/);

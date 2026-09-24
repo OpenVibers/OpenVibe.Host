@@ -6,6 +6,7 @@
  * Dashboard pages are private: noindex, private caching.
  */
 const crypto = require('crypto');
+const ovServe = require('openvibe-shared/serve');
 const fs = require('fs');
 const path = require('path');
 const appIcon = require('openvibe-shared/app-icon');
@@ -62,9 +63,9 @@ ${o.indexable ? `<link rel="canonical" href="${esc(`${o.config.baseUrl}${o.path 
 <meta name="description" content="OpenVibe.Host: static site hosting for OpenVibe projects (alpha).">
 ${appIcon.headTags({ site: 'host' })}
 <link rel="stylesheet" href="${asset('css/host.css')}">
-<script src="${NETWORK_URL}/shared/theme-loader.js" defer></script>
-<script src="${NETWORK_URL}/shared/navbar.js" defer></script>
-<script src="${NETWORK_URL}/shared/footer.js" defer></script>
+<script src="${ovServe.url('theme-loader.js')}" defer></script>
+<script src="${ovServe.url('navbar.js')}" defer></script>
+<script src="${ovServe.url('footer.js')}" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
