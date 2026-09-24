@@ -6,6 +6,7 @@
  * enough on openvibe.host). Every response is private and never cached by a shared cache.
  */
 const express = require('express');
+const frame = require('openvibe-shared/frame');
 const { renderPage } = require('../render/layout');
 const pages = require('../render/pages');
 const { csrfToken, checkCsrf, sameOrigin } = require('../auth/forms');
@@ -61,6 +62,8 @@ function createDashboard(ctx) {
     const back = (path, text, kind) => `${path}?notice=${encodeURIComponent(text)}${kind ? `&kind=${kind}` : ''}`;
 
     // ── Pages ───────────────────────────────────────────────
+    // What shipped on OpenVibe.Host: the shared update log every OpenVibe site has.
+    router.get('/updates', view((req, res) => page(req, res, 200, 'What shipped on OpenVibe.Host', frame.updatesBody({ service: 'host', siteName: 'OpenVibe.Host' }) + frame.shippedScript(), null, { indexable: true })));
     router.get('/', view((req, res) => {
         // The signed-out front page is the public page of openvibe.host (sitemap.xml): indexable.
         // Everything behind sign-in stays noindex and private.

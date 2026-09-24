@@ -46,7 +46,7 @@ const VERSION = require('../package.json').version;
 
 const DASHBOARD_CSP = {
     'default-src': ["'self'"],
-    // The shared chrome (theme-loader, navbar) comes from the Network; the inline init is ours.
+    // The OpenVibe Frame (theme-loader, navbar, footer) comes from the Network; the inline init is ours.
     'script-src': ["'self'", "'unsafe-inline'", 'https://openvibe.network'],
     'style-src': ["'self'", "'unsafe-inline'", 'https://openvibe.network', 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
     'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com'],
