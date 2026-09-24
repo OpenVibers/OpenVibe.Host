@@ -48,7 +48,9 @@
       }
     },
     "live": {
-      "repo": "/opt/openvibe.live",
+      "repo": "/opt/openvibe.live/current",
+      "owner": "root",
+      "runAs": "ubuntu",
       "units": ["openvibe-live.service"],
       "socketUnit": "openvibe-live.socket",
       "unitSources": {
