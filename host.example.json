@@ -171,6 +171,7 @@
       ],
       "envFile": "/etc/openvibe/tools.env",
       "env": { "required": ["OV_NETWORK_URL", "OV_OAUTH_CLIENT_ID", "OV_OAUTH_CLIENT_SECRET", "MEDIA_URL"] },
+      "metrics": { "extra": [{ "name": "maps", "port": 4010 }, { "name": "food", "port": 4011 }, { "name": "img", "port": 4012 }, { "name": "yt", "port": 4013 }, { "name": "audio", "port": 4014 }, { "name": "text", "port": 4015 }, { "name": "docs", "port": 4016 }] },
       "port": 4001,
       "ready": { "url": "http://127.0.0.1:4001/api/ready", "headers": { "Host": "openvibe.tools" }, "timeoutSeconds": 60 },
       "noRestartPaths": ["**/*.md"],
@@ -308,6 +309,7 @@
       }
     },
     "sites": {
+      "metrics": false,
       "repo": "/opt/openvibe.sites",
       "units": [],
       "install": { "command": ["npm", "ci", "--omit=dev", "--no-audit", "--no-fund"], "always": true },
