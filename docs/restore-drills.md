@@ -291,3 +291,4 @@ Until 23 Sep 2026 live and media were unsupported too:
   clip jobs ran ffmpeg against production files through absolute paths stored in the database.
 
 `LIVE_DRILL` and `MEDIA_DRILL` (above) replace those reasons.
+| 2026-09-25 23:00 | sources | `/var/backups/openvibe/sources/20260925-212055/` (`ovhost drill sources`) | `pragma integrity_check` (sources) = ok; drill instance `/api/ready` 200 after 1s; sources 6 = 6; items 0 = 0; item_revisions 0 = 0; fetch_runs 0 = 0; acceptance `/api/ready`, `/api/health` | passed |
