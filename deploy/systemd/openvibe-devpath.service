@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenVibe developer path against production (roadmap WS-N task 1): a test account's sandbox project, Media and Events through the SDK, credential rotation and revocation, cleanup
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/developer-path.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The account's name and password come from a root-only env file that systemd reads before dropping to
+# the unprivileged user; the script never prints them (masked output, and --result holds step names only).
+User=ubuntu
+EnvironmentFile=/etc/openvibe/devpath.env
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+WorkingDirectory=/usr/local/lib/openvibe-examples
+StateDirectory=openvibe-devpath
+StateDirectoryMode=0755
+ExecStart=/usr/bin/env node scripts/developer-path.js --result /var/lib/openvibe-devpath/last.json
+# As root: the outcome for Prometheus (node_exporter's textfile collector), whatever the exit code.
+ExecStopPost=+/usr/local/lib/openvibe-host/scripts/devpath-metrics.sh
+TimeoutStartSec=15min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full

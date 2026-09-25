@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the OpenVibe developer path against production daily (WS-N task 1)
+
+[Timer]
+OnCalendar=*-*-* 05:10:00 UTC
+RandomizedDelaySec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

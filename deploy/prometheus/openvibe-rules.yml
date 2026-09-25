@@ -51,3 +51,16 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: "{{ $labels.service }}: main has had commits production does not run for more than a day"
+      # The developer path against production, daily (openvibe-devpath.timer; WS-N task 1).
+      - alert: OpenVibeDeveloperPathFailed
+        expr: openvibe_devpath_last_run_ok == 0
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "The daily developer path failed ({{ with query \"openvibe_devpath_steps_failed\" }}{{ . | first | value }}{{ end }} step(s)): a developer cannot go from an account to Media and Events"
+      - alert: OpenVibeDeveloperPathMissed
+        expr: time() - openvibe_devpath_last_success_timestamp_seconds > 30 * 3600
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: "No passing developer-path run for more than 30 hours"
