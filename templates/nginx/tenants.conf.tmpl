@@ -28,6 +28,7 @@ server {
     listen [::]:443 ssl;
     http2 on;
     server_name {{dashboard}};
+    include snippets/security-txt.conf;   # /.well-known/security.txt (the host's file; WS-R task 7)
 
     ssl_certificate     {{certDir}}/fullchain.pem;
     ssl_certificate_key {{certDir}}/privkey.pem;
