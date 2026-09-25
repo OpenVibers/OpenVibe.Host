@@ -33,6 +33,14 @@ The production instance is never touched.
 | 2026-09-24 05:41 | tools | `/var/backups/openvibe/tools/20260924-054102/` (`ovhost drill tools`) | `pragma integrity_check` (tools-docs-analytics) = ok; `pragma integrity_check` (tools-docs-jobs) = ok; drill instance `/api/ready` 200 after 1s; `/release.json` identical to production (JSON without volatile keys where declared); tool_jobs 0 = 0 | passed |
 | 2026-09-24 05:54 | live | `/var/backups/openvibe/live/20260924-055447/` (`ovhost drill live`) | `pragma integrity_check` (live) = ok; drill instance `/api/ready` 200 after 1s; `/api/themes`, `/api/emotes/global`, `/api/streams`, `/api/streams/recently-online?limit=20`, `/api/streams/channel/japaneseoldguy/live` identical to production (JSON without volatile keys where declared); users 353 = 353; channels 123 = 123; managed_streams 103 = 103; streams 2477 = 2477; follows 62 = 62; chat_messages 70875 = 70875; first drill in the release layout | passed |
 
+## R2 eviction drills (Media's hot cache)
+
+`scripts/r2-eviction-drill.js` in OpenVibe.Media evicts one VOD's R2 hot-cache copy and proves that the canonical B2 copy serves it, then puts the R2 copy back (docs/object-model.md#r2-eviction-drill there). It refuses unless the B2 and R2 copies match in size and first MiB, and unless the VOD is unheld and not recording.
+
+| Date (UTC) | VOD | Steps | Result |
+|---|---|---|---|
+| 2026-09-25 18:55 | 2178 (3.5 MB, `--pick --max-mb 200`, real `GET /v/2178?raw=1`) | before: served from R2 · evict: R2 copy removed, row → b2 · from B2: served from the canonical copy with the same first MiB · re-warm: R2 copy restored from B2 (HEAD verified), row → r2 · after: served from R2 again; `media_locations` b2 and r2 present. Artifact `/opt/openvibe.media/data/drills/r2-eviction-2178-2026-09-25T18-55-13-212Z.json` | passed |
+
 ## How a drill was run (community)
 
 1. `sudo ovhost backup community`
