@@ -368,6 +368,32 @@ runTests([
         assert.ok(!host.files.has(rec.dir));
     }),
 
+    test('acceptance: the restored instance alone answers each declared GET with its status and JSON keys (WS-S task 2)', async () => {
+        const accept = [{ path: '/api/ready', keys: ['status'] }, { path: '/api/v1/pulse?limit=5', keys: ['items', 'generated_at'] }];
+        let host = await drillScenario({ drill: { acceptance: accept } });
+        let r = await host.cli('drill', 'community');
+        assert.strictEqual(r.code, 0, r.out);
+        let rec = lastLog(host);
+        assert.deepStrictEqual(rec.acceptance, [{ path: '/api/ready', ok: true }, { path: '/api/v1/pulse?limit=5', ok: true }]);
+        assert.match(rec.markdown, /acceptance `\/api\/ready`, `\/api\/v1\/pulse\?limit=5`/);
+
+        host = await drillScenario({ drill: { acceptance: [{ path: '/api/v1/pulse?limit=5', keys: ['items', 'cursor'] }, { path: '/api/ready', status: 204 }] } });
+        r = await host.cli('drill', 'community');
+        assert.strictEqual(r.code, 2, r.out);
+        rec = lastLog(host);
+        assert.strictEqual(rec.failure.stage, 'acceptance');
+        assert.deepStrictEqual(rec.acceptance.map((a) => [a.ok, a.detail || null]), [[false, 'missing cursor'], [false, 'status 200, expected 204']]);
+        assert.match(rec.markdown, /acceptance failed: /);
+        assert.ok(!host.files.has(rec.dir), 'still cleaned up');
+    }),
+
+    test('acceptance entries are validated in the inventory', async () => {
+        const host = await drillScenario({ drill: { acceptance: [{ path: 'no-slash' }] }, backup: false });
+        const r = await host.cli('drill', 'community');
+        assert.notStrictEqual(r.code, 0);
+        assert.match(r.out, /acceptance\[0\]\.path must be a path/);
+    }),
+
     test('compare: a status mismatch or a failing production answer is never a match', () => {
         const e = { path: '/x', ignore: [] };
         assert.strictEqual(compareBodies(e, { status: 500, body: 'e' }, { status: 500, body: 'e' }).match, false);
