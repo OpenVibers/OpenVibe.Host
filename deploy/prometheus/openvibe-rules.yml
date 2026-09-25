@@ -30,3 +30,17 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: "Less than 8% of memory available for 10 minutes"
+      # Nightly backups (ovhost backup --all, openvibe-backup.timer; metrics from lib/commands/backup.js
+      # through node_exporter's textfile collector; roadmap WS-S task 3).
+      - alert: OpenVibeBackupFailed
+        expr: openvibe_backup_last_run_ok == 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "The last ovhost backup --all run failed ({{ with query \"openvibe_backup_services{status='failed'}\" }}{{ . | first | value }}{{ end }} service(s) failed, or the off-site copy)"
+      - alert: OpenVibeBackupMissed
+        expr: time() - openvibe_backup_last_success_timestamp_seconds > 30 * 3600 or absent(openvibe_backup_last_run_timestamp_seconds)
+        for: 30m
+        labels: { severity: page }
+        annotations:
+          summary: "No successful nightly backup for more than 30 hours (or no backup metrics at all)"

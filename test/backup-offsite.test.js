@@ -238,6 +238,35 @@ runTests([
         assert.deepStrictEqual(dirsOf(host, '/var/backups/openvibe/ai'), ['20260922-120000', '20260924-120000'], 'the failed one went once a newer good one existed');
     }),
 
+    test('backup --all leaves its outcome for Prometheus (textfile collector): last run, ok, last success, per-status counts', async () => {
+        const host = backupHost();
+        const PROM = '/var/lib/prometheus/node-exporter/openvibe_backup.prom';
+        await host.cli('backup', '--all');
+        assert.strictEqual(host.files.has(PROM), false, 'no collector directory: nothing written');
+        host.put('/var/lib/prometheus/node-exporter/.keep', '');
+        host.advance(DAY);
+        await host.cli('backup', '--all');
+        const metric = (name) => { const m = new RegExp(`^${name} (\\S+)$`, 'm').exec(host.read(PROM)); return m ? Number(m[1]) : null; };
+        const goodAt = metric('openvibe_backup_last_run_timestamp_seconds');
+        assert.ok(goodAt > 0);
+        assert.strictEqual(metric('openvibe_backup_last_run_ok'), 1);
+        assert.strictEqual(metric('openvibe_backup_last_success_timestamp_seconds'), goodAt);
+        assert.strictEqual(metric('openvibe_backup_services\\{status="failed"\\}'), 0);
+        host.advance(DAY);
+        host.onSqliteBackup = (db) => (db.endsWith('extra.db') ? new Error('disk I/O error') : null);
+        await host.cli('backup', '--all');
+        host.onSqliteBackup = null;
+        assert.strictEqual(metric('openvibe_backup_last_run_ok'), 0);
+        assert.strictEqual(metric('openvibe_backup_services\\{status="failed"\\}'), 1);
+        assert.ok(metric('openvibe_backup_last_run_timestamp_seconds') > goodAt);
+        assert.strictEqual(metric('openvibe_backup_last_success_timestamp_seconds'), goodAt, 'the last success is still the good run');
+        host.files.delete(PROM);
+        const r = await host.cli('backup-metrics');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.strictEqual(metric('openvibe_backup_last_run_ok'), 0, 'rewritten from the latest recorded run');
+        assert.strictEqual(metric('openvibe_backup_last_success_timestamp_seconds'), goodAt);
+    }),
+
     // ── failure isolation and the summary ─────────────────────────────────────
     test('one failing service never stops the others; exit code 2; JSON summary per run', async () => {
         const host = backupHost();
