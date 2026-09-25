@@ -11,7 +11,8 @@ Type=oneshot
 # ovhost itself, not loaded into this unit's environment.
 User=root
 ExecStart=/usr/local/bin/ovhost backup --all --offsite
-Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# /usr/sbin for runuser (lib/executor.js also resolves it by absolute path).
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
 UMask=0077
 Nice=10

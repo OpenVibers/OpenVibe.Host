@@ -108,4 +108,12 @@ runTests([
         const r = await exec.run(process.execPath, ['-e', 'process.stdout.write(process.argv[1])', 'hi'], { as: await exec.userName() });
         assert.deepStrictEqual([r.code, r.stdout], [0, 'hi']);
     }),
+
+    test('the backup unit can find runuser: /usr/sbin is on its PATH (the 2026-09-24/25 nightly backups failed without it)', async () => {
+        const unit = require('fs').readFileSync(path.join(__dirname, '..', 'deploy', 'systemd', 'openvibe-backup.service'), 'utf8');
+        const m = /^Environment=PATH=(.+)$/m.exec(unit);
+        assert.ok(m, 'the unit sets PATH');
+        assert.ok(m[1].split(':').includes('/usr/sbin'), m[1]);
+        assert.match(require('fs').readFileSync(path.join(__dirname, '..', 'lib', 'executor.js'), 'utf8'), /\/usr\/sbin\/runuser/, 'and the executor resolves runuser by absolute path');
+    }),
 ]);
