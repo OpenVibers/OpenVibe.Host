@@ -1,0 +1,26 @@
+[Unit]
+Description=OpenVibe Tools job proof against production (roadmap WS-L task 4): an SDK-only service client runs a converter job, reattaches its progress stream, reads the result from Media and finds its tools.job.* events
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/developer-path.md#tools-job-proof
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The probe principal's client credentials (OV_OAUTH_CLIENT_ID/SECRET, written by Network's service-principal
+# setup) come from a root-only env file that systemd reads before dropping to the unprivileged user; the
+# script never prints them, and --result holds step names only.
+User=ubuntu
+EnvironmentFile=/etc/openvibe/probe.env
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# For the metrics script (ExecStopPost): which result file, which metric names.
+Environment=DEVPATH_RESULT=/var/lib/openvibe-devpath/tools-job.json METRIC_PREFIX=openvibe_toolsjob
+WorkingDirectory=/usr/local/lib/openvibe-examples
+StateDirectory=openvibe-devpath
+StateDirectoryMode=0755
+ExecStart=/usr/bin/env node scripts/tools-job-proof.js --result /var/lib/openvibe-devpath/tools-job.json
+# As root: the outcome for Prometheus (node_exporter's textfile collector), whatever the exit code.
+ExecStopPost=+/usr/local/lib/openvibe-host/scripts/devpath-metrics.sh
+TimeoutStartSec=15min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full

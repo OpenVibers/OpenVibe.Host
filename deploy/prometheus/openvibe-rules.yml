@@ -64,3 +64,16 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: "No passing developer-path run for more than 30 hours"
+      # The Tools job proof against production, every six hours (openvibe-toolsjob.timer; WS-L task 4).
+      - alert: OpenVibeToolsJobProofFailed
+        expr: openvibe_toolsjob_last_run_ok == 0
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: "The Tools job proof failed ({{ with query \"openvibe_toolsjob_steps_failed\" }}{{ . | first | value }}{{ end }} step(s)): a converter job, its Media result or its tools.job.* events did not come through"
+      - alert: OpenVibeToolsJobProofMissed
+        expr: time() - openvibe_toolsjob_last_success_timestamp_seconds > 13 * 3600
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: "No passing Tools job proof for more than 13 hours (two runs)"

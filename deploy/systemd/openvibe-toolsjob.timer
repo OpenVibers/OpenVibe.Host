@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the OpenVibe Tools job proof against production every six hours (WS-L task 4)
+
+[Timer]
+OnCalendar=*-*-* 00/6:25:00 UTC
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
