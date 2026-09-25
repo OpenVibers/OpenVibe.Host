@@ -44,3 +44,10 @@ groups:
         labels: { severity: page }
         annotations:
           summary: "No successful nightly backup for more than 30 hours (or no backup metrics at all)"
+      # Production drift (OpenVibe.Network registry/deploy-drift.js, hourly against GitHub; WS-S task 7).
+      - alert: OpenVibeDeployDrift
+        expr: openvibe_deploy_drift_seconds > 24 * 3600
+        for: 1h
+        labels: { severity: ticket }
+        annotations:
+          summary: "{{ $labels.service }}: main has had commits production does not run for more than a day"
