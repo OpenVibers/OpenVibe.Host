@@ -32,6 +32,7 @@ The production instance is never touched.
 | 2026-09-24 05:40 | games | `/var/backups/openvibe/games/20260924-054054/` (`ovhost drill games`) | `pragma integrity_check` (world) = ok; drill instance `/api/ready` 200 after 2s; `/map.json`, `/api/v1/mods` identical to production; players 28 = 28; mods 0 = 0 | passed |
 | 2026-09-24 05:41 | tools | `/var/backups/openvibe/tools/20260924-054102/` (`ovhost drill tools`) | `pragma integrity_check` (tools-docs-analytics) = ok; `pragma integrity_check` (tools-docs-jobs) = ok; drill instance `/api/ready` 200 after 1s; `/release.json` identical to production (JSON without volatile keys where declared); tool_jobs 0 = 0 | passed |
 | 2026-09-24 05:54 | live | `/var/backups/openvibe/live/20260924-055447/` (`ovhost drill live`) | `pragma integrity_check` (live) = ok; drill instance `/api/ready` 200 after 1s; `/api/themes`, `/api/emotes/global`, `/api/streams`, `/api/streams/recently-online?limit=20`, `/api/streams/channel/japaneseoldguy/live` identical to production (JSON without volatile keys where declared); users 353 = 353; channels 123 = 123; managed_streams 103 = 103; streams 2477 = 2477; follows 62 = 62; chat_messages 70875 = 70875; first drill in the release layout | passed |
+| 2026-09-25 23:00 | sources | `/var/backups/openvibe/sources/20260925-212055/` (`ovhost drill sources`) | `pragma integrity_check` (sources) = ok; drill instance `/api/ready` 200 after 1s; sources 6 = 6; items 0 = 0; item_revisions 0 = 0; fetch_runs 0 = 0; acceptance `/api/ready`, `/api/health` | passed |
 
 ## R2 eviction drills (Media's hot cache)
 
@@ -291,4 +292,3 @@ Until 23 Sep 2026 live and media were unsupported too:
   clip jobs ran ffmpeg against production files through absolute paths stored in the database.
 
 `LIVE_DRILL` and `MEDIA_DRILL` (above) replace those reasons.
-| 2026-09-25 23:00 | sources | `/var/backups/openvibe/sources/20260925-212055/` (`ovhost drill sources`) | `pragma integrity_check` (sources) = ok; drill instance `/api/ready` 200 after 1s; sources 6 = 6; items 0 = 0; item_revisions 0 = 0; fetch_runs 0 = 0; acceptance `/api/ready`, `/api/health` | passed |
