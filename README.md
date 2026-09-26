@@ -114,7 +114,7 @@ Every command accepts `--json` and `--inventory <file>`. `drill` exits `0` passe
 
 `deploy --browser-check` checks the service's public site in headless Chrome after a deploy that went through. It runs [`scripts/browser-check.js`](docs/browser-check.md) for that one site. The check is report only: it never changes the exit code or the release record. It needs Chrome where ovhost runs.
 
-**Release notifications** (WS-P task 9). A deploy or rollback that went live is announced to OpenVibe.Events as `host.deploy.activated`. The event is public, has subject `release` and carries the service, its `/release.json` release id, commit and origin. Open tabs (openvibe-shared release-watch 1.17.0 and later) then check `/release.json` within seconds instead of at their next poll. `ovhost announce <service>` does the same for services deployed by their own scripts (Live, Tools and Sites call it at the end of theirs). It is best effort: a few seconds at most, never a failed deploy, one event per release. The credentials are Host's service principal from `/etc/openvibe/host.env`. [docs/release-notifications.md](docs/release-notifications.md) covers the payload, the credentials, provisioning and an end-to-end check.
+**Release notifications** (WS-P task 9). A deploy or rollback that went live is announced to OpenVibe.Events as `host.release.published`. The event is public, has subject `release` and carries the service, its `/release.json` release id, commit and origin. Open tabs (openvibe-shared release-watch 1.17.0 and later) then check `/release.json` within seconds instead of at their next poll. `ovhost announce <service>` does the same for services deployed by their own scripts (Live, Tools and Sites call it at the end of theirs). It is best effort: a few seconds at most, never a failed deploy, one event per release. The credentials are Host's service principal from `/etc/openvibe/host.env`. [docs/release-notifications.md](docs/release-notifications.md) covers the payload, the credentials, provisioning and an end-to-end check.
 
 ### Browser check (all public sites)
 
@@ -275,7 +275,7 @@ Through the `openvibe-sdk` v0.5.0 transactional outbox (`event_outbox`), inside 
 
 The relay publishes with Host's service token (`events.event.publish`, audience `openvibe.events`) only when `EVENTS_URL` and `OV_OAUTH_CLIENT_SECRET` are set. Otherwise rows wait and `/api/ready` says the relay is off.
 
-These tenant events have subject `deploy` and visibility `internal`. The operator plane (`ovhost`) publishes `host.deploy.activated` with subject `release` and visibility `public` for network service releases ([docs/release-notifications.md](docs/release-notifications.md)). Both shapes are the one contract `host.deploy.activated@1` (openvibe-contracts 0.58.0).
+These tenant events have subject `deploy` and visibility `internal`; `host.deploy.activated@1` in openvibe-contracts 0.58.0 is the tenant shape only. Releases of network services are a separate event type: the operator plane (`ovhost`) publishes `host.release.published` with subject `release` and visibility `public` ([docs/release-notifications.md](docs/release-notifications.md)).
 
 ### Dashboard
 

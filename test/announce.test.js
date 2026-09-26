@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Release notifications (lib/announce.js, WS-P task 9): `ovhost announce` and the announcement after a
- * deploy publish host.deploy.activated to OpenVibe.Events with Host's service token, never fail or
+ * deploy publish host.release.published to OpenVibe.Events with Host's service token, never fail or
  * change a deploy, send one release once, and never show the client secret or the token.
  */
 const assert = require('assert');
@@ -13,12 +13,12 @@ const TOKEN = 'tok_SERVICE_TOKEN_MUST_NEVER_APPEAR_91c2';
 const ENV_FILE = '/etc/openvibe/host.env';
 const HOST_SECRET = `${SECRET}-host`;
 
-/** The installed openvibe-contracts has host.deploy.activated@1 from 0.58.0; older pins skip this check. */
+/** The installed openvibe-contracts has host.release.published@1 from 0.58.0; older pins skip this check. */
 function payloadSchemaCheck(payload) {
     let known = true;
-    try { contracts.schema('host.deploy.activated'); } catch { known = false; }
+    try { contracts.schema('host.release.published'); } catch { known = false; }
     if (!known) return;
-    const v = contracts.validate('host.deploy.activated@1', payload);
+    const v = contracts.validate('host.release.published@1', payload);
     assert.ok(v.valid, JSON.stringify(v.errors));
 }
 
@@ -77,7 +77,7 @@ runTests([
             [['POST', 'application/x-www-form-urlencoded', 'client_credentials', 'host', 'openvibe.events', 'events.event.publish']]);
         assert.strictEqual(host.published.length, 1);
         const e = host.published[0];
-        assert.strictEqual(e.event_type, 'host.deploy.activated');
+        assert.strictEqual(e.event_type, 'host.release.published');
         assert.strictEqual(e.version, 1);
         assert.strictEqual(e.source, 'host');
         assert.deepStrictEqual(e.actor, { type: 'service', id: 'host' });
@@ -227,7 +227,7 @@ runTests([
         assert.strictEqual(r.code, 0, r.out);
         assert.match(r.out, /dry run: tools [0-9a-f]{12} \(from git HEAD\); nothing sent/);
         const env = JSON.parse(r.out.slice(r.out.indexOf('{')));
-        assert.strictEqual(env.event_type, 'host.deploy.activated');
+        assert.strictEqual(env.event_type, 'host.release.published');
         assert.ok(contracts.validate('events.event-envelope@1', env).valid);
         assert.ok(!host.reads.includes(ENV_FILE), 'the credentials were not read');
         const j = await host.cli('announce', 'tools', '--dry-run', '--json');

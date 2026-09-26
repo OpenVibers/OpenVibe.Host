@@ -24,7 +24,8 @@
     "host.deploy.created",
     "host.deploy.activated",
     "host.deploy.failed",
-    "host.domain.verified"
+    "host.domain.verified",
+    "host.release.published"
   ],
   "stages": {
     "A": "alpha: ovhost CLI installed on the production host 2026-09-23 (/usr/local/bin/ovhost, inventory /etc/openvibe/host.json); status/validate/backup/drill used there (19 restore drills passed 2026-09-23, docs/restore-drills.md); no service deploy has moved to it yet; the D41 deploy-and-rollback proof (scripts/d41-proof.sh) is written and tested, not run",

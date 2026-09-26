@@ -1,7 +1,7 @@
-# Release notifications (`host.deploy.activated`)
+# Release notifications (`host.release.published`)
 
 Roadmap WS-P task 9, ADR-016 (active client updates). When a network service's release goes live,
-Host publishes one `host.deploy.activated` event to OpenVibe.Events. The event has visibility
+Host publishes one `host.release.published` event to OpenVibe.Events. The event has visibility
 **public** and subject `{ type: "release", id: "<service>:<release>" }`. Open tabs run
 `openvibe-shared/release-watch.js` (1.17.0 and later) and listen for it on the Events realtime stream.
 When the event names their service, they check `/release.json` within about 20 seconds instead of
@@ -17,9 +17,9 @@ at their next 10-minute poll. The event carries identifiers only.
 | `components` | Optional: the manifest's `{ name: { kind, version } }` |
 | `rollback` | Optional: `true` after `ovhost rollback` |
 
-The payload contract is `host.deploy.activated@1` in openvibe-contracts 0.58.0. The same event type also
-covers Stage B tenant activations, which use subject `deploy`, a different payload and visibility
-`internal`, so browsers never receive them.
+The payload contract is `host.release.published@1` in openvibe-contracts 0.58.0. It is a separate event
+type from `host.deploy.activated`, which Stage B emits for a tenant site's activation (subject `deploy`,
+visibility `internal`, its own payload). Browsers never receive that one.
 
 ## Who announces
 
@@ -136,7 +136,7 @@ moves the pin, or set `data-events="off"` on the `ov-release` meta tag.
 
 1. Subscribe the way a signed-out browser does, from any machine:
    ```
-   curl -N 'https://events.openvibe.network/realtime/stream?topics=host.deploy.activated'
+   curl -N 'https://events.openvibe.network/realtime/stream?topics=host.release.published'
    ```
    The stream starts with `retry: 3000` and `: connected anonymous`, then sends a `: hb` comment every
    25 s.
@@ -148,7 +148,7 @@ moves the pin, or set `data-events="off"` on the `ov-release` meta tag.
    [ovhost] release notification sent: live 1a2b3c4d (from /release.json) as evt_01… (seq 12345)
    ```
 3. The subscriber prints
-   `id: 12345` / `data: {"seq":12345,"event":{"event_type":"host.deploy.activated",…,"visibility":"public","subject":{"type":"release","id":"live:1a2b3c4d"},"payload":{"service":"live",…}}}`.
+   `id: 12345` / `data: {"seq":12345,"event":{"event_type":"host.release.published",…,"visibility":"public","subject":{"type":"release","id":"live:1a2b3c4d"},"payload":{"service":"live",…}}}`.
 4. In a browser on a site that pins openvibe-shared 1.17.0 or later, run `OVRelease.state().realtime` in
    the console. It shows `{ state: 'open', service: 'live', events: 1, … }` after the announcement.
    An `--force` of the release the tab already runs is ignored (`ignored: 1`).
