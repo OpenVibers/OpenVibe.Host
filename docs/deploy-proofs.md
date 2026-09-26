@@ -7,7 +7,7 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 | Web drain (Live) | passed 2026-09-26 | [below](#web-drain-live-2026-09-26) |
 | Recorder / media-worker checkpoint (Media) | open | needs a live ingest during a Media deploy |
 | Chat resume (Chat) | passed 2026-09-26, with a limit | [below](#chat-resume-chat-2026-09-26) |
-| Game shard (Games) | passed 2026-09-26, one client edge open | [below](#game-shard-games-2026-09-26) |
+| Game shard (Games) | passed 2026-09-26 | [below](#game-shard-games-2026-09-26) |
 | Ingest worker (OpenRe) | after the cutover (WS-H) | |
 
 ## Web drain (Live), 2026-09-26
@@ -36,6 +36,6 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 
 **Result.**
 - **Graceful stop: passed.** SIGTERM at 12:36:03.0 UTC; Games logged `world saved on shutdown` and `stopped` 34 ms later (1 player session, 0 editors, 0 terminated, 0 requests cut). The client got close code **1012 `server_restart`** at 12:36:03.5. `/api/ready` answered again at 12:36:05.1.
-- **Reconnect during the restart: a probe artefact, one edge left.** The probe's reconnect, started at about 12:36:04 while Games was down, neither opened nor failed for over 40 s, while a fresh connection afterwards opened in 165 ms (Games attaches its upgrade handler before it listens, so the wait is most likely Cloudflare holding the upgrade while the origin restarts). The real game client does not do this: on close it polls `/healthz` every 2 s and reloads the page once Games answers (`apps/client/src/main.ts`), so players come back with a clean resync. The edge left: a page that opens its first connection during the 2 s gap waits without a timeout on "connecting…" (`net/connection.ts` has none); a connect timeout there would close it.
+- **Reconnect during the restart: a probe artefact, one edge left.** The probe's reconnect, started at about 12:36:04 while Games was down, neither opened nor failed for over 40 s, while a fresh connection afterwards opened in 165 ms (Games attaches its upgrade handler before it listens, so the wait is most likely Cloudflare holding the upgrade while the origin restarts). The real game client does not do this: on close it polls `/healthz` every 2 s and reloads the page once Games answers (`apps/client/src/main.ts`), so players come back with a clean resync. The edge left: a page that opens its first connection during the 2 s gap waited without a timeout on "connecting…". Fixed the same day (Games `b207e78`): the first connect gives up after 10 s, and a refused or timed-out connect waits for `/healthz` and reloads like a dropped one.
 - World state survived the restart (saved on shutdown, loaded on boot); a state-level check (a placed tile before and after) needs a game-protocol client.
 
