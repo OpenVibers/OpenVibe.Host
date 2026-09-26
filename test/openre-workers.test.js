@@ -112,7 +112,7 @@ runTests([
         const host = await openreHost();
         const r = await host.cli('status', 'openre');
         assert.strictEqual(r.code, 0, r.out);
-        assert.match(r.out, new RegExp(`openre\\s+${RELEASE}\\s+ready\\s+openre-api=active openre-session-coordinator=active workers\\[openre-rtmp-ingest@${RELEASE}=active openre-rtmp-ingest@${OLD}=inactive openre-restream-worker@${RELEASE}=active\\] \\[unmanaged\\]`));
+        assert.match(r.out, new RegExp(`openre\\s+${RELEASE}\\s+ready\\s+openre-api=active openre-session-coordinator=active workers\\[openre-rtmp-ingest@${RELEASE}=active openre-rtmp-ingest@${OLD}=inactive openre-restream-worker@${RELEASE}=active\\] ingest sessions=0 \\[unmanaged\\]`));
         const json = JSON.parse((await host.cli('status', 'openre', '--json')).out);
         assert.deepStrictEqual(json[0].workers.map((w) => [w.unit, w.active]), [[`openre-rtmp-ingest@${RELEASE}.service`, 'active'], [`openre-rtmp-ingest@${OLD}.service`, 'inactive'], [`openre-restream-worker@${RELEASE}.service`, 'active']]);
         const lists = host.calls.filter((c) => c.cmd === 'systemctl' && c.args[0] === 'list-units');
