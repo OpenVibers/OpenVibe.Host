@@ -10,7 +10,7 @@
  *   <site>.<sitesDomain> / verified custom domain  → tenant static files (http/tenant.js) and
  *                                                    nothing else: no API, no auth, no cookies
  *   the dashboard host (BASE_URL) and loopback     → dashboard pages, /api/v1, /auth, /api/ready,
- *                                                    /release.json, /metrics (loopback only)
+ *                                                    /release.json, /limits.json, /metrics (loopback only)
  *   anything else                                  → 404 unknown host
  */
 const path = require('path');
@@ -131,6 +131,8 @@ function createApp(opts = {}) {
     app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'openvibe-host', version: VERSION }));
     // GET /release.json (ADR-016) and POST /release-metrics: open tabs' update reports into /metrics.
     release.mount(app, { registry: registry });
+    // GET /limits.json: the developer limits enforced here, from config (WS-N task 7; Codes renders them).
+    require('./limits').mountLimits(app, config);
     const readiness = createHostReadiness({ store, blobs, auth, outbox, release: release.release, minFreeBytes: () => config.uploads.minFreeBytes });
     app.get('/api/ready', readiness.handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));

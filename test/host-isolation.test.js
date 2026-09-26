@@ -74,11 +74,20 @@ const { boot, check, done } = require('./stageb/boot');
     });
 
     await check('tenant hosts never reach the API, auth, metrics or readiness', async () => {
-        for (const p of ['/api/v1/projects', '/api/ready', '/metrics', '/auth/login', '/release.json', '/css/host.css']) {
+        for (const p of ['/api/v1/projects', '/api/ready', '/metrics', '/auth/login', '/release.json', '/limits.json', '/css/host.css']) {
             const r = await t.get('alpha.openvibe.host', p, { as: bob });
             assert.strictEqual(r.status, 404, p);
             assert.ok(!/projects|"ready"|http_requests_total|oauth/.test(r.text), `${p} leaked: ${r.text.slice(0, 100)}`);
         }
+    });
+
+    await check('the dashboard answers /limits.json from config (WS-N task 7)', async () => {
+        const r = await t.api('GET', '/limits.json');
+        assert.strictEqual(r.status, 200);
+        const by = Object.fromEntries(r.json().limits.map((l) => [l.id, l]));
+        assert.deepStrictEqual([by.sites.production, by.sites.sandbox], [t.config.quotas.production.sites, t.config.quotas.sandbox.sites]);
+        assert.strictEqual(by.projects_per_owner.production, t.config.projects.maxPerOwner);
+        assert.strictEqual(by.storage_bytes.exceeded, '413 quota.storage');
     });
 
     await check('identical bytes are stored per project: deleting one project\'s copy never breaks the other', async () => {

@@ -195,7 +195,7 @@ A Node service (`server/`, Express 4, better-sqlite3, port **4910**, service id 
 
 | Host | What answers |
 |---|---|
-| `openvibe.host` (the `BASE_URL` host) and loopback | the dashboard, `/api/v1`, `/auth/*`, `/api/ready`, `/api/health`, `/release.json`, `/metrics` (direct loopback only), legal pages |
+| `openvibe.host` (the `BASE_URL` host) and loopback | the dashboard, `/api/v1`, `/auth/*`, `/api/ready`, `/api/health`, `/release.json`, `/limits.json` (the default project limits, from config), `/metrics` (direct loopback only), legal pages |
 | `<site>.openvibe.host` (one label) | that site's active deploy, and nothing else: no API, no sign-in, no cookies |
 | a custom domain with `status = verified` | the site it was verified for |
 | anything else (including pending, failed or lapsed custom domains, and `a.b.openvibe.host`) | `404 Unknown host`, with no tenant content |
