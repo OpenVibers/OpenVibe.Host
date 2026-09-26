@@ -12,7 +12,8 @@ const { runBrowserCheck } = require('../lib/browser-check-hook');
 
 const PROM = '/var/lib/prometheus/node-exporter/openvibe_browsercheck.prom';
 const pass = [{ base: 'https://openvibe.live', ok: true, summary: { checks: { status: { fail: 0 }, console: { fail: 0 } } } }];
-const fail = [{ base: 'https://openvibe.live', ok: false, summary: { checks: { status: { fail: 0 }, console: { fail: 2 }, overflow: { fail: 1 } } } }];
+const fail = [{ base: 'https://openvibe.live', ok: false, summary: { checks: { status: { fail: 0 }, console: { fail: 2 }, overflow: { fail: 1 } } },
+    routes: [{ path: '/', ok: false, axe: { violations: [{ id: 'color-contrast', impact: 'serious', targets: ['.live-card .badge', '.b', '.c', '.d'] }] }, errors: [], widths: [{ width: 390, errors: [{ text: 'WebSocket closed' }], overflow: true, offenders: ['.wide'] }] }, { path: '/ok', ok: true }] }];
 
 function site({ release = 'abc1234def56' } = {}) {
     const host = scenario();
@@ -55,6 +56,12 @@ runTests([
         assert.deepStrictEqual([r.sites[0].ok, r.sites[0].failing], [false, [{ check: 'console', fail: 2 }, { check: 'overflow', fail: 1 }]]);
         assert.match(host.files.get(PROM).content, /^openvibe_browser_check_ok\{service="live"\} 0$/m);
         assert.match(host.files.get(PROM).content, /^openvibe_browser_check_failing_checks\{service="live"\} 2$/m);
+        const st = JSON.parse(host.files.get('/var/lib/openvibe-host/browser-watch/live.json').content);
+        assert.deepStrictEqual(st.details, [
+            { route: '/', check: 'axe', rule: 'color-contrast', impact: 'serious', targets: ['.live-card .badge', '.b', '.c'] },
+            { route: '/', check: 'errors', width: 390, message: 'WebSocket closed' },
+            { route: '/', check: 'overflow', width: 390, offenders: ['.wide'] },
+        ], 'what failed is kept for the operator');
         host = site();
         host.answers.push({ code: 1, reports: fail }, { code: 0, reports: pass });
         r = await watch(host.ctx(), { retryDelayMs: 0, check: host.check });
