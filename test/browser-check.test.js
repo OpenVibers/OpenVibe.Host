@@ -173,9 +173,9 @@ runTests([
         try {
             const script = path.join(dir, 'check.js');
             fs.writeFileSync(script, "const a = process.argv.slice(2); if (a[1] === 'down') { console.error('Error: Chrome not found (set CHROME_BIN)'); process.exit(2); } console.log(`ok   site ${a.join(' ')}`); process.exit(a[1] === 'bad' ? 1 : 0);");
-            assert.deepStrictEqual(await runBrowserCheck('wiki', { script, args: ['--no-nav'] }), { code: 0, lines: ['ok   site --sites wiki --no-nav'], error: null });
+            assert.deepStrictEqual(await runBrowserCheck('wiki', { script, args: ['--no-nav'] }), { code: 0, lines: ['ok   site --sites wiki --no-nav'], stdout: 'ok   site --sites wiki --no-nav\n', error: null });
             assert.strictEqual((await runBrowserCheck('bad', { script })).code, 1);
-            assert.deepStrictEqual(await runBrowserCheck('down', { script }), { code: 2, lines: [], error: 'Error: Chrome not found (set CHROME_BIN)' });
+            assert.deepStrictEqual(await runBrowserCheck('down', { script }), { code: 2, lines: [], stdout: '', error: 'Error: Chrome not found (set CHROME_BIN)' });
             fs.writeFileSync(script, 'setTimeout(() => {}, 60000);');
             const slow = await runBrowserCheck('x', { script, timeoutMs: 300 });
             assert.strictEqual(slow.code, 2);

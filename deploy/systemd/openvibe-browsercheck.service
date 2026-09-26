@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenVibe release UX check: each watched site in a real browser after every release (WS-H task 11)
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/operator-alerts.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root reads the state and writes the textfile metrics; Chrome runs as the unprivileged ovcheck account
+# (runuser), never as root. --sites names the watched services (inventory origin or manifest publicOrigin).
+User=root
+ExecStart=/usr/local/bin/ovhost browser-watch --sites live
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
+Nice=10
+TimeoutStartSec=30min
+PrivateTmp=true
+ProtectSystem=full

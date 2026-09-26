@@ -1,0 +1,10 @@
+[Unit]
+Description=Check each watched OpenVibe site in a browser after a release (every five minutes; WS-H task 11)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

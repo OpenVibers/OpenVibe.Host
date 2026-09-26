@@ -79,6 +79,20 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: "No passing Tools job proof for more than 13 hours (two runs)"
+      # The release UX check (ovhost browser-watch, openvibe-browsercheck.timer; WS-H task 11): each watched site
+      # in a real browser after every release and daily, as ovcheck; a failure is confirmed by a second run.
+      - alert: OpenVibeBrowserCheckFailed
+        expr: openvibe_browser_check_ok == 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $labels.service }}: the browser check of release {{ $labels.release }} failed ({{ with printf \"openvibe_browser_check_failing_checks{service='%s'}\" $labels.service | query }}{{ . | first | value }}{{ end }} failing check(s)); run: sudo ovhost browser-watch --sites {{ $labels.service }} --force"
+      - alert: OpenVibeBrowserCheckMissed
+        expr: time() - openvibe_browser_check_last_run_timestamp_seconds > 26 * 3600
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: "{{ $labels.service }}: no browser check has run to the end for more than 26 hours"
       # The relay itself (openvibe-alerts.timer; WS-H task 11). It cannot page while it is broken; it pages
       # this as soon as a run gets through again, so an outage of the pager is never silent afterwards.
       - alert: OpenVibeAlertRelayFailing

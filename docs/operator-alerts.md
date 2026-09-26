@@ -31,11 +31,32 @@ Prometheus (127.0.0.1:9090)  ──GET /api/v1/alerts──▶  ovhost alerts re
 - **Relay failures**: `openvibe_alert_relay_last_run_ok` and `openvibe_alert_relay_last_success_timestamp_seconds`
   record them, and `OpenVibeAlertRelayFailing` pages as soon as delivery works again.
 
+## The release UX check
+
+`ovhost browser-watch --sites live` (openvibe-browsercheck.timer, every 5 minutes) reads each watched site's
+`/release.json`. For a release it has not checked yet, or once a day, it runs
+[scripts/browser-check.js](../scripts/browser-check.js) in Chrome as the unprivileged `ovcheck` account (never
+root): routes × widths, console errors, overflow, duplicate scripts, no-JS content, axe, navigation growth.
+
+- **Confirmation**: a failure is re-run once before it counts.
+- **Outcome**: the result is kept in `/var/lib/openvibe-host/browser-watch/<site>.json` and written to
+  `openvibe_browsercheck.prom`.
+- **Paging**: `OpenVibeBrowserCheckFailed` (severity page) pages through the relay, naming the release and the
+  number of failing checks.
+- **Runs that never finish**: a run that broke (exit 2, e.g. Chrome missing) records nothing and is retried
+  on the next tick, and `OpenVibeBrowserCheckMissed` notices a site with no finished check for 26 hours.
+- **Cost**: a check of openvibe.live takes about a minute on the host.
+- **Setup**: Chrome comes from Google's apt repository (`google-chrome-stable`, updated with the system), and
+  `ovcheck` is a system account whose home is `/var/lib/ovcheck`.
+
+To watch more sites, add them to `--sites` in the unit.
+
 ## Commands
 
 ```bash
 sudo ovhost alerts relay --dry-run   # what is firing, nothing sent
 sudo ovhost alerts relay             # deliver now
+sudo ovhost browser-watch --sites live --force   # check the current release now
 systemctl list-timers openvibe-alerts.timer
 ```
 
@@ -43,7 +64,13 @@ systemctl list-timers openvibe-alerts.timer
 
 ```bash
 sudo cp /usr/local/lib/openvibe-host/deploy/systemd/openvibe-alerts.{service,timer} /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-alerts.timer
+sudo cp /usr/local/lib/openvibe-host/deploy/systemd/openvibe-browsercheck.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-alerts.timer openvibe-browsercheck.timer
+# Chrome and the check account (once):
+curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+sudo apt-get update && sudo apt-get install -y google-chrome-stable
+sudo useradd --system --home-dir /var/lib/ovcheck --create-home --shell /usr/sbin/nologin ovcheck
 sudo cp /usr/local/lib/openvibe-host/deploy/prometheus/openvibe-rules.yml /etc/prometheus/rules/openvibe.yml
 sudo promtool check rules /etc/prometheus/rules/openvibe.yml && sudo systemctl reload prometheus
 ```
