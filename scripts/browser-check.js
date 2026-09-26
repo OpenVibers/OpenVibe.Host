@@ -26,6 +26,12 @@
  * the report is written here. The remote needs Node 22+ and Chrome (CHROME_BIN or /usr/bin/google-chrome),
  * and reaches the sites itself. OVHOST_SSH overrides the ssh command (e.g. "ssh -p 2222").
  *
+ * --network-down (ADR-024, WS-E task 1): instead, each site's home page loads with openvibe.network unreachable
+ * (the harness's checkUnreachable: every request to it fails), at 390 and 1280 px, and must still paint: status
+ * 200, settled, 120+ characters of text (a blank page has none; a short sign-in page has ~190), a --accent
+ * theme token and a background. openvibe.network itself is left out. Needs
+ * a harness with checkUnreachable (Shared 1.21.0 and later, or --harness a checkout).
+ *
  * The harness comes from --harness, else openvibe-shared/browser-harness (Shared 1.16.0 and later), else a
  * sibling OpenVibe.Shared checkout. Needs Chrome and Node 22. (--routes-json '<json>' is --routes-file inline;
  * --remote uses it to carry the routes file.)
@@ -227,8 +233,39 @@ function runRemote(host, harnessFile) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────────────────────────
 
+/** --network-down: every site's home with openvibe.network unreachable (ADR-024). */
+async function networkDown(h) {
+    if (typeof h.checkUnreachable !== 'function') throw new Error('this harness has no checkUnreachable (Shared 1.21.0+); pass --harness <OpenVibe.Shared/browser-harness.js>');
+    const netHost = new URL(NETWORK).hostname;
+    const sites = (await resolveSites(await registry())).filter((s) => new URL(s.origin).hostname !== netHost);
+    const block = [`*://${netHost}/*`];
+    const results = [];
+    const browser = await h.launch({});
+    try {
+        for (const site of sites) {
+            let r;
+            try { r = await h.checkUnreachable(`${site.origin}/`, { block, widths: [390, 1280], browser, minText: 120 }); } catch (e) { r = { url: `${site.origin}/`, ok: false, error: e.message, widths: [] }; }
+            r.id = site.id;
+            results.push(r);
+            errLog(`${r.ok ? 'ok  ' : 'FAIL'} ${site.origin}${r.error ? ` (${r.error})` : ''}`);
+        }
+    } finally { await browser.close(); }
+    const at = new Date().toISOString();
+    const rows = results.map((r) => {
+        const w = (px) => r.widths.find((x) => x.width === px) || {};
+        const cell = (x) => (x.ok ? '✓' : x.status == null ? '—' : `**✗** ${x.status}${x.settled === false ? ' unsettled' : ''}${x.accent ? '' : ' no theme'}${(x.textChars || 0) < 120 ? ` ${x.textChars || 0} chars` : ''}`);
+        return `| ${new URL(r.url).hostname} | ${cell(w(390))} | ${cell(w(1280))} | ${(w(1280).accent || '—')} | ${r.error ? r.error.slice(0, 80) : ''} |`;
+    });
+    const md = `### Network-down run ${at} (ADR-024)\n\n${results.filter((r) => r.ok).length}/${results.length} sites paint with ${netHost} unreachable (every request to it fails). Checked at 390 and 1280 px: status 200, settled, at least 120 characters of text, a \`--accent\` theme token and a background.\n\n| Site | 390 | 1280 | --accent | Note |\n|---|---|---|---|---|\n${rows.join('\n')}\n`;
+    if (has('json')) process.stdout.write(`${JSON.stringify(results, null, 2)}\n`);
+    else console.log(md);
+    if (arg('out')) fs.appendFileSync(arg('out'), `\n${md}`);
+    process.exit(results.every((r) => r.ok) ? 0 : 1);
+}
+
 (async () => {
     const { h, file: harnessFile } = loadHarness();
+    if (has('network-down')) return networkDown(h);
     const widths = arg('widths') ? arg('widths').split(',').map(Number) : h.WIDTHS;
     const meta = { at: new Date().toISOString(), runner: 'local', widths, axe: has('no-axe') ? 'off' : `axe-core ${h.AXE.version}, WCAG 2.1 A/AA`, nav: has('no-nav') ? 'off' : `${Number(arg('laps') || 5)} laps` };
     let reports, code;
