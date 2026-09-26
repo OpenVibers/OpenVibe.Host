@@ -95,7 +95,7 @@ ovhost validate <service> [--manifest <file>]  env NAMES, unit files, port, vhos
 ovhost env-names <service>              names declared in the checkout's .env.example
 ovhost show [<service>...]              the inventory as ovhost reads it (repo, owner, units, socket, workers, probes)
 ovhost plan <service> [--to <sha>] [--no-fetch]
-ovhost deploy <service> [--wait-idle] [--force] [--restart] [--to <sha>] [--install-units] [--ready-timeout <s>]
+ovhost deploy <service> [--wait-idle] [--force] [--restart] [--to <sha>] [--install-units] [--ready-timeout <s>] [--browser-check]
 ovhost rollback <service> [--to <sha>] [--wait-idle] [--force]
 ovhost releases <service> [--limit <n>]
 ovhost certs [--warn-days <n>]
@@ -110,6 +110,12 @@ ovhost drill <service> [--backup <dir>] [--keep]     restore drill (root only)
 ```
 
 Every command accepts `--json` and `--inventory <file>`. `drill` exits `0` passed, `1` refused (not root, port in use, no backup, unsupported), `2` failed. Other exit codes: `0` ok · `1` usage/precondition (including a held lock) · `2` validation failed, nothing restarted · `3` not ready, rolled back and serving · `4` rollback failed, **manual intervention** · `5` protected sessions active (refused, or `--wait-idle` gave up).
+
+`deploy --browser-check` checks the service's public site in headless Chrome after a deploy that went through. It runs [`scripts/browser-check.js`](docs/browser-check.md) for that one site. The check is report only: it never changes the exit code or the release record. It needs Chrome where ovhost runs.
+
+### Browser check (all public sites)
+
+`node scripts/browser-check.js [--sites a,b] [--out docs/browser-check.md] [--remote <ssh-host>]` loads every public product in headless Chrome with `openvibe-shared/browser-harness`. Per route it checks status, console errors, overflow at 390/768/1280 px, duplicate scripts, no-JS text, canonical, JSON-LD against the visible text and axe-core. Per site it checks repeated-navigation growth and idle work. See [docs/browser-check.md](docs/browser-check.md) for what it checks, the remote runner and the recorded runs.
 
 ### Deploy sequence
 
