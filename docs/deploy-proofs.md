@@ -6,7 +6,7 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 |---|---|---|
 | Web drain (Live) | passed 2026-09-26 | [below](#web-drain-live-2026-09-26) |
 | Recorder / media-worker checkpoint (Media) | open | needs a live ingest during a Media deploy |
-| Chat resume (Chat) | open | a subscribed client across a Chat deploy |
+| Chat resume (Chat) | passed 2026-09-26, with a limit | [below](#chat-resume-chat-2026-09-26) |
 | Game shard (Games) | open | a connected client across a Games deploy |
 | Ingest worker (OpenRe) | after the cutover (WS-H) | |
 
@@ -21,3 +21,12 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 **Second run (10:05, release `ab8abff`): passed.** 57 requests from 10:05:07 to 10:05:24, all 200. The 20 requests in the deploy window (10:05:17 to 10:05:23) had a median of 0.134 s. The slowest, 0.955 s at 10:05:21 (`/api/ready`), was a connection that waited in the socket's queue while the new process started. The deploy reported ready after 2 s.
 
 **What this does not cover.** Established connections (WebSockets, WHIP sessions, RTMP ingests, WebRTC transports) live in the process and end with it; clients reconnect. That is the Chat-resume and recorder proofs above.
+
+## Chat resume (Chat), 2026-09-26
+
+**Method.** A probe on a workstation opened `wss://openvibe.live/ws/chat` (served by OpenVibe.Chat) as an anonymous client and joined global chat, remembering the newest message id it had seen (80891 at the start). On any close it reconnected after 1 s (doubling to 8 s), sent the join again, and read `GET /api/chat/global/history?after_id=<last seen>` to pick up what it missed, counting new and duplicate ids. Chat was restarted under it with `systemctl restart openvibe-chat`, the restart every Chat deploy makes (`ovhost deploy chat` had no new commit to deploy, so it did not restart).
+
+**Result.** The socket closed at 11:29:35.5 UTC (code 1005). The client was connected again at 11:29:36.6, 1.1 s later, with a 103 ms connect. The cursor read returned 0 missed and 0 duplicate messages. `/api/ready` answered at 11:29:56, about 21 s after the restart: the WebSocket accepts connections before readiness completes, which an anonymous join does not notice.
+
+**Limit.** Global chat was quiet, so no message was written during the 1.1 s gap. The catch-up path was exercised but not with a message in the gap. A proof with traffic needs a test account posting in a test room, or the integration environment (WS-Q task 2), since writing probe lines into public chat is not acceptable.
+
