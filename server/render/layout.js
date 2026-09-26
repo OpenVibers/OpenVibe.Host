@@ -42,6 +42,7 @@ function renderPage(o) {
         sessionUrl: '/auth/me',
         loginUrl: `/auth/login?next=${loginNext}`,
         logoutUrl: '/auth/logout?next={path}',   // Sign out in the shared navbar ends this site's session too
+        notificationsRealtime: true,   // the bell hears new notifications over OpenVibe.Events (Shared 1.22.0)
     };
     const who = signedIn ? esc((viewer.user && (viewer.user.display_name || viewer.user.username)) || viewer.subject) : '';
     // This site's own account links live in the shared navbar's account menu (the page's account
