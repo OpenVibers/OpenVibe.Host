@@ -1,0 +1,10 @@
+[Unit]
+Description=Deliver the firing OpenVibe alerts to the operator every two minutes (WS-H task 11)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenVibe operator alerts: the alerts firing in Prometheus, delivered to the operator through OpenVibe.Network
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/operator-alerts.md
+After=network-online.target prometheus.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root: /etc/openvibe/host.env (Host's service principal) is root-only and read by ovhost itself, and the
+# textfile collector's directory is root's.
+User=root
+ExecStart=/usr/local/bin/ovhost alerts relay
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
+UMask=0077
+TimeoutStartSec=90s
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=full

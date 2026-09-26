@@ -1,6 +1,8 @@
 # OpenVibe alert rules (roadmap Track O), loaded by the host's Prometheus (rule_files in the config
-# scripts/prometheus-config.js renders). Firing alerts are read at GET 127.0.0.1:9090/api/v1/alerts;
-# no notifier is configured yet.
+# scripts/prometheus-config.js renders). Firing alerts are read at GET 127.0.0.1:9090/api/v1/alerts by
+# `ovhost alerts relay` (openvibe-alerts.timer, every 2 minutes; lib/alerts.js), which sends them to
+# OpenVibe.Network: severity page pages the operator at once (critical), ticket at high priority, and each
+# alert is reminded daily while open and announced when it resolves (docs/operator-alerts.md).
 groups:
   - name: openvibe
     rules:
@@ -77,3 +79,11 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: "No passing Tools job proof for more than 13 hours (two runs)"
+      # The relay itself (openvibe-alerts.timer; WS-H task 11). It cannot page while it is broken; it pages
+      # this as soon as a run gets through again, so an outage of the pager is never silent afterwards.
+      - alert: OpenVibeAlertRelayFailing
+        expr: time() - openvibe_alert_relay_last_success_timestamp_seconds > 15 * 60
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Operator alerts were not delivered for more than 15 minutes (ovhost alerts relay: Prometheus, the token or Network)"
