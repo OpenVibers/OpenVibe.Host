@@ -55,6 +55,8 @@ const ORIGIN = 'https://openvibe.host';
         assert.match(r.text, /Sign in with OpenVibe/);
         assert.match(r.text, /Stage C\) are not available/);
         assert.match(r.headers['content-security-policy'], /frame-ancestors 'none'/);
+        // Release notifications: release-watch's EventSource on the Events realtime stream (openvibe-shared 1.17).
+        assert.match(r.headers['content-security-policy'], /connect-src 'self' https:\/\/openvibe\.network https:\/\/events\.openvibe\.network;/);
         assert.strictEqual(r.headers['x-frame-options'], 'DENY');
         assert.strictEqual(r.headers['cache-control'], 'private, no-store');
         // The public front page is indexable, with a canonical URL; nothing behind sign-in is.

@@ -51,7 +51,8 @@ const DASHBOARD_CSP = {
     'style-src': ["'self'", "'unsafe-inline'", 'https://openvibe.network', 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
     'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com'],
     'img-src': ["'self'", 'data:', 'https:'],
-    'connect-src': ["'self'", 'https://openvibe.network'],
+    // events.openvibe.network: release notifications (release-watch's EventSource, openvibe-shared 1.17).
+    'connect-src': ["'self'", 'https://openvibe.network', 'https://events.openvibe.network'],
     'frame-src': ["'self'", 'https://openvibe.network'],
     'frame-ancestors': ["'none'"],
     'object-src': ["'none'"],
