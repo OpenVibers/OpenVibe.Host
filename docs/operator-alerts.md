@@ -33,7 +33,8 @@ Prometheus (127.0.0.1:9090)  ──GET /api/v1/alerts──▶  ovhost alerts re
 
 ## The release UX check
 
-`ovhost browser-watch --sites live` (openvibe-browsercheck.timer, every 5 minutes) reads each watched site's
+`ovhost browser-watch --sites live,network,…` (openvibe-browsercheck.timer, every 5 minutes; the unit lists all 23
+public sites) reads each watched site's
 `/release.json`. For a release it has not checked yet, or once a day, it runs
 [scripts/browser-check.js](../scripts/browser-check.js) in Chrome as the unprivileged `ovcheck` account (never
 root): routes × widths, console errors, overflow, duplicate scripts, no-JS content, axe, navigation growth.
@@ -49,7 +50,12 @@ root): routes × widths, console errors, overflow, duplicate scripts, no-JS cont
 - **Setup**: Chrome comes from Google's apt repository (`google-chrome-stable`, updated with the system), and
   `ovcheck` is a system account whose home is `/var/lib/ovcheck`.
 
-To watch more sites, add them to `--sites` in the unit.
+The first run over all 23 sites (2026-09-26) took 10 minutes and found two real regressions:
+
+- Search's palette ignored the network theme, so the shipped widget failed color-contrast (fixed in Search `78fe5cd`);
+- Billing's `/policy` had a table scroller keyboard users could not reach (fixed in Billing `db8109c`).
+
+The release is its own series (`openvibe_browser_check_release_info`), so a failure keeps one alert across releases.
 
 ## Commands
 

@@ -86,7 +86,7 @@ groups:
         for: 1m
         labels: { severity: page }
         annotations:
-          summary: "{{ $labels.service }}: the browser check of release {{ $labels.release }} failed ({{ with printf \"openvibe_browser_check_failing_checks{service='%s'}\" $labels.service | query }}{{ . | first | value }}{{ end }} failing check(s)); run: sudo ovhost browser-watch --sites {{ $labels.service }} --force"
+          summary: "{{ $labels.service }}: the browser check of release {{ with printf \"openvibe_browser_check_release_info{service='%s'}\" $labels.service | query }}{{ (. | first).Labels.release }}{{ end }} failed ({{ with printf \"openvibe_browser_check_failing_checks{service='%s'}\" $labels.service | query }}{{ . | first | value }}{{ end }} failing check(s)); run: sudo ovhost browser-watch --sites {{ $labels.service }} --force"
       - alert: OpenVibeBrowserCheckMissed
         expr: time() - openvibe_browser_check_last_run_timestamp_seconds > 26 * 3600
         for: 30m

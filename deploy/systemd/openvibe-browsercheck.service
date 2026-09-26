@@ -9,7 +9,7 @@ Type=oneshot
 # Root reads the state and writes the textfile metrics; Chrome runs as the unprivileged ovcheck account
 # (runuser), never as root. --sites names the watched services (inventory origin or manifest publicOrigin).
 User=root
-ExecStart=/usr/local/bin/ovhost browser-watch --sites live
+ExecStart=/usr/local/bin/ovhost browser-watch --sites live,network,tools,media,community,chat,games,blog,wiki,codes,host,ai,billing,search,sources,news,reviews,deals,coupons,trade,tips,vip,openre
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
 Nice=10

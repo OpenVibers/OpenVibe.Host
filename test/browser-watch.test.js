@@ -33,7 +33,8 @@ runTests([
         let r = await watch(host.ctx(), { check: host.check, now });
         assert.deepStrictEqual(r.sites.map((x) => [x.site, x.release, x.action, x.ok]), [['live', 'abc1234def56', 'checked', true]]);
         assert.deepStrictEqual(host.runs.map((x) => [x.s, x.opts.asUser, x.opts.home, x.opts.args]), [['live', 'ovcheck', '/var/lib/ovcheck', ['--json']]]);
-        assert.match(host.files.get(PROM).content, /^openvibe_browser_check_ok\{service="live",release="abc1234def56"\} 1$/m);
+        assert.match(host.files.get(PROM).content, /^openvibe_browser_check_ok\{service="live"\} 1$/m);
+        assert.match(host.files.get(PROM).content, /^openvibe_browser_check_release_info\{service="live",release="abc1234def56"\} 1$/m);
         assert.match(host.files.get(PROM).content, /^openvibe_browser_check_failing_checks\{service="live"\} 0$/m);
         r = await watch(host.ctx(), { check: host.check, now: now + 60000 });
         assert.strictEqual(r.sites[0].action, 'skipped');
@@ -52,7 +53,7 @@ runTests([
         let r = await watch(host.ctx(), { check: host.check });
         assert.strictEqual(host.runs.length, 2);
         assert.deepStrictEqual([r.sites[0].ok, r.sites[0].failing], [false, [{ check: 'console', fail: 2 }, { check: 'overflow', fail: 1 }]]);
-        assert.match(host.files.get(PROM).content, /^openvibe_browser_check_ok\{service="live",release="abc1234def56"\} 0$/m);
+        assert.match(host.files.get(PROM).content, /^openvibe_browser_check_ok\{service="live"\} 0$/m);
         assert.match(host.files.get(PROM).content, /^openvibe_browser_check_failing_checks\{service="live"\} 2$/m);
         host = site();
         host.answers.push({ code: 1, reports: fail }, { code: 0, reports: pass });
