@@ -18,6 +18,10 @@
     "remote": "origin",
     "branch": "main"
   },
+  "_events": "Release notifications (ovhost deploy/rollback/announce, docs/release-notifications.md): the env file with Host's service principal credentials (OV_OAUTH_CLIENT_ID, OV_OAUTH_CLIENT_SECRET, EVENTS_URL, OV_NETWORK_INTERNAL_URL). A service entry may set \"origin\" (https) to override the manifest's publicOrigin.",
+  "events": {
+    "envFile": "/etc/openvibe/host.env"
+  },
   "services": {
     "network": {
       "repo": "/opt/openvibe.network",

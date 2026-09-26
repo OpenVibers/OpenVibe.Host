@@ -14,7 +14,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
     const calls = [];
     const repos = new Map(); // repoPath -> repo
     const units = new Map(); // unit -> state
-    const http = new Map(); // url -> fn({ headers }) -> { status, body }
+    const http = new Map(); // url -> fn({ headers, method, body }) -> { status, body } (request() also passes method and body)
     const alivePids = new Set();
     const listeners = new Map(); // port -> [{ pid, process }]
     let clock = start;
@@ -352,6 +352,14 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             const h = http.get(url);
             if (!h) return { status: 0, error: 'ECONNREFUSED' };
             const r = h({ headers });
+            return { status: r.status, body: typeof r.body === 'string' ? r.body : JSON.stringify(r.body || {}) };
+        },
+        async request(url, { method = 'GET', headers = {}, body = null } = {}) {
+            calls.push({ cmd: 'curl', args: ['-X', method, url], as: null, privileged: false, cwd: null });
+            const h = http.get(url);
+            if (!h) return { status: 0, error: 'ECONNREFUSED' };
+            const r = h({ method, headers, body });
+            if (r && r.error) return { status: 0, error: r.error };
             return { status: r.status, body: typeof r.body === 'string' ? r.body : JSON.stringify(r.body || {}) };
         },
         async sqlite(db, sql, { as } = {}) {
