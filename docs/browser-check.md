@@ -673,3 +673,209 @@ Known errors, counted and not failed (`--strict-errors` fails them):
     - idle 5s after settle: CPU 0.1% (script 3 ms, style 0 ms, layout 0 ms), 2 request(s), 4.2 KB (`https://openvibe.tools/shared/release-watch.js`, `https://openvibe.tools/release.json`)
 
 </details>
+
+### Run 2026-09-26T08:38:16.818Z (local; Chrome/150.0.7843.0)
+
+23/23 sites pass. Widths 390, 768, 1280; axe axe-core 4.13.0, WCAG 2.1 A/AA; navigation 5 laps. Cells: ✓ all pass, **n✗** routes failing, n! warnings, - not run.
+
+| Site | Routes | Status | Errors | Overflow | Scripts | No-JS | Canonical | JSON-LD | axe | Nav | axe serious/critical (moderate) | Growth lap 2→last | Idle 5 s: CPU · requests · infinite animations |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ai.openvibe.network | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -3 KB · 0 nodes · 0 lst | 0.3% · 3 req · 3 anim |
+| billing.openvibe.network | 1 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | - | ✓ | ✓ | 0/0 (0) | -1 KB · 0 nodes · 0 lst | 0% · 0 req |
+| openvibe.blog | 4 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -2 KB · 0 nodes · 0 lst | 0.2% · 3 req |
+| openvibe.chat | 4 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | - | ✓ | ✓ | 0/0 (0) | 0 KB · 0 nodes · 0 lst | 0.1% · 3 req |
+| openvibe.codes | 7 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | - | ✓ | ✓ | 0/0 (0) | +2 KB · 0 nodes · 0 lst | 0.1% · 3 req |
+| openvibe.community | 6 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -3 KB · 0 nodes · -2 lst | 0.1% · 3 req |
+| openvibe.coupons | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | +1 KB · 0 nodes · 0 lst | 0.2% · 3 req · 3 anim |
+| openvibe.deals | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | 0 KB · 0 nodes · 0 lst | 0.2% · 3 req · 3 anim |
+| openvibe.games | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -25 KB · 0 nodes · 0 lst | 13% · 3 req · 1 anim |
+| openvibe.host | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -1 KB · 0 nodes · 0 lst | 0.2% · 3 req · 3 anim |
+| openvibe.live | 8 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | +36 KB · +10 nodes · +1 lst | 21.6% · 16 req · 33 anim |
+| openvibe.media | 3 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | - | ✓ | ✓ | 0/0 (0) | +2 KB · 0 nodes · 0 lst | 0.1% · 3 req |
+| openvibe.network | 4 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -4 KB · 0 nodes · -1 lst | 29.6% · 3 req · 19 anim |
+| openvibe.news | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -2 KB · 0 nodes · 0 lst | 0.3% · 3 req · 3 anim |
+| openre.stream | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -7 KB · 0 nodes · 0 lst | 0.2% · 3 req · 3 anim |
+| openvibe.reviews | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | 0 KB · 0 nodes · 0 lst | 0.2% · 3 req · 3 anim |
+| search.openvibe.network | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | - | ✓ | ✓ | 0/0 (0) | 0 KB · 0 nodes · 0 lst | 0.2% · 3 req |
+| sources.openvibe.network | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | - | - | ✓ | ✓ | 0/0 (0) | 0 KB · 0 nodes · 0 lst | 0% · 0 req |
+| openvibe.tips | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -1 KB · 0 nodes · 0 lst | 0.2% · 3 req · 3 anim |
+| openvibe.tools | 8 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | 0 KB · 0 nodes · -2 lst | 0.4% · 3 req |
+| openvibe.trade | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -1 KB · 0 nodes · 0 lst | 0.3% · 3 req · 3 anim |
+| openvibe.vip | 2 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | -2 KB · 0 nodes · 0 lst | 0.2% · 3 req · 3 anim |
+| openvibe.wiki | 4 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | 0/0 (0) | 0 KB · 0 nodes · 0 lst | 0.1% · 3 req |
+
+Known errors, counted and not failed (`--strict-errors` fails them):
+- Cloudflare Web Analytics beacon, injected at the edge, blocked by the site CSP: 17× on openvibe.media, sources.openvibe.network
+
+<details><summary>Details: routes and findings per site</summary>
+
+**https://ai.openvibe.network**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap -3 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.3% (script 3 ms, style 0 ms, layout 0 ms), 3 request(s), 0.2 KB (`https://openvibe.network/shared/release-watch.js`, `https://ai.openvibe.network/release.json`, `https://events.openvibe.network/realtime/stream`); 3 running animation(s), 3 infinite: `drift on i`
+
+**https://billing.openvibe.network**: pass (1 route(s), Chrome/150.0.7843.0)
+- `/policy`: pass
+- navigation `/policy` ↔ `/policy` ×5 (load): pass; growth lap 2→5: heap -1 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0% (script 0 ms, style 0 ms, layout 0 ms), 0 request(s), 0 KB
+
+**https://openvibe.blog**: pass (4 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/updates`: pass
+- `/@openvibe/patch-notes-staged-tables-move-to-chat-one-table-at-a-time`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/updates` ×5 (link): pass; growth lap 2→5: heap -2 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts -1, sockets 0
+    - idle 5s after settle: CPU 0.2% (script 4 ms, style 0 ms, layout 0 ms), 3 request(s), 5.9 KB (`https://openvibe.blog/shared/release-watch.js`, `https://openvibe.blog/release.json`, `https://events.openvibe.network/realtime/stream`)
+
+**https://openvibe.chat**: pass (4 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/rooms`: pass
+- `/updates`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/rooms` ×5 (link): pass; growth lap 2→5: heap 0 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts -1, sockets 0
+    - idle 5s after settle: CPU 0.1% (script 2 ms, style 0 ms, layout 0 ms), 3 request(s), 6 KB (`https://openvibe.chat/shared/release-watch.js`, `https://openvibe.chat/release.json`, `https://events.openvibe.network/realtime/stream`)
+
+**https://openvibe.codes**: pass (7 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/tools/webhooks`: pass
+- `/manifests/validate`: pass
+- `/docs`: pass
+- `/oauth`: pass
+- `/policy`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/tools/webhooks` ×5 (link): pass; growth lap 2→5: heap +2 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts -1, sockets 0
+    - idle 5s after settle: CPU 0.1% (script 2 ms, style 0 ms, layout 0 ms), 3 request(s), 5.9 KB (`https://openvibe.codes/shared/release-watch.js`, `https://openvibe.codes/release.json`, `https://events.openvibe.network/realtime/stream`)
+
+**https://openvibe.community**: pass (6 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/pastes`: pass
+- `/pulse`: pass
+- `/p/rogue-frame-5292`: pass
+- `/s`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/pastes` ×5 (link): pass; growth lap 2→5: heap -3 KB, nodes 0, listeners -2, documents 0, intervals 0, timeouts -1, sockets 0
+    - idle 5s after settle: CPU 0.1% (script 3 ms, style 0 ms, layout 0 ms), 3 request(s), 6 KB (`https://openvibe.community/shared/release-watch.js`, `https://openvibe.community/release.json`, `https://events.openvibe.network/realtime/stream`)
+
+**https://openvibe.coupons**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap +1 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.2% (script 2 ms, style 0 ms, layout 0 ms), 3 request(s), 0.2 KB (`https://openvibe.network/shared/release-watch.js`, `https://openvibe.coupons/release.json`, `https://events.openvibe.network/realtime/stream`); 3 running animation(s), 3 infinite: `drift on i`
+
+**https://openvibe.deals**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap 0 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.2% (script 2 ms, style 0 ms, layout 0 ms), 3 request(s), 0.2 KB (`https://openvibe.network/shared/release-watch.js`, `https://openvibe.deals/release.json`, `https://events.openvibe.network/realtime/stream`); 3 running animation(s), 3 infinite: `drift on i`
+
+**https://openvibe.games**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap -25 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts -1, sockets 0
+    - idle 5s after settle: CPU 13% (script 3 ms, style 36 ms, layout 0 ms), 3 request(s), 0.3 KB (`https://openvibe.network/shared/release-watch.js`, `https://openvibe.games/release.json`, `https://events.openvibe.network/realtime/stream`); 1 running animation(s), 1 infinite: `pulse on a.play-cta`
+
+**https://openvibe.host**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap -1 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.2% (script 2 ms, style 0 ms, layout 0 ms), 3 request(s), 0.2 KB (`https://openvibe.network/shared/release-watch.js`, `https://openvibe.host/release.json`, `https://events.openvibe.network/realtime/stream`); 3 running animation(s), 3 infinite: `drift on i`
+
+**https://openvibe.live**: pass (8 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/content`: pass
+- `/chat`: pass
+- `/search?q=minecraft`: pass
+- `/vod/5627`: pass
+- `/clip/369`: pass
+- `/@JapaneseOldGuy`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/content` ×5 (in-page+link): pass; growth lap 2→5: heap +36 KB, nodes +10, listeners +1, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 21.6% (script 41 ms, style 180 ms, layout 17 ms), 16 request(s), 158.9 KB; 36 running animation(s), 33 infinite: `opacity on div.hero-float-inner`, `transform on div.hero-float-inner`, `heroBgKenBurns on div.hero-bg-layer`, `heroFloat3d on a.hero-float`
+
+**https://openvibe.media**: pass (3 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/updates`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/updates` ×5 (link): pass; growth lap 2→5: heap +2 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts -1, sockets 0
+    - idle 5s after settle: CPU 0.1% (script 2 ms, style 0 ms, layout 0 ms), 3 request(s), 6.3 KB (`https://openvibe.media/shared/release-watch.js`, `https://openvibe.media/release.json`, `https://events.openvibe.network/realtime/stream`)
+
+**https://openvibe.network**: pass (4 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/updates`: pass
+- `/login`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/updates` ×5 (link): pass; growth lap 2→5: heap -4 KB, nodes 0, listeners -1, documents 0, intervals -1, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 29.6% (script 2 ms, style 115 ms, layout 149 ms), 3 request(s), 6.3 KB (`https://openvibe.network/shared/release-watch.js`, `https://openvibe.network/release.json`, `https://events.openvibe.network/realtime/stream`); 19 running animation(s), 19 infinite: `orb-drift on div.orb`, `ovmFloat on svg`, `ovmGlow on circle`, `ovmComet on circle`
+
+**https://openvibe.news**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap -2 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.3% (script 4 ms, style 0 ms, layout 0 ms), 3 request(s), 0.2 KB (`https://openvibe.network/shared/release-watch.js`, `https://openvibe.news/release.json`, `https://events.openvibe.network/realtime/stream`); 3 running animation(s), 3 infinite: `drift on i`
+
+**https://openre.stream**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap -7 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.2% (script 5 ms, style 0 ms, layout 0 ms), 3 request(s), 6.2 KB (`https://openvibe.network/shared/release-watch.js`, `https://openre.stream/release.json`, `https://events.openvibe.network/realtime/stream`); 3 running animation(s), 3 infinite: `drift on i`
+    - error during navigation: javascript: Access to resource at 'https://events.openvibe.network/realtime/stream?topics=host.release.published' from origin 'https://openre.stream' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+    - error during navigation: network: Failed to load resource: net::ERR_FAILED
+
+**https://openvibe.reviews**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap 0 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.2% (script 2 ms, style 0 ms, layout 0 ms), 3 request(s), 0.2 KB (`https://openvibe.network/shared/release-watch.js`, `https://openvibe.reviews/release.json`, `https://events.openvibe.network/realtime/stream`); 3 running animation(s), 3 infinite: `drift on i`
+
+**https://search.openvibe.network**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass (application/problem+json: only the status is checked)
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap 0 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts -2, sockets 0
+    - idle 5s after settle: CPU 0.2% (script 3 ms, style 0 ms, layout 0 ms), 3 request(s), 6.2 KB (`https://search.openvibe.network/shared/release-watch.js`, `https://search.openvibe.network/release.json`, `https://events.openvibe.network/realtime/stream`)
+
+**https://sources.openvibe.network**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass (application/problem+json: only the status is checked)
+- navigation `/` ↔ `/` ×5 (load): pass; growth lap 2→5: heap 0 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0% (script 0 ms, style 0 ms, layout 0 ms), 0 request(s), 0 KB
+
+**https://openvibe.tips**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap -1 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.2% (script 2 ms, style 0 ms, layout 0 ms), 3 request(s), 0.2 KB (`https://openvibe.network/shared/release-watch.js`, `https://openvibe.tips/release.json`, `https://events.openvibe.network/realtime/stream`); 3 running animation(s), 3 infinite: `drift on i`
+
+**https://openvibe.tools**: pass (8 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/developers`: pass
+- `/updates`: pass
+- `/tool/yaml`: pass
+- `/all-tools`: pass
+- `/network-tools`: pass
+- `/developer-tools`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/developers` ×5 (link): pass; growth lap 2→5: heap 0 KB, nodes 0, listeners -2, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.4% (script 8 ms, style 0 ms, layout 0 ms), 3 request(s), 6.3 KB (`https://openvibe.tools/shared/release-watch.js`, `https://openvibe.tools/release.json`, `https://events.openvibe.network/realtime/stream`)
+
+**https://openvibe.trade**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap -1 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.3% (script 7 ms, style 0 ms, layout 0 ms), 3 request(s), 0.2 KB (`https://openvibe.network/shared/release-watch.js`, `https://openvibe.trade/release.json`, `https://events.openvibe.network/realtime/stream`); 3 running animation(s), 3 infinite: `drift on i`
+
+**https://openvibe.vip**: pass (2 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/` ×5 (link): pass; growth lap 2→5: heap -2 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts 0, sockets 0
+    - idle 5s after settle: CPU 0.2% (script 3 ms, style 0 ms, layout 0 ms), 3 request(s), 0.2 KB (`https://openvibe.network/shared/release-watch.js`, `https://openvibe.vip/release.json`, `https://events.openvibe.network/realtime/stream`); 3 running animation(s), 3 infinite: `drift on i`
+
+**https://openvibe.wiki**: pass (4 route(s), Chrome/150.0.7843.0)
+- `/`: pass
+- `/updates`: pass
+- `/s/openvibe`: pass
+- `/__ovcheck-404`: pass
+- navigation `/` ↔ `/updates` ×5 (link): pass; growth lap 2→5: heap 0 KB, nodes 0, listeners 0, documents 0, intervals 0, timeouts -1, sockets 0
+    - idle 5s after settle: CPU 0.1% (script 3 ms, style 0 ms, layout 0 ms), 3 request(s), 6 KB (`https://openvibe.wiki/shared/release-watch.js`, `https://openvibe.wiki/release.json`, `https://events.openvibe.network/realtime/stream`)
+
+</details>
