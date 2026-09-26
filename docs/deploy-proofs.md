@@ -7,7 +7,7 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 | Web drain (Live) | passed 2026-09-26 | [below](#web-drain-live-2026-09-26) |
 | Recorder / media-worker checkpoint (Media) | open | needs a live ingest during a Media deploy |
 | Chat resume (Chat) | passed 2026-09-26, with a limit | [below](#chat-resume-chat-2026-09-26) |
-| Game shard (Games) | partly passed 2026-09-26; a finding open | [below](#game-shard-games-2026-09-26) |
+| Game shard (Games) | passed 2026-09-26, one client edge open | [below](#game-shard-games-2026-09-26) |
 | Ingest worker (OpenRe) | after the cutover (WS-H) | |
 
 ## Web drain (Live), 2026-09-26
@@ -36,6 +36,6 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 
 **Result.**
 - **Graceful stop: passed.** SIGTERM at 12:36:03.0 UTC; Games logged `world saved on shutdown` and `stopped` 34 ms later (1 player session, 0 editors, 0 terminated, 0 requests cut). The client got close code **1012 `server_restart`** at 12:36:03.5. `/api/ready` answered again at 12:36:05.1.
-- **Reconnect during the restart: finding.** The probe's reconnect, started at about 12:36:04 while Games was down, neither opened nor failed for over 40 s. A fresh connection made afterwards opened in 165 ms. A client that reconnects during the gap therefore needs its own connect timeout, or it can hang. Open: check the game client's reconnect (a timeout, then retry with backoff), and why the upgrade request made during the gap was not refused at once (nginx answers 502 when the port is closed; the likely window is the moment the new process listens before its upgrade handler is attached).
+- **Reconnect during the restart: a probe artefact, one edge left.** The probe's reconnect, started at about 12:36:04 while Games was down, neither opened nor failed for over 40 s, while a fresh connection afterwards opened in 165 ms (Games attaches its upgrade handler before it listens, so the wait is most likely Cloudflare holding the upgrade while the origin restarts). The real game client does not do this: on close it polls `/healthz` every 2 s and reloads the page once Games answers (`apps/client/src/main.ts`), so players come back with a clean resync. The edge left: a page that opens its first connection during the 2 s gap waits without a timeout on "connecting…" (`net/connection.ts` has none); a connect timeout there would close it.
 - World state survived the restart (saved on shutdown, loaded on boot); a state-level check (a placed tile before and after) needs a game-protocol client.
 
