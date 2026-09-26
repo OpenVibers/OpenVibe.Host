@@ -15,6 +15,20 @@ function pkgJson(name, deps) {
     return JSON.stringify({ name, version: '1.0.0', dependencies: Object.fromEntries(deps.map((d) => [d, '^1.0.0'])) }, null, 2);
 }
 
+// A complete lifecycle declaration (the manifest block, WS-P task 1), carried inline because the
+// openvibe-contracts this repository pins predates it.
+function lifecycleDoc(overrides = {}) {
+    return {
+        liveness: { endpoint: '/api/health', means: 'the process answers HTTP; nothing else is checked' },
+        shutdown: { signal: 'SIGTERM', deadlineSeconds: 5, drains: ['HTTP server closed', 'database closed'] },
+        startupRecovery: { resumes: [{ kind: 'outbox', what: 'unsent events go to OpenVibe.Events' }] },
+        rollback: { conditions: ['automatic: not ready within ready.timeoutSeconds'], window: 'while ovhost waits for readiness', blockers: { none: 'the schema only adds' } },
+        contracts: { range: '>=0.2.0 <1.0.0' },
+        leases: { none: 'one process owns its database' },
+        ...overrides,
+    };
+}
+
 function inventoryDoc() {
     return {
         host: 'fake-host',
@@ -37,6 +51,7 @@ function inventoryDoc() {
                 databases: [{ name: 'live', path: '/opt/openvibe.live/data/live.db' }],
                 backupOnChange: ['server/db/schema.sql'],
                 nginx: { vhost: 'openvibe.live.conf', variant: 'websocket', wsPaths: ['/ws/'] },
+                lifecycle: lifecycleDoc(),
             },
             media: {
                 repo: '/opt/openvibe.media',
@@ -47,6 +62,7 @@ function inventoryDoc() {
                 ready: { url: 'http://127.0.0.1:4100/healthz', timeoutSeconds: 30 },
                 protected: { kind: 'sqlite-count', db: '/opt/openvibe.media/data/media.db', sql: 'SELECT count(*) AS n FROM vods WHERE is_recording = 1', label: 'recordings in progress' },
                 databases: [{ name: 'media', path: '/opt/openvibe.media/data/media.db' }],
+                lifecycle: lifecycleDoc({ liveness: { endpoint: '/healthz', means: 'the process answers HTTP and reads its database' }, shutdown: { signal: 'SIGTERM', deadlineSeconds: 70, drains: ['recordings stopped', 'HTTP server closed'] } }),
             },
             tools: {
                 repo: '/opt/openvibe.tools',
@@ -54,6 +70,7 @@ function inventoryDoc() {
                 units: ['openvibe-tools.service', 'openvibe-tools-maps.service'],
                 port: 4001,
                 ready: { url: 'http://127.0.0.1:4001/api/health', headers: { Host: 'openvibe.tools' }, timeoutSeconds: 30 },
+                lifecycle: lifecycleDoc(),
             },
             sites: {
                 repo: '/opt/openvibe.sites',
@@ -61,6 +78,7 @@ function inventoryDoc() {
                 install: { command: ['npm', 'ci', '--omit=dev', '--no-audit', '--no-fund'], always: true },
                 build: [['node', 'build.js']],
                 nginx: { repoVhosts: 'deploy/nginx/*.conf', installOnDeploy: true },
+                lifecycle: lifecycleDoc({ liveness: { none: 'static files served by nginx' }, shutdown: { none: 'no process of its own' }, startupRecovery: { none: 'nothing in flight' } }),
             },
             events: {
                 repo: '/opt/openvibe.events',
@@ -70,6 +88,7 @@ function inventoryDoc() {
                 protected: { kind: 'http-json-count', url: 'http://127.0.0.1:4300/api/ready', field: 'realtime_connections', label: 'SSE connections' },
                 drain: { policy: 'report' },
                 nginx: { variant: 'sse', ssePaths: ['/realtime/stream'] },
+                lifecycle: lifecycleDoc({ shutdown: { signal: 'SIGTERM', deadlineSeconds: 10, drains: ['SSE streams stopped', 'deliveries in flight awaited'] } }),
             },
         },
     };
@@ -205,4 +224,4 @@ async function runTests(tests) {
     if (failed) { console.log(`${failed} failed`); process.exit(1); }
 }
 
-module.exports = { scenario, push, test, runTests, SECRET, pkgJson };
+module.exports = { scenario, push, test, runTests, SECRET, pkgJson, lifecycleDoc };

@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('assert');
-const { scenario, test, runTests, SECRET } = require('./helpers');
+const { scenario, test, runTests, SECRET, lifecycleDoc } = require('./helpers');
 const envfile = require('../lib/envfile');
 
 function noSecrets(text) {
@@ -12,7 +12,7 @@ runTests([
     test('a release-layout service is checked by its current release, not as a git checkout, and is never managed', async () => {
         const host = scenario();
         const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
-        raw.services.rel = { repo: '/opt/rel.stream', layout: 'release', units: [] };
+        raw.services.rel = { repo: '/opt/rel.stream', layout: 'release', units: [], lifecycle: lifecycleDoc() };
         host.put('/etc/openvibe/host.json', JSON.stringify(raw), { mode: 0o640 });
         host.put('/opt/rel.stream/releases/655b98a10aaa/package.json', '{}');
         await host.exec.symlink('/opt/rel.stream/releases/655b98a10aaa', '/opt/rel.stream/current');

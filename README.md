@@ -91,7 +91,7 @@ Not demonstrated yet: any of this on the production host. The Wave 21 exit crite
 
 ```
 ovhost status [<service>...]            unit state, sha, readiness, protected sessions
-ovhost validate <service>               env NAMES, unit files, port, vhost + nginx -t, deps
+ovhost validate <service> [--manifest <file>]  env NAMES, unit files, port, vhost + nginx -t, deps, lifecycle
 ovhost env-names <service>              names declared in the checkout's .env.example
 ovhost show [<service>...]              the inventory as ovhost reads it (repo, owner, units, socket, workers, probes)
 ovhost plan <service> [--to <sha>] [--no-fetch]
@@ -158,6 +158,8 @@ The sandbox blocks writes outside the drill directory and addresses beyond loopb
 ### Inventory
 
 `host.example.json` describes every service on the host. It records the checkout, owner/`runAs`, units and socket unit, `unitSources` (repo unit files), env file, `env.required` (names, or `"from-example"`), port, loopback `ready` URL (plus headers, since Tools needs `Host: openvibe.tools`), `packages` (`"apps/*"` for Tools), install command, `build` hooks, `noRestartPaths`, the `protected` probe (`http-json-count`, `sqlite-count`, or `sum` of several: Live streams, Media recordings, Events SSE connections, Chat sockets, Games players online, OpenRe ingest sessions, Tools running jobs), the `drain` policy, `databases`, `backupOnChange`, `nginx`, `layout` (`release` for a `releases/<id>` + `current` service deployed by its own script, which ovhost does not manage) and `workerUnits`. `workerUnits` are units, or templates such as OpenRe's `openre-rtmp-ingest@.service`, that belong to the service but that ovhost **never starts, stops or restarts**: they drain and exit on their own. `status` and `validate` list their instances read-only, `validate` warns when none runs, and the inventory refuses a worker unit, or an instance of one, in `units`. The real file is `/etc/openvibe/host.json` and is **never committed**. When `ovhost` runs as root it refuses an inventory that is not root-owned or that anyone else can write, and it rejects relative paths, non-loopback probe URLs, non-SELECT probe queries and vhost names that contain a path.
+
+**Lifecycle** (roadmap WS-P task 1, `lib/lifecycle.js`). Each service's lifecycle is the `lifecycle` block of its manifest in openvibe-contracts (≥ 0.55.0): liveness, shutdown (signal, `deadlineSeconds`, drains, workers), startupRecovery, rollback, contracts and leases. A service entry may carry its own `lifecycle` block, which replaces the manifest's on this host, and `validate --manifest <file>` reads another manifest file. `ovhost validate` fails when no block is found or a field is missing, naming the service and the field (`live: lifecycle.shutdown.deadlineSeconds is missing`). It also fails when `deadlineSeconds` exceeds a unit's stop timeout (systemd's effective `TimeoutStopUSec`, else `TimeoutStopSec` in the unit source) or the unit's `KillSignal` is another signal, and when the checkout's installed openvibe-contracts is outside `contracts.range`. Worker units that drain longer than their stop timeout are a warning, since ovhost never stops them. This repository still pins openvibe-contracts v0.49.0, which has no lifecycle blocks, so until that pin moves to v0.55.0 or later `validate` reports every service as undeclared.
 
 `games` is listed as `managed: false`. It is a pnpm workspace with a TypeScript build, and those steps are not encoded yet. `status`, `validate`, `snapshot` and `backup` work for it; `deploy` and `rollback` refuse it.
 

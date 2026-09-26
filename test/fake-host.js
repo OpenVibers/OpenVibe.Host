@@ -191,7 +191,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         switch (action) {
         case 'show': {
             if (!u) return { code: 0, stdout: 'LoadState=not-found\nActiveState=inactive\nSubState=dead\nMainPID=0\nFragmentPath=\n', stderr: '' };
-            return { code: 0, stdout: [`LoadState=${u.load}`, `ActiveState=${u.active}`, `SubState=${u.sub}`, `MainPID=${u.active === 'active' ? u.mainPid : 0}`, `FragmentPath=${u.fragmentPath}`, `UnitFileState=enabled`, `DropInPaths=${u.dropIns.join(' ')}`, `PartOf=${u.partOf.join(' ')}`, `NRestarts=${u.restarts}`].join('\n'), stderr: '' };
+            return { code: 0, stdout: [`LoadState=${u.load}`, `ActiveState=${u.active}`, `SubState=${u.sub}`, `MainPID=${u.active === 'active' ? u.mainPid : 0}`, `FragmentPath=${u.fragmentPath}`, `UnitFileState=enabled`, `DropInPaths=${u.dropIns.join(' ')}`, `PartOf=${u.partOf.join(' ')}`, `NRestarts=${u.restarts}`, `TimeoutStopUSec=${u.timeoutStop || '1min 30s'}`, `KillSignal=${u.killSignal || 15}`].join('\n'), stderr: '' };
         }
         case 'restart':
             if (!u) return { code: 5, stdout: '', stderr: `Unit ${unit} not found.` };

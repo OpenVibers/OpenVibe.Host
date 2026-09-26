@@ -6,6 +6,7 @@
   "backupStagingDir": "/var/backups/openvibe.staging",
   "drillDir": "/var/lib/openvibe-drills",
   "_drill": "Restore drills (ovhost drill <service>): each service with a database has a drill block. The drill port is the service port + 10000 on 127.0.0.1. http://127.0.0.1:9 is a closed port, used where an empty value would fall back to a production service on loopback. An empty OV_OAUTH_CLIENT_SECRET stops a service from minting service tokens, so it cannot call other services with its identity. Loopback stays reachable from the drill sandbox (services need Network's public keys), so these overrides are what keep a drill away from production. _notes explain what is left on and why.",
+  "_lifecycle": "Lifecycle (ovhost validate, WS-P task 1): each service's lifecycle comes from its manifest in openvibe-contracts (the service's `manifest` id, default its key), from openvibe-contracts 0.55.0 on. A `lifecycle` block in a service entry replaces the manifest's on this host; none is needed today. validate compares shutdown.deadlineSeconds with each unit's effective TimeoutStopSec and KillSignal, and the checkout's installed openvibe-contracts with contracts.range.",
   "nginx": {
     "sitesAvailable": "/etc/nginx/sites-available",
     "sitesEnabled": "/etc/nginx/sites-enabled",

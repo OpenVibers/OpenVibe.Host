@@ -19,7 +19,7 @@ const http = require('http');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
-const { scenario, test, runTests } = require('./helpers');
+const { scenario, test, runTests, lifecycleDoc } = require('./helpers');
 const { main } = require('../lib/cli');
 
 const SCRIPT = path.join(__dirname, '..', 'scripts', 'd41-proof.sh');
@@ -29,8 +29,8 @@ const UNIT = 'openvibe-sources.service';
 function sourcesHost({ lockfileChange = false } = {}) {
     const host = scenario();
     const doc = JSON.parse(host.read('/etc/openvibe/host.json'));
-    doc.services.sources = { repo: REPO, units: [UNIT], port: 4720, ready: { url: 'http://127.0.0.1:4720/api/ready', timeoutSeconds: 30 }, noRestartPaths: ['docs/', '**/*.md'] };
-    doc.services.chat = { repo: '/opt/openvibe.chat', units: ['openvibe-chat.service'], port: 4400, ready: { url: 'http://127.0.0.1:4400/ready', timeoutSeconds: 30 } };
+    doc.services.sources = { repo: REPO, units: [UNIT], port: 4720, ready: { url: 'http://127.0.0.1:4720/api/ready', timeoutSeconds: 30 }, noRestartPaths: ['docs/', '**/*.md'], lifecycle: lifecycleDoc() };
+    doc.services.chat = { repo: '/opt/openvibe.chat', units: ['openvibe-chat.service'], port: 4400, ready: { url: 'http://127.0.0.1:4400/ready', timeoutSeconds: 30 }, lifecycle: lifecycleDoc() };
     host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
 
     const repo = host.createRepo(REPO, { owner: 'ubuntu' });
