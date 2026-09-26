@@ -57,6 +57,10 @@ The first run over all 23 sites (2026-09-26) took 10 minutes and found two real 
 
 The release is its own series (`openvibe_browser_check_release_info`), so a failure keeps one alert across releases.
 
+- **A settle window:** a release is judged once its process has run 3 minutes (`/release.json` `booted_at`). This stops a restart's reconnecting sockets from paging.
+- **Confirmation:** the confirming second run of a failure waits a minute.
+- **What failed:** the axe rules and targets, console errors, overflow and statuses are in `/var/lib/openvibe-host/browser-watch/<site>.json` under `details`.
+
 ## Commands
 
 ```bash
