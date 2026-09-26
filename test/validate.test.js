@@ -36,6 +36,28 @@ runTests([
         assert.ok(res.findings.some((f) => f.level === 'error' && /owned by nobody/.test(f.message)));
     }),
 
+    test('a git checkout reached through current -> releases/<id> is a deployed release: detached is fine, changes are not', async () => {
+        const host = scenario();
+        const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
+        raw.services.rg = { repo: '/opt/rg/current', units: [], lifecycle: lifecycleDoc() };
+        host.put('/etc/openvibe/host.json', JSON.stringify(raw), { mode: 0o640 });
+        const repo = host.createRepo('/opt/rg/current', { branch: 'HEAD' });
+        repo.head = repo.commit({}, { message: 'release' }); // the fake's status does not follow the current symlink
+        host.files.delete('/opt/rg/current');
+        host.put('/opt/rg/releases/20260926-abc/package.json', '{}', { owner: 'ubuntu' });
+        await host.exec.symlink('/opt/rg/releases/20260926-abc', '/opt/rg/current');
+        let res = JSON.parse((await host.cli('validate', 'rg', '--json')).out);
+        assert.ok(!res.findings.some((f) => f.area === 'checkout' && f.level === 'error'), JSON.stringify(res.findings.filter((f) => f.area === 'checkout')));
+        assert.ok(res.findings.some((f) => f.area === 'checkout' && /release \/opt\/rg\/releases\/20260926-abc \(detached/.test(f.message)));
+        // A detached checkout that is not a release still fails the branch check.
+        raw.services.rg2 = { repo: '/opt/rg2', units: [], lifecycle: lifecycleDoc() };
+        host.put('/etc/openvibe/host.json', JSON.stringify(raw), { mode: 0o640 });
+        const r2 = host.createRepo('/opt/rg2', { branch: 'HEAD' });
+        r2.checkout(r2.commit({ 'package.json': '{}' }));
+        res = JSON.parse((await host.cli('validate', 'rg2', '--json')).out);
+        assert.ok(res.findings.some((f) => f.level === 'error' && /on branch "HEAD", expected "main"/.test(f.message)));
+    }),
+
     test('env validation reports names only — never a value — in text and JSON output', async () => {
         const host = scenario();
         host.put('/etc/openvibe/live.env', `JWT_SECRET=${SECRET}\nBASE_URL=\nPAYPAL_CLIENT_SECRET=""\n`, { mode: 0o644 });
