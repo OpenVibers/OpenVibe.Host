@@ -123,6 +123,15 @@ All commands run on the production host. None of them prints a secret.
    ```
    No dependency changed.
 
+## Before a site pins openvibe-shared 1.17.0
+
+The tab's EventSource is subject to the site's Content-Security-Policy, so `connect-src` must allow
+`https://events.openvibe.network`. As of 2026-09-26, Live and Community allow it. Network, Wiki, Blog, Codes,
+Search, Reviews, VIP, Tips, Host (Stage B dashboard), News, Deals and Coupons do not. Without it, the
+browser refuses the stream and logs one CSP error per page load (the browser check counts it).
+release-watch then stops, with state `blocked`, and keeps polling. Add the origin in the same change that
+moves the pin, or set `data-events="off"` on the `ov-release` meta tag.
+
 ## Verifying end to end
 
 1. Subscribe the way a signed-out browser does, from any machine:
