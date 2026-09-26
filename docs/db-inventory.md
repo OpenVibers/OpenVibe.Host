@@ -6,20 +6,20 @@ Inventory of 2026-09-26: every SQLite file under /opt, /var/lib, /root, /home an
 
 | Class | File | Size | Modified | Recommended action |
 |---|---|---|---|---|
-| legacy | `/opt/backups/hobo.quest-2026-08-16/data/world.db` | 0.1 MB | 2026-08-16 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/backups/legacy-quest-20260817/hobo-quest.db` | 69.1 MB | 2026-08-17 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/backups/pre-openvibe-20260817/hobo-tools-final.db` | 731.0 MB | 2026-08-17 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/backups/pre-openvibe-20260817/hobo-tools.db` | 731.0 MB | 2026-08-17 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/backups/pre-openvibe-20260817/hobostreamer-final.db` | 177.7 MB | 2026-08-17 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/backups/pre-openvibe-20260817/hobostreamer.db` | 177.7 MB | 2026-08-17 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/backups/pre-openvibe-20260817/world-final.db` | 0.1 MB | 2026-08-17 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/hobo.quest-old-20260816/data/world.db` | 0.1 MB | 2026-08-16 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/hobo.quest/data/world.db` | 0.1 MB | 2026-08-17 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/hobo/hobo-quest/data/hobo-quest.db` | 69.1 MB | 2026-08-17 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/hobo/hobo-tools/data/hobo-tools.db` | 731.0 MB | 2026-08-17 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/hobo/hobo-tools/data/hobotools.db` | 0.0 MB | 2026-03-22 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/hobostreamer/data/hobostreamer.db` | 177.7 MB | 2026-08-17 | archive (done: see below), then delete locally with the owner's OK |
-| legacy | `/opt/hobostreamer/hobostreamer.db` | 0.0 MB | 2026-08-11 | archive (done: see below), then delete locally with the owner's OK |
+| legacy | `/opt/backups/hobo.quest-2026-08-16/data/world.db` | 0.1 MB | 2026-08-16 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/backups/legacy-quest-20260817/hobo-quest.db` | 69.1 MB | 2026-08-17 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/backups/pre-openvibe-20260817/hobo-tools-final.db` | 731.0 MB | 2026-08-17 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/backups/pre-openvibe-20260817/hobo-tools.db` | 731.0 MB | 2026-08-17 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/backups/pre-openvibe-20260817/hobostreamer-final.db` | 177.7 MB | 2026-08-17 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/backups/pre-openvibe-20260817/hobostreamer.db` | 177.7 MB | 2026-08-17 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/backups/pre-openvibe-20260817/world-final.db` | 0.1 MB | 2026-08-17 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/hobo.quest-old-20260816/data/world.db` | 0.1 MB | 2026-08-16 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/hobo.quest/data/world.db` | 0.1 MB | 2026-08-17 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/hobo/hobo-quest/data/hobo-quest.db` | 69.1 MB | 2026-08-17 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/hobo/hobo-tools/data/hobo-tools.db` | 731.0 MB | 2026-08-17 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/hobo/hobo-tools/data/hobotools.db` | 0.0 MB | 2026-03-22 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/hobostreamer/data/hobostreamer.db` | 177.7 MB | 2026-08-17 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
+| legacy | `/opt/hobostreamer/hobostreamer.db` | 0.0 MB | 2026-08-11 | archived 2026-09-26 (`20260926-094703`); delete locally with the owner's OK |
 | live-backup | `/opt/openvibe.live/shared/data/backups/live-20260926-072748.db` | 270.9 MB | 2026-09-26 | delete (owner OK) once its migration is a release old; archive first if wanted |
 | live-backup | `/opt/openvibe.live/shared/data/backups/live-pre-643a2e6.db` | 252.5 MB | 2026-09-17 | delete (owner OK) once its migration is a release old; archive first if wanted |
 | live-backup | `/opt/openvibe.live/shared/data/live-before-rs-slots-20260924T0153Z.db` | 266.2 MB | 2026-09-24 | delete (owner OK) once its migration is a release old; archive first if wanted |
@@ -72,5 +72,7 @@ Classes:
 - **stale**: files an older layout left behind (H14 names the Blog one).
 - **system**: Ubuntu's own.
 - **in use**: closed at the moment of the inventory but opened on demand; never archive or delete.
+
+**Archived 2026-09-26:** the 14 legacy files (2.8 GB) as `20260926-094703` (`ovhost archive list`); a restore of `/opt/hobo.quest/data/world.db` came back byte-identical.
 
 Deleting anything here is the owner's call (WS-S task 6). The files a deletion may touch are exactly the rows above.
