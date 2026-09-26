@@ -255,7 +255,7 @@ function runRemote(host, harnessFile) {
                 rep.id = site.id;
                 reports.push(rep);
             }
-        } finally { if (browser) browser.close(); }
+        } finally { if (browser) await browser.close(); }
         code = reports.every((r) => r.ok) ? 0 : 1;
     }
     meta.chrome = (reports.find((r) => r.chrome) || {}).chrome;
