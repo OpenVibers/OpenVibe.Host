@@ -284,6 +284,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
                 return { code: 0, stdout: '', stderr: '' };
             }
             case 'node': return { code: 0, stdout: '', stderr: '' };
+            case 'fuser': return { code: (host.openFiles || new Set()).has(path.resolve(args[args.length - 1])) ? 0 : 1, stdout: '', stderr: '' };
             case 'systemd-run': return systemdRunCmd(args);
             case 'cp': {
                 const src = args[args.length - 2];

@@ -106,6 +106,7 @@ ovhost snapshot <service> [--out <file>]
 ovhost backup <service>
 ovhost backup --all [--offsite] [--no-prune] [--keep-daily <n>] [--keep-weekly <n>]
 ovhost offsite push [--run <run>] | offsite list [<service>] | offsite check
+ovhost archive push <file>... [--note <text>] | archive list | archive restore <stamp> <path> --out <dir>
 ovhost restore-download <service> <run|latest> [--out <dir>] [--from-host <name>]
 ovhost drill <service> [--backup <dir>] [--keep]     restore drill (root only)
 ```
