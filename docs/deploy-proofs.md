@@ -7,7 +7,7 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 | Web drain (Live) | passed 2026-09-26 | [below](#web-drain-live-2026-09-26) |
 | Recorder / media-worker checkpoint (Media) | open | needs a live ingest during a Media deploy |
 | Chat resume (Chat) | passed 2026-09-26, with a limit | [below](#chat-resume-chat-2026-09-26) |
-| Game shard (Games) | open | a connected client across a Games deploy |
+| Game shard (Games) | partly passed 2026-09-26; a finding open | [below](#game-shard-games-2026-09-26) |
 | Ingest worker (OpenRe) | after the cutover (WS-H) | |
 
 ## Web drain (Live), 2026-09-26
@@ -29,4 +29,13 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 **Result.** The socket closed at 11:29:35.5 UTC (code 1005). The client was connected again at 11:29:36.6, 1.1 s later, with a 103 ms connect. The cursor read returned 0 missed and 0 duplicate messages. `/api/ready` answered at 11:29:56, about 21 s after the restart: the WebSocket accepts connections before readiness completes, which an anonymous join does not notice.
 
 **Limit.** Global chat was quiet, so no message was written during the 1.1 s gap. The catch-up path was exercised but not with a message in the gap. A proof with traffic needs a test account posting in a test room, or the integration environment (WS-Q task 2), since writing probe lines into public chat is not acceptable.
+
+## Game shard (Games), 2026-09-26
+
+**Method.** A probe opened `wss://openvibe.games/ws` (through Cloudflare and nginx), then Games was restarted with `systemctl restart openvibe-games`, the restart a Games deploy makes. On a close the probe waited 500 ms and connected again. No player was online (readiness `sessions.online` 0).
+
+**Result.**
+- **Graceful stop: passed.** SIGTERM at 12:36:03.0 UTC; Games logged `world saved on shutdown` and `stopped` 34 ms later (1 player session, 0 editors, 0 terminated, 0 requests cut). The client got close code **1012 `server_restart`** at 12:36:03.5. `/api/ready` answered again at 12:36:05.1.
+- **Reconnect during the restart: finding.** The probe's reconnect, started at about 12:36:04 while Games was down, neither opened nor failed for over 40 s. A fresh connection made afterwards opened in 165 ms. A client that reconnects during the gap therefore needs its own connect timeout, or it can hang. Open: check the game client's reconnect (a timeout, then retry with backoff), and why the upgrade request made during the gap was not refused at once (nginx answers 502 when the port is closed; the likely window is the moment the new process listens before its upgrade handler is attached).
+- World state survived the restart (saved on shutdown, loaded on boot); a state-level check (a placed tile before and after) needs a game-protocol client.
 
