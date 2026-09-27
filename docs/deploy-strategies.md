@@ -143,7 +143,7 @@ overrides them.
 
 Strategy defaults: `static-build` also sets `install: npm ci, always`, `build: [["node", "build.js"]]` and
 `nginx: { repoVhosts: "deploy/nginx/*.conf", installOnDeploy: true }`; `pnpm-build` sets
-`packages: ["apps/*", "packages/*"]`, `install: pnpm install --frozen-lockfile, always` and
+`packages: ["apps/*", "packages/*"]`, `install: pnpm install --frozen-lockfile --config.confirmModulesPurge=false, always` (pnpm's purge prompt has no one to answer it) and
 `build: [["pnpm", "build"]]`; `release-layout` installs with `npm ci --omit=dev`.
 
 A release-layout entry's `repo` is the release root (`/opt/openvibe.live`); an entry that names the link

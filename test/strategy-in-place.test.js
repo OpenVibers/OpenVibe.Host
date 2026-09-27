@@ -233,7 +233,7 @@ runTests([
         assert.strictEqual(r.code, 0, r.out);
         assert.strictEqual(host.repo.head, to);
         const pnpm = host.calls.filter((c) => c.cmd === 'pnpm');
-        assert.deepStrictEqual(pnpm.map((c) => c.args.join(' ')), ['install --frozen-lockfile', 'build']);
+        assert.deepStrictEqual(pnpm.map((c) => c.args.join(' ')), ['install --frozen-lockfile --config.confirmModulesPurge=false', 'build'], 'never waits on pnpm\'s purge prompt');
         assert.ok(pnpm.every((c) => c.as === 'ubuntu' && c.cwd === '/opt/openvibe.games'));
         assert.ok(host.calls.filter((c) => c.cmd === 'git').every((c) => c.as === 'ubuntu'), 'git as the checkout owner, never root');
         const check = host.nodeChecks()[0];
