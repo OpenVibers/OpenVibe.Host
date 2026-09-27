@@ -27,6 +27,8 @@ runTests([
     test('tools: per-app installs skip apps/_shared, preflight runs in each app, every unit restarts, the gateway serves the new sha', async () => {
         const host = toolsHost();
         host.addUnit('openvibe-tools-docs.service', { runningSha: host.repo.head });
+        // A timer's oneshot job the glob also matches (production's openvibe-toolsjob.service): never restarted or waited on.
+        host.addUnit('openvibe-toolsjob.service', { type: 'oneshot', active: 'inactive', sub: 'dead' });
         const to = host.push({ 'apps/img/package.json': JSON.stringify({ name: 'tools-img', version: '1.0.1', dependencies: { express: '^1', 'better-sqlite3': '^1', 'openvibe-contracts': '^1', 'openvibe-sdk': '^1', sharp: '^1' } }), 'apps/_shared/guard/index.js': 'guard2();' }, 'img: sharp');
         const r = await host.cli('deploy', 'tools');
         assert.strictEqual(r.code, 0, r.out);
@@ -44,6 +46,7 @@ runTests([
         // Every unit, including one on the host the inventory does not list (unitsMatch), named loudly.
         assert.deepStrictEqual(host.restarts(), ['openvibe-tools.service', 'openvibe-tools-img.service', 'openvibe-tools-maps.service', 'openvibe-tools-docs.service']);
         assert.match(r.out, /openvibe-tools-docs\.service match openvibe-tools\*\.service but are not in the inventory's units/);
+        assert.ok(!host.restarts().includes('openvibe-toolsjob.service'), 'a oneshot job is not restarted');
         const rec = await lastRecord(host, 'tools');
         assert.strictEqual(rec.result, 'deployed');
         assert.strictEqual(rec.strategy, 'multi-app');
