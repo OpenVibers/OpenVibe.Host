@@ -10,6 +10,8 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 | Game shard (Games) | passed 2026-09-26 | [below](#game-shard-games-2026-09-26) |
 | Ingest worker (OpenRe) | after the cutover (WS-H) | |
 
+The release-lifecycle acceptance suite ([release-acceptance.md](release-acceptance.md)) reads this table. The state of a row and the numbers quoted from its record are gates `6f`, `6g`, `6h` and `7e`: a row that says `passed` must still contain those numbers, and an `open` row stays open there.
+
 ## Web drain (Live), 2026-09-26
 
 **Method.** A probe on a workstation, through Cloudflare and nginx like any visitor, requested three URLs in turn every 100 ms: `https://openvibe.live/`, `/api/ready` and `/js/app.js`, each with a unique `?probe=` so no cache answered. It recorded the status and total time of each request (10 s timeout) from before the deploy until after it. The deploy is `cd /opt/openvibe.live/current && sudo deploy/scripts/deploy.sh`, which restarts `openvibe-live.service` under its systemd socket (`openvibe-live.socket`, `127.0.0.1:3000`), so connections that arrive mid-restart wait in the kernel accept queue.

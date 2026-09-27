@@ -179,7 +179,7 @@ runTests([
         const passed = await a.judgeGate(rec({ row: 'Web drain (Live)', quote: '57 requests, all 200', value: 0, text: '0 of 57' }), ctx);
         assert.deepStrictEqual([passed.result, passed.measuredText, passed.note], ['pass', '0 of 57', 'recorded: passed 2026-09-26']);
         const open = await a.judgeGate(rec({ row: 'Recorder (Media)' }), ctx);
-        assert.deepStrictEqual([open.result, open.reason], ['open', 'open: needs a live ingest during a Media deploy']);
+        assert.deepStrictEqual([open.result, open.reason], ['open', 'needs a live ingest during a Media deploy']);
         const changed = await a.judgeGate(rec({ row: 'Web drain (Live)', quote: '99 requests', value: 0 }), ctx);
         assert.deepStrictEqual([changed.result, changed.reason], ['fail', 'the record no longer says "99 requests"']);
         const noRow = await a.judgeGate(rec({ row: 'Nope' }), ctx);
@@ -237,9 +237,9 @@ runTests([
         assert.match(table, /── 1\. One/);
         assert.match(table, /3 passed, 2 failed, 1 skipped, 0 open \(6 gates, 2 scenarios\) — FAILED/);
         assert.match(table, /── 2a \(test\/bad\.test\.js failed \(exit 1\)\) ──\n[\s\S]*AssertionError: left 2/);
-        const mdown = a.formatMarkdown({ ...report, gates: [...report.gates, { ...by['1a'], what: 'a | b' }] });
-        assert.match(mdown, /\| 1 \| 1a \| pass \| 0 \| ≤ 0 \|/);
-        assert.match(mdown, /\| 2 \| 2c \| \*\*skipped\*\*: needs a running site: --base <url> \|/);
+        const mdown = a.formatMarkdown({ ...report, gates: [...report.gates, { ...by['1a'], budget: { name: 'a | b', max: 0 } }] });
+        assert.match(mdown, /\| 1 \| 1a \| pass \| 0 \| delay ≤ 0 \|/);
+        assert.match(mdown, /\| 2 \| 2c \| \*\*skipped\*\*: needs a running site: --base &lt;url&gt; \| — \| n ≤ 0 \|/);
         assert.match(mdown, /a \\\| b/, 'pipes are escaped');
     }),
 
