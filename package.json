@@ -1,6 +1,6 @@
 {
   "name": "openvibe-host",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "OpenVibe.Host: the operator plane (Stage A, the ovhost CLI) and tenant static hosting (Stage B, the Host API service on port 4910): immutable content-addressed deploys, per-site domains, quotas and rollback.",
   "main": "lib/index.js",

@@ -22,11 +22,17 @@ runTests([
         assert.ok(!inv.services.live.units.includes('openvibe-live.socket'));
         assert.strictEqual(inv.services.live.protected.url, 'http://127.0.0.1:3000/api/streams');
         assert.match(inv.services.media.protected.sql, /is_recording = 1/);
-        assert.strictEqual(inv.services.games.managed, false);
-        // Live's release layout (C-76) is root-owned worktrees; its service and drills still run as ubuntu.
-        for (const s of Object.values(inv.services)) assert.strictEqual(s.owner, s.id === 'live' ? 'root' : 'ubuntu', `${s.id} checkout owner`);
+        // Every service on the host is deployed by a strategy (WS-N task 11): Games by pnpm-build.
+        assert.ok(Object.values(inv.services).every((s) => s.managed), 'every service is managed');
+        assert.deepStrictEqual(Object.fromEntries(['live', 'tools', 'sites', 'games', 'openre', 'network'].map((id) => [id, inv.services[id].strategy])), { live: 'release-layout', tools: 'multi-app', sites: 'static-build', games: 'pnpm-build', openre: 'release-layout', network: 'git-checkout' });
+        // Live's and OpenRe's release layouts are root-owned clones (git as root); their services and drills run as ubuntu.
+        for (const s of Object.values(inv.services)) assert.strictEqual(s.owner, ['live', 'openre'].includes(s.id) ? 'root' : 'ubuntu', `${s.id} checkout owner`);
         assert.strictEqual(inv.services.live.runAs, 'ubuntu');
-        assert.strictEqual(inv.services.live.repo, '/opt/openvibe.live/current');
+        assert.strictEqual(inv.services.openre.runAs, 'ubuntu');
+        assert.strictEqual(inv.services.live.repo, '/opt/openvibe.live');
+        assert.strictEqual(inv.services.live.codeDir, '/opt/openvibe.live/current');
+        assert.strictEqual(inv.services.live.release.git, '/opt/openvibe.live/repo');
+        assert.strictEqual(inv.services.openre.release.git, '/opt/openre.stream/repo');
         const text = JSON.stringify(raw);
         assert.ok(!/(sk_|ghp_|BEGIN [A-Z ]*PRIVATE KEY|password\s*[:=]\s*\S)/i.test(text), 'no secret values in the example');
     }),

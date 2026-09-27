@@ -31,6 +31,7 @@
       "unitSources": {
         "openvibe-network.service": "deploy/systemd/openvibe-network.service"
       },
+      "installUnits": true,
       "envFile": "/etc/openvibe/network.env",
       "env": {
         "required": [
@@ -108,17 +109,30 @@
       }
     },
     "live": {
-      "repo": "/opt/openvibe.live/current",
+      "repo": "/opt/openvibe.live",
       "owner": "root",
       "runAs": "ubuntu",
+      "strategy": "release-layout",
+      "release": {
+        "git": "repo",
+        "releases": "releases",
+        "current": "current",
+        "id": "time-sha8",
+        "links": {
+          "data": "../../shared/data"
+        },
+        "keep": 5,
+        "settleSeconds": 3
+      },
+      "_strategyNote": "Live deploy/scripts/deploy.sh (release layout) as ovhost deploy live: a new release is prepared in releases/<UTC time>-<sha8> while current serves (node_modules hard-linked from the current release unless package-lock.json or dependency fields changed, then npm ci into the new release; every dependency resolves; node --check on every changed .js, JSON.parse on every changed .json), data -> ../../shared/data in each release, current switched by an atomic rename, the release's deploy/systemd/release/* unit files installed. public/, docs/ and the other noRestartPaths switch without a restart. The socket unit must be held by pid 1 on 127.0.0.1:3000: when its unit file changed or systemd does not hold the port, the service is stopped, the socket restarted and the service started (the only socket restart ovhost makes). --rollback is ovhost rollback live.",
       "units": [
         "openvibe-live.service"
       ],
       "socketUnit": "openvibe-live.socket",
       "unitSources": {
-        "openvibe-live.service": "deploy/systemd/openvibe-live.service",
-        "openvibe-live.socket": "deploy/systemd/openvibe-live.socket",
-        "openvibe-live.service.d/socket.conf": "deploy/systemd/openvibe-live.service.d/socket.conf"
+        "openvibe-live.service": "deploy/systemd/release/openvibe-live.service",
+        "openvibe-live.socket": "deploy/systemd/release/openvibe-live.socket",
+        "openvibe-live.service.d/socket.conf": "deploy/systemd/release/openvibe-live.service.d/socket.conf"
       },
       "envFile": "/etc/openvibe/live.env",
       "env": {
@@ -136,7 +150,8 @@
       "port": 3000,
       "ready": {
         "url": "http://127.0.0.1:3000/api/ready",
-        "timeoutSeconds": 90
+        "timeoutSeconds": 90,
+        "release": true
       },
       "noRestartPaths": [
         "public/",
@@ -179,6 +194,9 @@
         "server/db/migrations.js",
         "server/db/schema.sql"
       ],
+      "preflight": {
+        "syntaxCheck": true
+      },
       "nginx": {
         "vhost": "openvibe.live.conf",
         "repoVhost": "deploy/nginx/openvibe.live.conf",
@@ -387,6 +405,8 @@
     },
     "tools": {
       "repo": "/opt/openvibe.tools",
+      "strategy": "multi-app",
+      "_strategyNote": "Tools deploy/scripts/deploy.sh as ovhost deploy tools: untracked apps/*/package-lock.json files the release tracks are removed before the merge; apps/_* are packages, not apps (skipPackages, the multi-app default); npm install where an app's lockfile or dependencies changed or node_modules is missing; every dependency resolves (reinstalled once); each app's data/ is made as ubuntu (the units' ReadWritePaths); the jobs runtime loads in img, audio and docs and the guard in every app; every openvibe-tools*.service unit file restarts (unitsMatch; one the inventory does not list is named); ready when the gateway answers /api/ready, its /release.json names the new sha and every unit is active; otherwise the checkout goes back and everything restarts again.",
       "packages": [
         "apps/*"
       ],
@@ -400,6 +420,7 @@
         "openvibe-tools-text.service",
         "openvibe-tools-docs.service"
       ],
+      "unitsMatch": "openvibe-tools*.service",
       "envFile": "/etc/openvibe/tools.env",
       "env": {
         "required": [
@@ -447,11 +468,42 @@
         "headers": {
           "Host": "openvibe.tools"
         },
-        "timeoutSeconds": 60
+        "timeoutSeconds": 60,
+        "release": true,
+        "allUnits": true
       },
       "noRestartPaths": [
         "**/*.md"
       ],
+      "preflight": {
+        "dirs": [
+          "data"
+        ],
+        "checks": [
+          {
+            "label": "jobs runtime loads",
+            "packages": [
+              "apps/img",
+              "apps/audio",
+              "apps/docs"
+            ],
+            "argv": [
+              "node",
+              "-e",
+              "const D=require('better-sqlite3'); new D(':memory:').close(); require('openvibe-contracts'); require('openvibe-sdk'); require('../_shared/jobs')"
+            ]
+          },
+          {
+            "label": "guard loads",
+            "packages": "*",
+            "argv": [
+              "node",
+              "-e",
+              "const D=require('better-sqlite3'); new D(':memory:').close(); require('../_shared/guard')"
+            ]
+          }
+        ]
+      },
       "databases": [
         {
           "name": "tools-audio-analytics",
@@ -746,8 +798,12 @@
     },
     "games": {
       "repo": "/opt/openvibe.games",
-      "managed": false,
-      "unmanagedReason": "pnpm workspace with a TypeScript build; its deploy steps are not encoded in Stage A (status, validate, snapshot and backup still work)",
+      "strategy": "pnpm-build",
+      "_strategyNote": "The production procedure (git pull; pnpm install --frozen-lockfile; pnpm build; systemctl restart openvibe-games) as ovhost deploy games, with git as the checkout owner (not sudo git), the tracked apps/*/dist-types/ a previous build rewrote restored from git before the merge (generated), every workspace package's dependencies verified, better-sqlite3 loaded under this Node before the restart, /api/ready polled, and on failure the checkout restored, reinstalled and rebuilt (the build writes apps/client/dist, which is served) and the unit restarted again. Players online are reported (drain report) and reconnect; --wait-idle holds until nobody plays.",
+      "generated": [
+        "apps/client/dist-types/",
+        "apps/server/dist-types/"
+      ],
       "units": [
         "openvibe-games.service"
       ],
@@ -756,6 +812,21 @@
       "ready": {
         "url": "http://127.0.0.1:8000/api/ready",
         "timeoutSeconds": 60
+      },
+      "preflight": {
+        "checks": [
+          {
+            "label": "better-sqlite3 loads under this Node",
+            "packages": [
+              "apps/server"
+            ],
+            "argv": [
+              "node",
+              "-e",
+              "new (require('better-sqlite3'))(':memory:').close()"
+            ]
+          }
+        ]
       },
       "databases": [
         {
@@ -819,6 +890,11 @@
     "sites": {
       "metrics": false,
       "repo": "/opt/openvibe.sites",
+      "strategy": "static-build",
+      "_strategyNote": "Sites deploy/scripts/deploy.sh as ovhost deploy sites: the pull always comes first (ovhost fetches and fast-forwards before building, so a stale checkout never installs old vhosts); the tracked dist/ a previous build rewrote (dates) is restored from git before the merge (generated); npm ci; node build.js; every deploy/nginx/*.conf installed and enabled, nginx -t, reload, and on a failed nginx -t the previous vhost files come back and nginx is not reloaded; then one release notification per dist/<domain>/release.json. A vhost that left the repository is named, never removed.",
+      "generated": [
+        "dist/"
+      ],
       "units": [],
       "install": {
         "command": [
@@ -839,6 +915,9 @@
       "nginx": {
         "repoVhosts": "deploy/nginx/*.conf",
         "installOnDeploy": true
+      },
+      "announce": {
+        "releaseFiles": "dist/*/release.json"
       }
     },
     "host": {
@@ -1930,9 +2009,18 @@
       }
     },
     "openre": {
-      "_note": "Release layout: the service runs from /opt/openre.stream/current and deploys with its own deploy/scripts/deploy.sh (release | api | workers). units are the API and the session coordinator. workerUnits are the transport workers: one instance per release (openre-rtmp-ingest@<release>), started by deploy.sh workers, drained by the coordinator when a newer generation is ready, and exiting on their own. ovhost lists them in status/validate and never starts, stops or restarts them (the inventory refuses a worker unit in units).",
+      "_note": "Release layout: /opt/openre.stream/repo is the git clone, releases/<sha12> the releases (npm ci into each, chowned to ubuntu), `current` the link the API and the coordinator run from (deploy.sh release + api as ovhost deploy openre; ovhost rollback openre). units are the API and the session coordinator. workerUnits are the transport workers: one instance per release (openre-rtmp-ingest@<release>), started by deploy.sh workers (still the repository's script), drained by the coordinator when a newer generation is ready, and exiting on their own. ovhost lists them in status/validate, never starts, stops or restarts them (the inventory refuses a worker unit in units), and never prunes a release a worker instance runs from.",
       "repo": "/opt/openre.stream",
-      "layout": "release",
+      "strategy": "release-layout",
+      "owner": "root",
+      "runAs": "ubuntu",
+      "release": {
+        "git": "repo",
+        "id": "sha12",
+        "reuseModules": false,
+        "chown": "ubuntu:ubuntu",
+        "keep": 5
+      },
       "units": [
         "openre-api.service",
         "openre-session-coordinator.service"
@@ -1948,7 +2036,7 @@
       "port": 4500,
       "ready": {
         "url": "http://127.0.0.1:4500/api/ready",
-        "timeoutSeconds": 30
+        "timeoutSeconds": 60
       },
       "noRestartPaths": [
         "docs/",

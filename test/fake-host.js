@@ -30,45 +30,75 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         onRestart: null, // (unit) -> void
         onSystemdRun: null, // (spec) -> undefined | { code, stderr } ; spec = { unit, uid, cwd, props, argv, pid }
         onKill: null, // (pid, signal) -> false to ignore the signal
+        onNode: null, // (args, opts) -> undefined | { code, stdout, stderr } ; `node` otherwise exits 0
+        pnpm: null, // (cwd, argv, as) -> undefined | { code, stderr } ; default installs every workspace package's deps
+        onBuild: null, // (cwd, argv, as) -> undefined | { code, stderr } ; `pnpm build`
         systemdRuns: [],
         nextPid: 40000,
         streamPiece: 4096, // readStream() yields files in pieces of this size
     };
 
     // ── filesystem ──
-    function ensureDir(p, owner = 'root', mode = 0o755) {
+    // Every path component that is a symlink is followed (like the kernel does), so a file read or
+    // written through /opt/x/current/… lands in the release `current` points at.
+    function resolveLinks(p) {
         const parts = path.resolve(p).split('/').filter(Boolean);
+        let cur = '/';
+        for (const part of parts) {
+            let next = path.join(cur, part);
+            let e = files.get(next);
+            let hops = 0;
+            while (e && e.type === 'symlink' && hops++ < 10) { next = path.resolve(path.dirname(next), e.target); e = files.get(next); }
+            cur = next;
+        }
+        return cur;
+    }
+    /** The path of an entry itself (lstat): the parent resolved, the last component not followed. */
+    function lpath(p) { const abs = path.resolve(p); return abs === '/' ? abs : path.join(resolveLinks(path.dirname(abs)), path.basename(abs)); }
+    function ensureDir(p, owner = 'root', mode = 0o755) {
+        const parts = resolveLinks(p).split('/').filter(Boolean);
         let cur = '';
         for (const part of parts) {
             cur += `/${part}`;
-            if (!files.has(cur)) files.set(cur, { type: 'dir', mode, owner });
+            if (!files.has(cur)) files.set(cur, { type: 'dir', mode, owner, mtime: clock });
         }
     }
     function put(p, content, { mode = 0o644, owner = 'root' } = {}) {
         ensureDir(path.dirname(p), owner);
-        files.set(path.resolve(p), { type: 'file', content, mode, owner });
+        files.set(lpath(p), { type: 'file', content, mode, owner, mtime: clock });
     }
     function get(p) {
-        let e = files.get(path.resolve(p));
-        let hops = 0;
-        while (e && e.type === 'symlink' && hops++ < 10) e = files.get(path.resolve(path.dirname(p), e.target));
-        return e || null;
+        return files.get(resolveLinks(p)) || null;
     }
     function rmTree(p) {
-        const abs = path.resolve(p);
+        const abs = lpath(p);
         for (const k of [...files.keys()]) if (k === abs || k.startsWith(`${abs}/`)) files.delete(k);
+    }
+    function copyTree(src, dest, owner) {
+        const from = resolveLinks(src);
+        const to = lpath(dest);
+        const e = files.get(from);
+        if (!e) return false;
+        for (const [k, v] of [...files.entries()]) {
+            if (k !== from && !k.startsWith(`${from}/`)) continue;
+            files.set(to + k.slice(from.length), { ...v, owner: owner || v.owner, mtime: clock });
+        }
+        ensureDir(path.dirname(to));
+        return true;
     }
     host.put = put;
     host.read = (p) => { const e = get(p); return e && e.type === 'file' ? String(e.content) : null; };
     host.ensureDir = ensureDir;
+    host.resolve = resolveLinks;
 
     // ── git ──
     function newSha(seed) { seq += 1; return crypto.createHash('sha1').update(`${seq}:${seed}`).digest('hex'); }
-    host.createRepo = (repoPath, { owner = 'ubuntu', branch = 'main', remote = 'origin' } = {}) => {
-        const repo = { path: repoPath, owner, branch, remote, commits: new Map(), head: null, remoteRefs: {} };
+    host.createRepo = (repoPath, { owner = 'ubuntu', branch = 'main', remote = 'origin', worktree = true } = {}) => {
+        const repo = { path: repoPath, owner, branch, remote, commits: new Map(), head: null, remoteRefs: {}, worktrees: new Set() };
         repos.set(repoPath, repo);
         ensureDir(repoPath, owner);
         files.get(path.resolve(repoPath)).owner = owner;
+        if (!worktree) repo.bare = true;
         repo.commit = (changes, { parent = repo.remoteRefs[`${remote}/${branch}`] || repo.head, message = 'change' } = {}) => {
             const base = parent ? { ...repo.commits.get(parent).files } : {};
             for (const [k, v] of Object.entries(changes)) { if (v === null) delete base[k]; else base[k] = v; }
@@ -86,6 +116,22 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         };
         return repo;
     };
+    /** `git worktree add --detach <dir> <sha>`: a checkout sharing the clone's commits. */
+    function addWorktree(parent, dir, sha, owner) {
+        const wt = { path: dir, owner, branch: 'HEAD', remote: parent.remote, commits: parent.commits, head: null, remoteRefs: parent.remoteRefs, worktreeOf: parent.path };
+        wt.checkout = (s2) => {
+            const old = wt.head ? wt.commits.get(wt.head).files : {};
+            const next = wt.commits.get(s2).files;
+            for (const f of Object.keys(old)) if (!(f in next)) files.delete(path.join(dir, f));
+            for (const [f, c] of Object.entries(next)) put(path.join(dir, f), c, { owner });
+            wt.head = s2;
+        };
+        ensureDir(dir, owner);
+        wt.checkout(sha);
+        repos.set(path.resolve(dir), wt);
+        parent.worktrees.add(path.resolve(dir));
+        return wt;
+    }
     function isAncestor(repo, anc, sha) {
         let cur = sha;
         while (cur) { if (cur === anc) return true; cur = repo.commits.get(cur).parent; }
@@ -108,10 +154,17 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         return matches.length === 1 ? matches[0] : null;
     }
     function gitCmd(args, opts) {
-        const repo = repos.get(args[1]);
+        const repo = repos.get(args[1]) || repos.get(resolveLinks(args[1]));
         if (!repo) return { code: 128, stdout: '', stderr: 'not a git repository' };
-        if (opts.as !== repo.owner) return { code: 128, stdout: '', stderr: `fatal: detected dubious ownership in repository at '${repo.path}' (ran as ${opts.as || 'root'})` };
-        const [sub, ...rest] = args.slice(2);
+        let i = 2;
+        const config = {};
+        while (args[i] === '-c') { const [k, v] = String(args[i + 1]).split('='); config[k] = v; i += 2; }
+        const dirEntry = files.get(resolveLinks(repo.path));
+        const dirOwner = dirEntry ? dirEntry.owner : repo.owner;
+        const safe = config['safe.directory'] === repo.path || config['safe.directory'] === args[1] || config['safe.directory'] === '*';
+        if (opts.as !== repo.owner && !(safe && (opts.as || 'root') === 'root')) return { code: 128, stdout: '', stderr: `fatal: detected dubious ownership in repository at '${repo.path}' (ran as ${opts.as || 'root'})` };
+        if (dirOwner !== repo.owner && (opts.as || 'root') !== dirOwner && !safe) return { code: 128, stdout: '', stderr: `fatal: detected dubious ownership in repository at '${repo.path}' (owned by ${dirOwner})` };
+        const [sub, ...rest] = args.slice(i);
         const ok = (stdout = '') => ({ code: 0, stdout, stderr: '' });
         const fail = (stderr) => ({ code: 1, stdout: '', stderr });
         switch (sub) {
@@ -158,9 +211,31 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         }
         case 'reset': repo.checkout(resolveRef(repo, rest[rest.length - 1])); return ok();
         case 'checkout': {
-            const f = rest[rest.length - 1];
-            put(path.join(repo.path, f), repo.commits.get(repo.head).files[f], { owner: repo.owner });
+            const list = rest[0] === '--' ? rest.slice(1) : [rest[rest.length - 1]];
+            for (const f of list) put(path.join(repo.path, f), repo.commits.get(repo.head).files[f], { owner: repo.owner });
             return ok();
+        }
+        case 'worktree': {
+            const [op, ...wargs] = rest;
+            if (op === 'add') {
+                const pos = wargs.filter((a) => !a.startsWith('-'));
+                const [dir, ref] = pos;
+                if (files.has(lpath(dir))) return fail(`fatal: '${dir}' already exists`);
+                const sha = resolveRef(repo, ref);
+                if (!sha) return fail(`fatal: invalid reference: ${ref}`);
+                addWorktree(repo, dir, sha, opts.as || 'root');
+                return ok();
+            }
+            if (op === 'remove') {
+                const dir = path.resolve(wargs[wargs.length - 1]);
+                if (!repo.worktrees || !repo.worktrees.has(dir)) return fail(`fatal: '${dir}' is not a working tree`);
+                rmTree(dir);
+                repos.delete(dir);
+                repo.worktrees.delete(dir);
+                return ok();
+            }
+            if (op === 'prune') return ok();
+            return fail(`fake git: worktree ${op}`);
         }
         case 'config': return ok(`https://x-access-token:ghp_FAKE_TOKEN_VALUE@github.com/OpenVibers/${path.basename(repo.path)}.git\n`);
         default: return fail(`fake git: unsupported ${sub}`);
@@ -178,6 +253,30 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         const lock = path.join(opts.cwd, 'package-lock.json');
         if (host.npmRewritesLockfile && host.read(lock) != null) put(lock, `${host.read(lock)}\n// rewritten by npm on the host`, { owner: opts.as });
         return { code: 0, stdout: 'added packages', stderr: '' };
+    }
+
+    // ── pnpm (Games: a workspace) ──
+    function pnpmCmd(argv, opts) {
+        if (argv[0] === 'build' || (argv[0] === 'run' && argv[1] === 'build')) {
+            const r = host.onBuild ? host.onBuild(opts.cwd, argv, opts.as) : undefined;
+            return r ? { stdout: '', stderr: '', ...r } : { code: 0, stdout: 'built', stderr: '' };
+        }
+        if (host.pnpm) {
+            const r = host.pnpm(opts.cwd, argv, opts.as);
+            if (r) return { stdout: '', stderr: '', ...r };
+        }
+        const pkgs = ['.'];
+        for (const base of ['apps', 'packages']) {
+            const abs = resolveLinks(path.join(opts.cwd, base));
+            for (const k of files.keys()) if (k.startsWith(`${abs}/`) && k.slice(abs.length + 1).split('/').length === 2 && k.endsWith('/package.json')) pkgs.push(path.join(base, k.slice(abs.length + 1).split('/')[0]));
+        }
+        for (const dir of pkgs) {
+            const text = host.read(path.join(opts.cwd, dir, 'package.json'));
+            if (text == null) continue;
+            const pkg = JSON.parse(text);
+            for (const dep of Object.keys(pkg.dependencies || {})) put(path.join(opts.cwd, dir, 'node_modules', dep, 'package.json'), JSON.stringify({ name: dep, version: '1.0.0' }), { owner: opts.as });
+        }
+        return { code: 0, stdout: 'Done', stderr: '' };
     }
 
     // ── systemd ──
@@ -198,9 +297,22 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             u.active = 'active'; u.sub = 'running'; u.restarts += 1;
             if (host.onRestart) host.onRestart(unit, u);
             return { code: 0, stdout: '', stderr: '' };
-        case 'start': if (u) { u.active = 'active'; u.sub = unit.endsWith('.socket') ? 'listening' : 'running'; } return { code: 0, stdout: '', stderr: '' };
+        case 'start':
+            if (u) {
+                const was = u.active;
+                u.active = 'active'; u.sub = unit.endsWith('.socket') ? 'listening' : 'running';
+                // A service that starts runs whatever its checkout holds now (like a restart).
+                if (was !== 'active' && !unit.endsWith('.socket') && host.onRestart) host.onRestart(unit, u);
+            }
+            return { code: 0, stdout: '', stderr: '' };
         case 'stop': if (u) { u.active = 'inactive'; u.sub = 'dead'; } return { code: 0, stdout: '', stderr: '' };
-        case 'reload': case 'daemon-reload': return { code: 0, stdout: '', stderr: '' };
+        case 'reload': case 'daemon-reload': case 'enable': return { code: 0, stdout: '', stderr: '' };
+        case 'list-unit-files': {
+            const glob = args[args.length - 1];
+            const re = new RegExp(`^${glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+            const rows = [...units.entries()].filter(([name, x]) => re.test(name) && !x.transient).map(([name]) => `${name} enabled enabled`);
+            return { code: rows.length ? 0 : 1, stdout: rows.length ? `${rows.join('\n')}\n` : '', stderr: '' };
+        }
         case 'is-active': return { code: u && u.active === 'active' ? 0 : 3, stdout: '', stderr: '' };
         case 'list-units': {
             // systemctl list-units --all --plain --no-legend --no-pager <glob>
@@ -245,6 +357,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             switch (cmd) {
             case 'git': return gitCmd(args, opts);
             case 'npm': return npmCmd(args, opts);
+            case 'pnpm': return pnpmCmd(args, opts);
             case 'systemctl': return systemctlCmd(args);
             case 'nginx': return { stdout: '', ...host.nginxTest() };
             case 'rm': rmTree(args[args.length - 1]); return { code: 0, stdout: '', stderr: '' };
@@ -259,9 +372,11 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
                 return { code: 0, stdout: '', stderr: '' };
             }
             case 'chown': {
-                const e = files.get(path.resolve(args[args.length - 1]));
+                const target = resolveLinks(args[args.length - 1]);
+                const e = files.get(target);
                 if (!e) return { code: 1, stdout: '', stderr: 'chown: no such file' };
-                e.owner = args.filter((a) => !a.startsWith('-'))[0].split(':')[0];
+                const who = args.filter((a) => !a.startsWith('-'))[0].split(':')[0];
+                if (args.includes('-R')) { for (const [k, v] of files) if (k === target || k.startsWith(`${target}/`)) v.owner = who; } else e.owner = who;
                 return { code: 0, stdout: '', stderr: '' };
             }
             case 'chmod': {
@@ -271,9 +386,12 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
                 return { code: 0, stdout: '', stderr: '' };
             }
             case 'mv': {
-                const src = path.resolve(args[args.length - 2]);
-                const dest = path.resolve(args[args.length - 1]);
+                const src = lpath(args[args.length - 2]);
+                const dest = lpath(args[args.length - 1]);
+                const force = args.slice(0, -2).some((a) => /^-[A-Za-z]*f/.test(a));
                 if (!files.has(src)) return { code: 1, stdout: '', stderr: `mv: cannot stat '${src}'` };
+                // mv -T -f over a symlink (or a file) replaces it in one rename: an atomic switch.
+                if (files.has(dest) && force && files.get(dest).type !== 'dir') files.delete(dest);
                 if (files.has(dest)) return { code: 1, stdout: '', stderr: `mv: '${dest}' exists` };
                 ensureDir(path.dirname(dest));
                 for (const k of [...files.keys()]) {
@@ -283,12 +401,19 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
                 }
                 return { code: 0, stdout: '', stderr: '' };
             }
-            case 'node': return { code: 0, stdout: '', stderr: '' };
+            case 'node': {
+                const r = host.onNode ? host.onNode(args, opts) : undefined;
+                return r ? { stdout: '', stderr: '', ...r } : { code: 0, stdout: '', stderr: '' };
+            }
             case 'fuser': return { code: (host.openFiles || new Set()).has(path.resolve(args[args.length - 1])) ? 0 : 1, stdout: '', stderr: '' };
             case 'systemd-run': return systemdRunCmd(args);
             case 'cp': {
                 const src = args[args.length - 2];
                 const dest = args[args.length - 1];
+                if (args.some((a) => /^-[A-Za-z]*a/.test(a))) {
+                    if (files.has(lpath(dest))) return { code: 1, stdout: '', stderr: `cp: '${dest}' exists` };
+                    return copyTree(src, dest, opts.as || user) ? { code: 0, stdout: '', stderr: '' } : { code: 1, stdout: '', stderr: `cp: cannot stat '${src}'` };
+                }
                 const e = get(src);
                 if (!e || e.type !== 'file') return { code: 1, stdout: '', stderr: `cp: cannot stat '${src}': No such file or directory` };
                 put(dest, e.content, { owner: opts.as || user, mode: 0o644 });
@@ -323,18 +448,21 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             });
         },
         async appendFile(p, text) { const prev = host.read(p) || ''; put(p, prev + text, { mode: 0o640, owner: user }); },
-        async removeFile(p) { files.delete(path.resolve(p)); },
-        async symlink(target, p) { ensureDir(path.dirname(p)); files.set(path.resolve(p), { type: 'symlink', target, owner: user, mode: 0o777 }); },
-        async readlink(p) { const e = files.get(path.resolve(p)); return e && e.type === 'symlink' ? e.target : null; },
+        async removeFile(p) { files.delete(lpath(p)); },
+        async symlink(target, p) {
+            if (files.has(lpath(p))) throw Object.assign(new Error(`EEXIST: file already exists, symlink '${target}' -> '${p}'`), { code: 'EEXIST' });
+            ensureDir(path.dirname(p)); files.set(lpath(p), { type: 'symlink', target, owner: user, mode: 0o777, mtime: clock });
+        },
+        async readlink(p) { const e = files.get(lpath(p)); return e && e.type === 'symlink' ? e.target : null; },
         async stat(p) {
-            const l = files.get(path.resolve(p));
+            const l = files.get(lpath(p));
             const e = get(p);
             if (!e) return null;
             const size = e.type === 'file' ? Buffer.byteLength(Buffer.isBuffer(e.content) ? e.content : String(e.content)) : 4096;
-            return { mode: e.mode, uid: e.owner === 'root' ? 0 : 1000, gid: 0, owner: e.owner, isFile: e.type === 'file', isDir: e.type === 'dir', isSymlink: !!l && l.type === 'symlink', size, nlink: e.nlink || 1 };
+            return { mode: e.mode, uid: e.owner === 'root' ? 0 : 1000, gid: 0, owner: e.owner, isFile: e.type === 'file', isDir: e.type === 'dir', isSymlink: !!l && l.type === 'symlink', size, nlink: e.nlink || 1, mtime: e.mtime || 0 };
         },
         async readdir(p) {
-            const abs = path.resolve(p);
+            const abs = resolveLinks(p);
             const e = files.get(abs);
             if (!e || e.type !== 'dir') return null;
             const out = new Map();
@@ -345,8 +473,8 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             }
             return [...out.values()];
         },
-        async mkdir(p, { owner, mode = 0o750 } = {}) { ensureDir(p, owner || user, mode); const e = files.get(path.resolve(p)); e.owner = owner || e.owner; e.mode = mode; },
-        async createExclusive(p, content) { if (files.has(path.resolve(p))) return false; put(p, content, { mode: 0o640, owner: user }); return true; },
+        async mkdir(p, { owner, mode = 0o750 } = {}) { ensureDir(p, owner || user, mode); const e = files.get(resolveLinks(p)); e.owner = owner || e.owner; e.mode = mode; },
+        async createExclusive(p, content) { if (files.has(lpath(p))) return false; put(p, content, { mode: 0o640, owner: user }); return true; },
         async pidAlive(pid) { return alivePids.has(pid); },
         async http(url, { headers = {} } = {}) {
             calls.push({ cmd: 'curl', args: [url], as: null, privileged: false, cwd: null });

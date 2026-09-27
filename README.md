@@ -2,7 +2,7 @@
 
 > The network's deployment/control plane first; then isolated hosting for community sites, bots and mods.
 
-**Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It is installed on the production host (2026-09-23, `/usr/local/bin/ovhost`, inventory `/etc/openvibe/host.json`) and it deploys 20 services (`ovhost deploy <svc>`: Network, Events, Chat, Billing, Tips, VIP, AI, Search, Sources, Wiki, Blog, News, Reviews, Deals, Coupons, Trade, Codes, Host, Media, Community; 70+ releases since 2026-09-23, with automatic rollback on a failed readiness check) and runs the nightly backups and the restore drills of 19 services. Live, Tools, Sites, Games and OpenRe still deploy with their own scripts. Stage B (tenant static hosting) is a service, written and tested; it runs on the host on loopback `:4910` (2026-09-23 audit) and is **not launched**: `openvibe.host` is still the Sites placeholder and `*.openvibe.host` answers 404. The launch is ready to run: [docs/launch.md](docs/launch.md) (steps, verification, rollback and the launch-rule evidence) and [docs/threat-review.md](docs/threat-review.md). Stage C (sandboxed user code) is **not started**.
+**Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It is installed on the production host (2026-09-23, `/usr/local/bin/ovhost`, inventory `/etc/openvibe/host.json`) and it deploys 20 services (`ovhost deploy <svc>`: Network, Events, Chat, Billing, Tips, VIP, AI, Search, Sources, Wiki, Blog, News, Reviews, Deals, Coupons, Trade, Codes, Host, Media, Community; 70+ releases since 2026-09-23, with automatic rollback on a failed readiness check) and runs the nightly backups and the restore drills of 19 services. Live, Tools, Sites, Games and OpenRe still deploy with their own scripts on the host: the deploy strategies that replace them (`release-layout`, `multi-app`, `static-build`, `pnpm-build`; roadmap WS-N task 11) are written and tested, each repository's `deploy/scripts/deploy.sh` is a thin wrapper that hands over to `ovhost deploy <svc>` or falls back to its old script, and the production cutover is a checklist for the operator: [docs/deploy-strategies.md](docs/deploy-strategies.md). Stage B (tenant static hosting) is a service, written and tested; it runs on the host on loopback `:4910` (2026-09-23 audit) and is **not launched**: `openvibe.host` is still the Sites placeholder and `*.openvibe.host` answers 404. The launch is ready to run: [docs/launch.md](docs/launch.md) (steps, verification, rollback and the launch-rule evidence) and [docs/threat-review.md](docs/threat-review.md). Stage C (sandboxed user code) is **not started**.
 **Domain:** `openvibe.host` (dashboard and API) and `*.openvibe.host` (tenant sites). The domain keeps its placeholder page on [OpenVibe.Sites](https://github.com/OpenVibers/OpenVibe.Sites) until Stage B is deployed and launched (see [Launch rule](#launch-rule)).
 **Plan:** OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026), §15.3 and §15.17; roadmap Wave 21.
 **License:** AGPL-3.0 (same as every OpenVibe service).
@@ -13,13 +13,15 @@ Every repository ships its own deploy script, and each one encodes rules learned
 
 | Rule | Where it came from | How `ovhost` applies it |
 |---|---|---|
-| Never stop `openvibe-live.socket`; restart only the service unit | Live (socket activation, `deploy/systemd`) | Every `systemctl` call goes through a guard that refuses `stop`/`restart`/`reload` on a `.socket` unit. A socket that is down gets `start`ed. |
+| Never stop `openvibe-live.socket`; restart only the service unit | Live (socket activation, `deploy/systemd`) | Every `systemctl` call goes through a guard that refuses `stop`/`restart`/`reload` on a `.socket` unit. A socket that is down gets `start`ed. The one exception is the rebind Live's script also made (`systemd.rebindSocket`, release-layout only): when the socket unit file changed or pid 1 does not hold the port, the service is stopped, the socket restarted and the service started on it. |
 | Don't restart Live while anyone is live; `--wait-idle` holds the restart | Live `deploy.sh --wait-idle` (`/api/streams`) | Protected-session probe (`http-json-count`). Checked before the checkout moves and again right before the restart. |
 | Don't restart Media while it is recording | Media hazard H3 (`vods-orphans/` in B2) | Protected-session probe (`sqlite-count`: `SELECT count(*) FROM vods WHERE is_recording = 1`), run read-only **as the service user**. |
 | Poll `/api/ready` after a restart; roll back if it doesn't come up | Live `deploy.sh` | Readiness poll with a timeout; on failure the checkout goes back to the previous sha, deps are reinstalled if they differed, the unit is restarted again. |
 | Install only when the lockfile or dependencies changed; restore `package-lock.json` afterwards | Network `deploy.sh` and host practice | `npm install --omit=dev` as the checkout owner, then `git checkout -- package-lock.json` if npm rewrote it. |
 | Every dependency must resolve before anything restarts | Tools `deploy.sh` (an emptied `file:` link crash-looped every unit) | `node_modules/<dep>/package.json` must exist, parse and name the package. A broken dependency is reinstalled once, and if it still fails the deploy aborts and the checkout is restored. |
 | Build, install vhosts, `nginx -t`, reload | Sites `deploy.sh` | `build` hooks and `nginx.installOnDeploy`. Vhost installs are transactional: if `nginx -t` fails, the previous files come back and nginx is not reloaded. |
+| Build a release while the old one serves; switch a symlink; roll back to a release with its own `node_modules`; pid 1 must hold the socket | Live `deploy.sh` (release layout), OpenRe `deploy.sh release`/`api` | Strategy `release-layout` ([docs/deploy-strategies.md](docs/deploy-strategies.md)). The socket unit is restarted only when its unit file changed or systemd does not hold the port. |
+| Per-app installs (not `apps/_shared`), jobs runtime and guard load before the restart, every `openvibe-tools*` unit | Tools `deploy.sh` | Strategy `multi-app`: `skipPackages`, `preflight`, `unitsMatch`, `ready.release`. |
 | git as the checkout owner; never leave root-owned files under `/opt` | Community/Events/Tools checkouts | git, npm, builds, SQLite queries and backups all run as the declared owner/service user (`runuser` from root, `sudo -u` otherwise). |
 
 Stage A adds a few safety rules of its own:
@@ -71,7 +73,7 @@ What the tests demonstrate (`npm test`, every system call made against `test/fak
 - A failed readiness check **rolls back** to the previous sha, reinstalls the previous dependencies and restarts again (exit 3). If that also fails, the exit code is 4 with MANUAL INTERVENTION.
 - A dependency that does not resolve **aborts before any restart** and restores the checkout (exit 2).
 - Env validation **never outputs a value**, in text or JSON output.
-- The socket unit is **never stopped or restarted**, in any flow.
+- The socket unit is **never stopped or restarted**, in any flow, except the release-layout rebind: only when its unit file changed or systemd does not hold the port (`test/strategy-release-layout.test.js`).
 - Only the service being deployed is restarted. Static-only changes (for example Live `public/`) are deployed without a restart, even while streams are live.
 - `nginx -t` failures restore the previous vhost state. `certs` never reads a key file. Snapshots contain no secret values or remote-URL credentials.
 - A **restore drill** restores the latest backup into a service-user-owned temp directory and requires `integrity_check = ok`. It starts a sandboxed second instance through `systemd-run` with the production env file plus an override file. It compares the declared paths and row counts with production, then stops the instance by its own pid and removes the directory. Failed integrity, a readiness timeout, an instance that dies, mismatches and a failed `systemd-run` are all reported, logged and cleaned up. It refuses to run without root or on a port already in use. A filesystem diff of the fake host shows it writes nothing outside the drill directory, its lock and its log, and it never reads the env file or passes on a secret-looking unit `Environment=`.
@@ -94,9 +96,11 @@ ovhost status [<service>...]            unit state, sha, readiness, protected se
 ovhost validate <service> [--manifest <file>]  env NAMES, unit files, port, vhost + nginx -t, deps, lifecycle
 ovhost env-names <service>              names declared in the checkout's .env.example
 ovhost show [<service>...]              the inventory as ovhost reads it (repo, owner, units, socket, workers, probes)
-ovhost plan <service> [--to <sha>] [--no-fetch]
-ovhost deploy <service> [--wait-idle] [--force] [--restart] [--to <sha>] [--install-units] [--ready-timeout <s>] [--browser-check] [--no-announce]
-ovhost rollback <service> [--to <sha>] [--wait-idle] [--force] [--no-announce]
+ovhost plan <service> [--to <sha>] [--no-fetch] [--restart]
+ovhost deploy <service> [--wait-idle] [--force] [--restart] [--to <sha>] [--install-units] [--ready-timeout <s>] [--browser-check] [--no-announce] [--prepare-only]
+ovhost rollback <service> [--to <sha|release id>] [--wait-idle] [--force] [--no-announce]
+ovhost capabilities [<service>]          key=value lines the deploy wrappers probe (deploy-api, strategy, managed)
+ovhost --version
 ovhost announce <service> [--release <id>] [--commit <sha>] [--origin <url>] [--force] [--dry-run]   release notification
 ovhost releases <service> [--limit <n>]
 ovhost certs [--warn-days <n>]
@@ -111,7 +115,9 @@ ovhost restore-download <service> <run|latest> [--out <dir>] [--from-host <name>
 ovhost drill <service> [--backup <dir>] [--keep]     restore drill (root only)
 ```
 
-Every command accepts `--json` and `--inventory <file>`. `drill` exits `0` passed, `1` refused (not root, port in use, no backup, unsupported), `2` failed. Other exit codes: `0` ok · `1` usage/precondition (including a held lock) · `2` validation failed, nothing restarted · `3` not ready, rolled back and serving · `4` rollback failed, **manual intervention** · `5` protected sessions active (refused, or `--wait-idle` gave up).
+Every command accepts `--json` and `--inventory <file>`. `drill` exits `0` passed, `1` refused (not root, port in use, no backup, unsupported), `2` failed. Other exit codes: `0` ok · `1` usage/precondition (including a held lock) · `2` validation failed, nothing restarted · `3` not ready, rolled back and serving · `4` rollback failed, **manual intervention** · `5` protected sessions active (refused, or `--wait-idle` gave up) · `6` frozen (`ovhost freeze`; `--force` goes through, rollbacks are never frozen).
+
+**Deploy strategies** (roadmap WS-N task 11). The inventory entry's `strategy` picks how a service deploys: `git-checkout` (the default: an in-place checkout, every service above), `multi-app` (Tools), `static-build` (Sites), `pnpm-build` (Games) or `release-layout` (Live, OpenRe: `releases/<id>` behind a `current` symlink, prepared while the old release serves, `--prepare-only` to stop after preparing). Each strategy carries the rules of the script it replaces: preflight checks, build output restored from git, untracked lockfiles, `unitsMatch`, `/release.json` naming the new sha, the socket rule. [docs/deploy-strategies.md](docs/deploy-strategies.md) has the engines, every inventory field, the rule-by-rule mapping from each script, what was not ported and why, the production cutover checklist and the proposed inventory diff.
 
 `deploy --browser-check` checks the service's public site in headless Chrome after a deploy that went through. It runs [`scripts/browser-check.js`](docs/browser-check.md) for that one site. The check is report only: it never changes the exit code or the release record. It needs Chrome where ovhost runs.
 
@@ -123,7 +129,7 @@ Every command accepts `--json` and `--inventory <file>`. `drill` exits `0` passe
 
 ### Deploy sequence
 
-1. Take the per-service lock. Refuse if the checkout uses Live's `releases/current` layout (Stage A only drives in-place checkouts, which is what every service runs today).
+1. Take the per-service lock. A `release-layout` service goes to its own engine ([docs/deploy-strategies.md](docs/deploy-strategies.md#release-layout-release-layout)); an in-place strategy refuses a checkout that has a `releases/current` layout.
 2. `git fetch` as the owner, then work out the from/to shas, changed files, per-package install need and whether a restart is needed (`noRestartPaths`).
 3. Refuse a tracked local change or a wrong branch.
 4. **Protected sessions** (only if a restart is needed): refuse, wait (`--wait-idle` or drain policy `wait`), report (drain policy `report`, Events SSE), or `--force`.
@@ -171,7 +177,7 @@ The sandbox blocks writes outside the drill directory and addresses beyond loopb
 
 **Lifecycle** (roadmap WS-P task 1, `lib/lifecycle.js`). Each service's lifecycle is the `lifecycle` block of its manifest in openvibe-contracts (≥ 0.55.0): liveness, shutdown (signal, `deadlineSeconds`, drains, workers), startupRecovery, rollback, contracts and leases. A service entry may carry its own `lifecycle` block, which replaces the manifest's on this host, and `validate --manifest <file>` reads another manifest file. `ovhost validate` fails when no block is found or a field is missing, naming the service and the field (`live: lifecycle.shutdown.deadlineSeconds is missing`). It also fails when `deadlineSeconds` exceeds a unit's stop timeout (systemd's effective `TimeoutStopUSec`, else `TimeoutStopSec` in the unit source) or the unit's `KillSignal` is another signal, and when the checkout's installed openvibe-contracts is outside `contracts.range`. Worker units that drain longer than their stop timeout are a warning, since ovhost never stops them. This repository still pins openvibe-contracts v0.49.0, which has no lifecycle blocks, so until that pin moves to v0.55.0 or later `validate` reports every service as undeclared.
 
-`games` is listed as `managed: false`. It is a pnpm workspace with a TypeScript build, and those steps are not encoded yet. `status`, `validate`, `snapshot` and `backup` work for it; `deploy` and `rollback` refuse it.
+`games` deploys with the `pnpm-build` strategy (a pnpm workspace with a TypeScript build: `pnpm install --frozen-lockfile`, `pnpm build`, the tracked `dist-types/` restored from git before the merge). An entry with `layout: "release"` and no `strategy` stays unmanaged: `deploy` and `rollback` refuse it and the repository's own script deploys it. The deploy-strategy fields (`strategy`, `release`, `preflight`, `skipPackages`, `removeUntrackedLockfiles`, `generated`, `installUnits`, `unitsMatch`, `announce.releaseFiles`, `install.lockfile`, `install.workspace`, `ready.release`, `ready.allUnits`) are listed in [docs/deploy-strategies.md](docs/deploy-strategies.md#inventory-fields).
 
 ## Installing on the host (for the operator)
 

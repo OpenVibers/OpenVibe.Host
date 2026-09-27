@@ -25,13 +25,17 @@ visibility `internal`, its own payload). Browsers never receive that one.
 
 - `ovhost deploy <service>` and `ovhost rollback <service>` announce after a deploy that went live
   (result `deployed` or `rolled-back`, exit 0). `--no-announce` skips it.
-- Services deployed by their own scripts call `ovhost announce <service>` at the end:
-  - Live: `deploy/scripts/deploy.sh`.
-  - Tools: `deploy/scripts/deploy.sh`.
-  - Sites: `deploy/scripts/deploy.sh`, one call per placeholder with `--release` and `--origin`.
+- A `static-build` service with `announce.releaseFiles` (Sites) sends one notification per
+  `dist/<domain>/release.json`, with that placeholder's service, release and `https://<domain>` origin,
+  and stops at the first failure.
+- Since WS-N task 11 each repository's `deploy/scripts/deploy.sh` is a wrapper around `ovhost deploy <svc>`
+  ([deploy-strategies.md](deploy-strategies.md)), so the deploy announces. Their fallback scripts
+  (`deploy/scripts/deploy-legacy.sh`) still call `ovhost announce <service>` at the end:
+  - Live, Tools, Games: `ovhost announce live|tools|games`.
+  - Sites: one call per placeholder with `--release` and `--origin`.
 
-  OpenRe and Games can do the same by hand or in their scripts. The scripts do nothing if `ovhost` is
-  missing or has no `announce`, and a failed announcement never fails the deploy.
+  They do nothing if `ovhost` is missing or has no `announce`, and a failed announcement never fails the
+  deploy.
 
 `ovhost announce <service> [--release <id>] [--commit <sha>] [--origin <url>] [--force] [--dry-run] [--events-env <file>] [--json]`
 

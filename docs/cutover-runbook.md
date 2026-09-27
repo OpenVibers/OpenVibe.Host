@@ -70,7 +70,10 @@ These actions need the owner's accounts or physical presence. Nothing in this ru
 ## 0. Deploy rules that apply to every step
 
 These rules are learned from outages. `ovhost` encodes them (see [README](../README.md#purpose)). As of
-2026-09-23 it is used read-only on the host, so the per-repo scripts are still what runs.
+2026-09-23 it is used read-only on the host, so the per-repo scripts are still what runs. Since WS-N task 11
+(2026-09-27) those scripts are wrappers around `ovhost deploy <svc>` that fall back to the old script
+(`deploy/scripts/deploy-legacy.sh`) until the host's ovhost and inventory are cut over
+([deploy-strategies.md](deploy-strategies.md)); the rules below hold either way.
 
 - **Live**: `sudo /opt/openvibe.live/deploy/scripts/deploy.sh [--wait-idle|--restart|--force]`
   (`deploy/scripts/deploy.sh:7-12`).

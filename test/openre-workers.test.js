@@ -85,7 +85,8 @@ runTests([
         assert.deepStrictEqual(o.units, ['openre-api.service', 'openre-session-coordinator.service']);
         assert.deepStrictEqual(o.workerUnits, ['openre-rtmp-ingest@.service', 'openre-restream-worker@.service']);
         assert.strictEqual(o.layout, 'release');
-        assert.strictEqual(o.managed, false);
+        assert.strictEqual(o.strategy, 'release-layout');
+        assert.strictEqual(o.managed, true, 'ovhost deploy openre: release + api (WS-N task 11)');
         assert.strictEqual(o.drill.supported, true);
         assert.strictEqual(o.drill.port, 14500);
         assert.deepStrictEqual(o.drill.command, ['/usr/bin/node', 'server/index.js']);
@@ -112,7 +113,7 @@ runTests([
         const host = await openreHost();
         const r = await host.cli('status', 'openre');
         assert.strictEqual(r.code, 0, r.out);
-        assert.match(r.out, new RegExp(`openre\\s+${RELEASE}\\s+ready\\s+openre-api=active openre-session-coordinator=active workers\\[openre-rtmp-ingest@${RELEASE}=active openre-rtmp-ingest@${OLD}=inactive openre-restream-worker@${RELEASE}=active\\] ingest sessions=0 \\[unmanaged\\]`));
+        assert.match(r.out, new RegExp(`openre\\s+${RELEASE}\\s+ready\\s+openre-api=active openre-session-coordinator=active workers\\[openre-rtmp-ingest@${RELEASE}=active openre-rtmp-ingest@${OLD}=inactive openre-restream-worker@${RELEASE}=active\\] ingest sessions=0$`, 'm'));
         const json = JSON.parse((await host.cli('status', 'openre', '--json')).out);
         assert.deepStrictEqual(json[0].workers.map((w) => [w.unit, w.active]), [[`openre-rtmp-ingest@${RELEASE}.service`, 'active'], [`openre-rtmp-ingest@${OLD}.service`, 'inactive'], [`openre-restream-worker@${RELEASE}.service`, 'active']]);
         const lists = host.calls.filter((c) => c.cmd === 'systemctl' && c.args[0] === 'list-units');
