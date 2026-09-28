@@ -178,7 +178,9 @@ if [ "$HAVE_REPO" = 1 ]; then
         runuser -u postgres -- pgbackrest --stanza=openvibe check
         code=2
     fi
-    if [ "$code" = 2 ] && ! systemctl is-active -q pgbackrest-backup@full.service; then
+    # A oneshot unit reads "activating" while it runs; either state means a backup is in progress.
+    state=$(systemctl show -p ActiveState --value pgbackrest-backup@full.service 2>/dev/null || true)
+    if [ "$code" = 2 ] && [ "$state" != active ] && [ "$state" != activating ]; then
         log "no valid backup yet: starting a full backup (pgbackrest-backup@full.service)"
         systemctl start --no-block pgbackrest-backup@full.service
     elif [ "$code" != 0 ] && [ "$code" != 2 ]; then
