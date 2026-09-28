@@ -21,7 +21,8 @@ runTests([
         assert.strictEqual(inv.services.live.socketUnit, 'openvibe-live.socket');
         assert.ok(!inv.services.live.units.includes('openvibe-live.socket'));
         assert.strictEqual(inv.services.live.protected.url, 'http://127.0.0.1:3000/api/streams');
-        assert.match(inv.services.media.protected.sql, /is_recording = 1/);
+        // Media on PostgreSQL (ADR-035): recordings in progress come from its /api/ready, not from a SQLite file.
+        assert.deepStrictEqual([inv.services.media.protected.kind, inv.services.media.protected.field], ['http-json-count', 'recordings_in_progress']);
         // Every service on the host is deployed by a strategy (WS-N task 11): Games by pnpm-build.
         assert.ok(Object.values(inv.services).every((s) => s.managed), 'every service is managed');
         assert.deepStrictEqual(Object.fromEntries(['live', 'tools', 'sites', 'games', 'openre', 'network'].map((id) => [id, inv.services[id].strategy])), { live: 'release-layout', tools: 'multi-app', sites: 'static-build', games: 'pnpm-build', openre: 'release-layout', network: 'git-checkout' });

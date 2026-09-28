@@ -328,9 +328,9 @@
         "**/*.md"
       ],
       "protected": {
-        "kind": "sqlite-count",
-        "db": "/opt/openvibe.media/data/media.db",
-        "sql": "SELECT count(*) AS n FROM vods WHERE is_recording = 1",
+        "kind": "http-json-count",
+        "url": "http://127.0.0.1:4100/api/ready",
+        "field": "recordings_in_progress",
         "label": "recordings in progress"
       },
       "drain": {
