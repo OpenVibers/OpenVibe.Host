@@ -2,7 +2,7 @@
 
 > The network's deployment/control plane first; then isolated hosting for community sites, bots and mods.
 
-**Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It is installed on the production host (2026-09-23, `/usr/local/bin/ovhost`, inventory `/etc/openvibe/host.json`) and it deploys 20 services (`ovhost deploy <svc>`: Network, Events, Chat, Billing, Tips, VIP, AI, Search, Sources, Wiki, Blog, News, Reviews, Deals, Coupons, Trade, Codes, Host, Media, Community; 70+ releases since 2026-09-23, with automatic rollback on a failed readiness check) and runs the nightly backups and the restore drills of 19 services. Live, Tools, Sites, Games and OpenRe still deploy with their own scripts on the host: the deploy strategies that replace them (`release-layout`, `multi-app`, `static-build`, `pnpm-build`; roadmap WS-N task 11) are written and tested, each repository's `deploy/scripts/deploy.sh` is a thin wrapper that hands over to `ovhost deploy <svc>` or falls back to its old script, and the production cutover is a checklist for the operator: [docs/deploy-strategies.md](docs/deploy-strategies.md). Stage B (tenant static hosting) is a service, written and tested; it runs on the host on loopback `:4910` (2026-09-23 audit) and is **not launched**: `openvibe.host` is still the Sites placeholder and `*.openvibe.host` answers 404. The launch is ready to run: [docs/launch.md](docs/launch.md) (steps, verification, rollback and the launch-rule evidence) and [docs/threat-review.md](docs/threat-review.md). Stage C (sandboxed user code) is **not started**.
+**Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It is installed on the production host (2026-09-23, `/usr/local/bin/ovhost`, inventory `/etc/openvibe/host.json`) and it deploys 20 services (`ovhost deploy <svc>`: Network, Events, Chat, Billing, Tips, VIP, AI, Search, Sources, Wiki, Blog, News, Reviews, Deals, Coupons, Trade, Codes, Host, Media, Community; 70+ releases since 2026-09-23, with automatic rollback on a failed readiness check) and runs the nightly backups and the restore drills of 19 services. Live, Tools, Sites, Games and OpenRe moved to it in the 2026-09-27 cutover (roadmap WS-N task 11) through the deploy strategies `release-layout`, `multi-app`, `static-build` and `pnpm-build`, so every service now deploys with `sudo ovhost deploy <svc>` (Live with `--wait-idle`); each of those repositories keeps `deploy/scripts/deploy.sh` as a thin wrapper that hands over to ovhost or falls back to its old script: [docs/deploy-strategies.md](docs/deploy-strategies.md). Stage B (tenant static hosting) is a service, written and tested; it runs on the host on loopback `:4910` (2026-09-23 audit) and is **not launched**: `openvibe.host` is still the Sites placeholder and `*.openvibe.host` answers 404. The launch is ready to run: [docs/launch.md](docs/launch.md) (steps, verification, rollback and the launch-rule evidence) and [docs/threat-review.md](docs/threat-review.md). Stage C (sandboxed user code) is **not started**.
 **Domain:** `openvibe.host` (dashboard and API) and `*.openvibe.host` (tenant sites). The domain keeps its placeholder page on [OpenVibe.Sites](https://github.com/OpenVibers/OpenVibe.Sites) until Stage B is deployed and launched (see [Launch rule](#launch-rule)).
 **Plan:** OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026), §15.3 and §15.17; roadmap Wave 21.
 **License:** AGPL-3.0 (same as every OpenVibe service).
@@ -48,21 +48,36 @@ Stage A adds a few safety rules of its own:
 
 ## Depends on
 
-- OpenVibe.Contracts (`openvibe-contracts` v0.33.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
+- OpenVibe.Contracts (`openvibe-contracts` v0.66.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
-- OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.5.0 transactional outbox.
-- `openvibe-shared` v1.5.1 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
+- OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.12.0 transactional outbox (openvibe-sdk/limits for the per-actor limits).
+- `openvibe-shared` v1.22.0 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
 - OpenVibe.Media: not yet. The roadmap stores artifacts "through Media where practical"; Stage B keeps them on local disk for now (see [Not done yet](#not-done-yet-stage-b)).
+
+## Capabilities
+
+Implemented here (the service manifest's `capabilities`, Stage B's API, audience `openvibe.host`):
+`host.site.manage` (sites, members, takedowns), `host.deploy.create` (uploads, activation, rollback)
+and `host.domain.manage` (custom domains). See [Grants and registration](#grants-and-registration-for-the-lead).
+
+Called elsewhere, as the service principal `host` (the OAuth client `host`; `ovhost` reads the same
+credentials from `/etc/openvibe/host.env`):
+
+| Service | Grant | Used by |
+|---|---|---|
+| OpenVibe.Events | `events.event.publish` | Stage B's outbox (`host.deploy.*`, `host.domain.verified`) and `ovhost announce` (`host.release.published`) |
+| OpenVibe.Network | `network.operator.alert` | `ovhost alerts relay` (Prometheus alerts that page the operator) |
+| OpenVibe.Network | `network.status.incident` | `ovhost incident` and `ovhost maintenance` (the public status page) |
 
 ## Stages
 
 | Stage | Scope | State |
 |---|---|---|
-| **A: operator plane** | `ovhost` CLI and library: inventory, validate, plan, deploy (`--wait-idle`/`--force`), automatic rollback, rollback, status, releases, certs, nginx render/install, snapshot, backup, restore drill. No daemon and no server. Port **4910** is reserved for a later operator API. | **alpha**: written and tested (fake host, plus the real executor against temp SQLite/HTTP/git). Installed on the host; used read-only so far. |
-| **B: tenant static hosting** | The Host API service (port 4910): projects, sites, immutable content-addressed deploys, activation and rollback, `<site>.openvibe.host` and TXT-verified custom domains, quotas, upload logs, events, a server-rendered dashboard; tenant vhosts via `ovhost nginx tenants`. | **alpha**: written and tested (`npm test`, against a temp database, a mock Network and a DNS table). Not deployed. |
+| **A: operator plane** | `ovhost` CLI and library: inventory, validate, plan, deploy (`--wait-idle`/`--force`), automatic rollback, rollback, status, releases, certs, nginx render/install, snapshot, backup, restore drill. No daemon and no server. Port **4910** is reserved for a later operator API. | **alpha**: written and tested (fake host, plus the real executor against temp SQLite/HTTP/git). Installed on the host: deploys every service, runs the nightly backups and the restore drills. |
+| **B: tenant static hosting** | The Host API service (port 4910): projects, sites, immutable content-addressed deploys, activation and rollback, `<site>.openvibe.host` and TXT-verified custom domains, quotas, upload logs, events, a server-rendered dashboard; tenant vhosts via `ovhost nginx tenants`. | **alpha**: written and tested (`npm test`, against a temp database, a mock Network and a DNS table). Runs on the host on loopback `:4910`; not launched. |
 | **C: sandboxed user code** | Isolation profiles, CPU/memory/time/network/storage budgets, secret references, outbound policy, metering, kill/revoke without touching platform services. | **not started**, deliberately. Blocked until isolation and metering are proven. Nothing in Stage B runs tenant code. |
 
-Not in Stage A yet (from the charter/roadmap list): container adapters, DNS adapters, certificate **renewal**, logs/metrics links, incident/maintenance controls, the release-manifest/active-client work in §15.18, `host.release.deployed|rolled_back` events (they need an Events outbox and a service principal), and the Wave 22 cutover runbook. Restore drills (`ovhost drill`) are written and tested against the fake host but have not been run on the host yet.
+Not in Stage A yet (from the charter/roadmap list): container adapters, DNS adapters, certificate **renewal**, logs/metrics links, the release-manifest/active-client work in §15.18, and the Wave 22 cutover runbook. (Incident and maintenance controls, `ovhost incident|maintenance|freeze`, and release notifications, `host.release.published`, exist now.) Restore drills (`ovhost drill`) ran on the host for 19 services on 2026-09-23 ([docs/restore-drills.md](docs/restore-drills.md)).
 
 ## Acceptance (Stage A)
 
@@ -87,7 +102,7 @@ What the tests demonstrate (`npm test`, every system call made against `test/fak
   - `restore-download` never overwrites and refuses any directory near a database or checkout.
   - No secret value appears in any output, summary, request or manifest.
 
-Not demonstrated yet: any of this on the production host. The Wave 21 exit criterion ("deploy, restart and roll back one service without interrupting unrelated runtimes or protected sessions") still needs a run on the host, with evidence. [`scripts/d41-proof.sh`](scripts/d41-proof.sh) is that run, written and tested against the fake host (`test/d41-proof.test.js`) but **not run yet**. It deploys, rolls back and redeploys `sources` through `ovhost`, and proves from `systemctl show` (MainPID, InvocationID, ActiveEnterTimestamp) that every other unit, the Live socket included, kept its process. See [docs/d41-proof.md](docs/d41-proof.md).
+Production deploys, rollbacks, backups and drills now run through `ovhost`, and the stateful deploy proofs are recorded in [docs/deploy-proofs.md](docs/deploy-proofs.md). Not demonstrated yet: the Wave 21 exit criterion ("deploy, restart and roll back one service without interrupting unrelated runtimes or protected sessions") still needs a run on the host, with evidence. [`scripts/d41-proof.sh`](scripts/d41-proof.sh) is that run, written and tested against the fake host (`test/d41-proof.test.js`) but **not run yet**. It deploys, rolls back and redeploys `sources` through `ovhost`, and proves from `systemctl show` (MainPID, InvocationID, ActiveEnterTimestamp) that every other unit, the Live socket included, kept its process. See [docs/d41-proof.md](docs/d41-proof.md).
 
 ## Using ovhost
 
@@ -181,9 +196,27 @@ The sandbox blocks writes outside the drill directory and addresses beyond loopb
 
 `games` deploys with the `pnpm-build` strategy (a pnpm workspace with a TypeScript build: `pnpm install --frozen-lockfile`, `pnpm build`, the tracked `dist-types/` restored from git before the merge). An entry with `layout: "release"` and no `strategy` stays unmanaged: `deploy` and `rollback` refuse it and the repository's own script deploys it. The deploy-strategy fields (`strategy`, `release`, `preflight`, `skipPackages`, `removeUntrackedLockfiles`, `generated`, `installUnits`, `unitsMatch`, `announce.releaseFiles`, `install.lockfile`, `install.workspace`, `ready.release`, `ready.allUnits`) are listed in [docs/deploy-strategies.md](docs/deploy-strategies.md#inventory-fields).
 
+## Deploy
+
+Two things deploy from this repository:
+
+- **The `ovhost` CLI** is the root-owned checkout `/usr/local/lib/openvibe-host` (linked as
+  `/usr/local/bin/ovhost`), with the inventory `/etc/openvibe/host.json`. It is updated by hand:
+  `cd /usr/local/lib/openvibe-host && sudo git pull --ff-only && sudo npm ci --omit=dev --no-audit --no-fund`,
+  then `ovhost --version` and `sudo ovhost capabilities` (ovhost does not deploy itself; an update is
+  undone by checking out the previous commit there). Its timers (`openvibe-backup`, `openvibe-alerts`, `openvibe-browsercheck`,
+  `openvibe-devpath`, `openvibe-toolsjob`) are unit files in [deploy/systemd/](deploy/systemd/).
+- **The Stage B service** deploys like every other service, with `sudo ovhost deploy host` (strategy
+  `git-checkout`: fetch, fast-forward `/opt/openvibe.host`, install on a lockfile change, restart, wait for `/api/ready`).
+  The unit is `openvibe-host.service` on `127.0.0.1:4910`, the env file `/etc/openvibe/host.env`. Its state is
+  `/var/lib/openvibe-host-api` (not ovhost's own `/var/lib/openvibe-host`).
+  Rollback: ovhost puts the previous sha back by itself when `/api/ready` does not answer 2xx after the
+  restart; afterwards `sudo ovhost rollback host --to <sha>`. Nothing blocks a rollback: the schema
+  code only adds tables and columns.
+
 ## Installing on the host (for the operator)
 
-Nothing here has been done yet. These are the steps:
+This was done on 2026-09-23 (the CLI and inventory are installed); the steps stay for a rebuild:
 
 1. **Code** is root-owned and outside `/opt`, so it never mixes with the ubuntu-owned service checkouts:
    ```
@@ -303,7 +336,7 @@ Server-rendered pages with the shared chrome (`openvibe-shared` v1.5.1: navbar a
 
 ### Deploying Stage B (for the operator)
 
-Nothing here has been done yet.
+The service runs on the host (loopback, since 2026-09-23) and the pending tenant vhost of step 9 is installed; the launch has not been run.
 
 1. **DNS.** `openvibe.host` and `*.openvibe.host`: `A`/`AAAA` records to the host. If the zone is on Cloudflare, keep `*.openvibe.host` **DNS-only** (grey cloud), or set `HOST_CNAME_TARGET` to a DNS-only name: custom domains in other accounts cannot CNAME to a proxied hostname (Cloudflare error 1014). Set `HOST_ORIGIN_IPV4`/`HOST_ORIGIN_IPV6` if tenants should be told the addresses for apex domains.
 2. **Wildcard certificate.** A DNS-01 challenge is required for `*.openvibe.host`, for example `certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/certbot-cloudflare.ini -d openvibe.host -d '*.openvibe.host'`. The credentials file is root-only (0600), outside every repository, and never passed to Host. The certificate lands in `/etc/letsencrypt/live/openvibe.host/`; another location is passed with `--wildcard-cert <name|dir>`.
@@ -341,6 +374,24 @@ Nothing here has been done yet.
 - The isolation test also covers cross-origin reads from a tenant page (no CORS grant anywhere), ETag/Range existence oracles, delegated service tokens, app principals and the dashboard.
 
 Not demonstrated yet: any of this on the production host.
+
+## Security
+
+Reporting a vulnerability: [SECURITY.md](SECURITY.md). Stage B's threat review, with the decisions it
+records: [docs/threat-review.md](docs/threat-review.md). The rules the code keeps:
+
+- **Secrets.** `ovhost` reads service env files for variable **names** and emptiness only; it never
+  stores, prints or snapshots a value. The one exception is its own root-only `/etc/openvibe/backup.env`.
+  Backups are root-only (0700/0600) and off-host copies are AES-256-GCM encrypted and authenticated.
+- **Operator plane.** `ovhost` runs as root and drops to the checkout owner for git, npm, builds and
+  SQLite; it never stops or restarts a socket unit except the release-layout rebind; a protected-session
+  probe that cannot answer counts as sessions active; tracked local changes block a deploy.
+- **Tenants (Stage B).** Static files only: no tenant code runs, no tenant secret is stored, uploads are
+  validated and content-addressed, tenant hosts get no CORS grant, staff takedowns answer 451. Custom
+  domains are proven by DNS TXT through the configured resolver, and certificates never pass through
+  the API. Dashboard and API auth is Network SSO and service tokens with the `host.*` capabilities.
+- **Egress.** Stage B calls only its configured Network and Events hosts; `ovhost` calls the host's own
+  services, Network, Events, Prometheus and the backup bucket.
 
 ## Development
 
