@@ -20,10 +20,13 @@ function createHostReadiness({ store, blobs, auth, outbox, release = null, minFr
         checks: [
             {
                 name: 'db', required: true,
+                // A real round trip that names the store (postgresql / pglite), and the charter tables present.
                 check: async () => {
+                    const r = await db.ready();
+                    if (!r.ok) return r.error;
                     const names = new Set((await db.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").all()).map((r) => r.name));
                     const missing = CHARTER_TABLES.filter((t) => !names.has(t));
-                    return missing.length ? `missing ${missing.join(', ')}` : true;
+                    return missing.length ? `missing ${missing.join(', ')} (migrations did not run)` : { ok: true, detail: r.detail };
                 },
             },
             { name: 'storage', required: true, check: () => blobs.writable() },
