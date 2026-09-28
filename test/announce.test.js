@@ -17,7 +17,7 @@ const HOST_SECRET = `${SECRET}-host`;
 function payloadSchemaCheck(payload) {
     let known = true;
     try { contracts.schema('host.release.published'); } catch { known = false; }
-    if (!known) return;
+    if (!known) { console.log(`announce payload schema: skipped (installed openvibe-contracts ${require('openvibe-contracts/package.json').version} has no host.release.published)`); return; }
     const v = contracts.validate('host.release.published@1', payload);
     assert.ok(v.valid, JSON.stringify(v.errors));
 }
