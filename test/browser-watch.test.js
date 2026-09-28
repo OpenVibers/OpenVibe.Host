@@ -62,6 +62,13 @@ runTests([
             { route: '/', check: 'errors', width: 390, message: 'WebSocket closed' },
             { route: '/', check: 'overflow', width: 390, offenders: ['.wide'] },
         ], 'what failed is kept for the operator');
+        // The same failed release: left alone for 30 minutes, then checked again (a transient failure clears itself).
+        const t0 = Date.parse(st.checkedAt);
+        r = await watch(host.ctx(), { retryDelayMs: 0, check: host.check, now: t0 + 10 * 60000 });
+        assert.deepStrictEqual([r.sites[0].action, host.runs.length], ['skipped', 2]);
+        host.answers.push({ code: 0, reports: pass });
+        r = await watch(host.ctx(), { retryDelayMs: 0, check: host.check, now: t0 + 31 * 60000 });
+        assert.deepStrictEqual([r.sites[0].action, r.sites[0].ok, host.runs.length], ['checked', true, 3]);
         host = site();
         host.answers.push({ code: 1, reports: fail }, { code: 0, reports: pass });
         r = await watch(host.ctx(), { retryDelayMs: 0, check: host.check });

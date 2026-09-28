@@ -47,8 +47,10 @@ groups:
         annotations:
           summary: "No successful nightly backup for more than 30 hours (or no backup metrics at all)"
       # Production drift (OpenVibe.Network registry/deploy-drift.js, hourly against GitHub; WS-S task 7).
+      # max_over_time: Network restarts drop the series for a minute, which reset `for` and made the alert
+      # resolve and fire again every few hours (2026-09-28). Documentation-only drift is not counted.
       - alert: OpenVibeDeployDrift
-        expr: openvibe_deploy_drift_seconds > 24 * 3600
+        expr: max_over_time(openvibe_deploy_drift_seconds[2h]) > 24 * 3600
         for: 1h
         labels: { severity: ticket }
         annotations:
