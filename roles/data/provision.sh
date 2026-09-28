@@ -94,6 +94,7 @@ CONF
 fi
 
 # ── 4. Valkey ────────────────────────────────────────────────────────────────────────────────
+if install_file "$F/sysctl-valkey.conf" /etc/sysctl.d/60-openvibe-valkey.conf 644 root:root; then sysctl -q -p /etc/sysctl.d/60-openvibe-valkey.conf; fi
 install_file "$F/valkey-openvibe.conf" /etc/valkey/openvibe.conf 640 valkey:valkey && RESTART_VALKEY=1
 if ! grep -qx 'include /etc/valkey/openvibe.conf' /etc/valkey/valkey.conf; then
     if [ "$CHECK" = 1 ]; then log "would include openvibe.conf in /etc/valkey/valkey.conf"
@@ -110,8 +111,8 @@ if [ "$CHECK" = 1 ]; then log "check done"; exit 0; fi
 systemctl enable -q postgresql valkey-server pgbouncer
 if [ "$RESTART_PG" = 1 ]; then log "restarting PostgreSQL"; systemctl restart "postgresql@$PGV-main"; elif [ "$RELOAD_PG" = 1 ]; then systemctl reload "postgresql@$PGV-main"; fi
 systemctl is-active -q "postgresql@$PGV-main" || systemctl start "postgresql@$PGV-main"
-[ "$RESTART_VALKEY" = 1 ] && { log "restarting Valkey"; systemctl restart valkey-server; }
-systemctl is-active -q valkey-server || systemctl start valkey-server
+[ "$RESTART_VALKEY" = 1 ] && { log "restarting Valkey"; systemctl reset-failed valkey-server 2>/dev/null || true; systemctl restart valkey-server; }
+systemctl is-active -q valkey-server || { systemctl reset-failed valkey-server 2>/dev/null || true; systemctl start valkey-server; }
 
 # Roles every data host has: the PgBouncer auth user (and its lookup function) and the monitoring user.
 BOUNCER_PW=$(secret PGBOUNCER_AUTH_PASSWORD); PGMON_PW=$(secret PG_MONITOR_PASSWORD)

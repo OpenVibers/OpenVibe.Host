@@ -36,6 +36,7 @@ runTests([
         assert.match(vk, /^bind 127\.0\.0\.1 -::1/m);
         assert.match(vk, /^maxmemory-policy volatile-lru/m);
         assert.match(vk, /^aclfile /m);
+        assert.ok(vk.split('\n').every((l) => l.startsWith('#') || !/\s#/.test(l)), 'Valkey takes no end-of-line comments');
     }),
     test('exporters bind loopback, archiving goes through pgBackRest, and secrets are never echoed', () => {
         const p = read('provision.sh');
