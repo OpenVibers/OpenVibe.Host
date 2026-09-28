@@ -11,4 +11,5 @@ host.json
 .env
 .env.*
 data/
+!roles/data/
 !.env.example

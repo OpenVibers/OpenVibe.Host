@@ -8,7 +8,10 @@
  *   "sites": { …, "metrics": false }                                              nothing to scrape
  *
  * Every target is 127.0.0.1 (the services answer /metrics only to direct loopback callers), and
- * node-exporter (host CPU, memory, disk) is scraped on 127.0.0.1:9100. Alert rules are read from
+ * node-exporter (host CPU, memory, disk) is scraped on 127.0.0.1:9100. The inventory's `exporters`
+ * adds infrastructure exporters, for example the data role's (roles/data, ADR-035):
+ *
+ *   "exporters": [{ "name": "postgres", "port": 9187 }, { "name": "valkey", "port": 9121 }, { "name": "pgbouncer", "port": 9127 }] Alert rules are read from
  * /etc/prometheus/rules/*.yml (deploy/prometheus/openvibe-rules.yml).
  *
  *   node scripts/prometheus-config.js [--inventory /etc/openvibe/host.json] [--interval 30s] > prometheus.yml
@@ -48,6 +51,10 @@ function render(inventory, { interval = '30s' } = {}) {
         '    static_configs:',
         "      - targets: ['127.0.0.1:9100']",
     ];
+    for (const e of Array.isArray(inventory.exporters) ? inventory.exporters : []) {
+        if (!/^[a-z][a-z0-9_-]{0,31}$/.test(String(e.name || '')) || !Number.isInteger(e.port)) continue;
+        lines.push(`  - job_name: ${e.name}`, '    static_configs:', `      - targets: ['127.0.0.1:${e.port}']`, '        labels:', `          exporter: ${e.name}`);
+    }
     for (const j of jobs) {
         lines.push(`  - job_name: ${j.id}`, `    metrics_path: ${j.path}`, '    static_configs:');
         for (const t of j.targets) lines.push(`      - targets: ['127.0.0.1:${t.port}']`, '        labels:', `          service: ${j.id}`, `          process: ${t.process}`);

@@ -36,6 +36,7 @@ Stage A adds a few safety rules of its own:
 - Stage A: the host inventory (services, units, env names, ports, probes, drain policy), environment validation, release install and rollback for git-checkout services, readiness and drain orchestration, the release log, certificate inventory, nginx vhost rendering and transactional install, config snapshots, scheduled SQLite backups with retention and encrypted off-host copies, restore drills.
 - Stage B: tenant projects (keyed by project id), static sites, immutable content-addressed deploy artifacts, activation and rollback, default and custom domains (DNS TXT verification), per-project quotas, upload/validation logs, the tenant vhosts (`ovhost nginx tenants`).
 - Later (Stage C): sandbox profiles, budgets, secret references, outbound policy.
+- Host roles, provisioned from code so any machine can take them: the **data role** (`roles/data/`, ADR-035): PostgreSQL 18, PgBouncer, pgBackRest, Valkey and their exporters, plus `add-service.sh` giving each service its database, roles and Valkey user.
 
 ## Does not own
 

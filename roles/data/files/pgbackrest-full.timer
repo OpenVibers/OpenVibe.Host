@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly full pgBackRest backup (Sunday 02:15 UTC; the host backups run at 03:30)
+
+[Timer]
+OnCalendar=Sun *-*-* 02:15:00 UTC
+Persistent=true
+Unit=pgbackrest-backup@full.service
+
+[Install]
+WantedBy=timers.target
