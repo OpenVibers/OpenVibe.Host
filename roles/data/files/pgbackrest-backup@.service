@@ -7,5 +7,7 @@ Type=oneshot
 User=postgres
 Group=postgres
 ExecStart=/usr/bin/pgbackrest --stanza=openvibe --type=%i backup
+# On success only: the time of the last good backup, for the DataBackupStale alert (textfile collector).
+ExecStartPost=+/usr/local/lib/openvibe-data/backup-metric.sh %i
 Nice=10
 IOSchedulingClass=idle

@@ -101,3 +101,48 @@ groups:
         labels: { severity: page }
         annotations:
           summary: "Operator alerts were not delivered for more than 15 minutes (ovhost alerts relay: Prometheus, the token or Network)"
+  # The data role (roles/data, ADR-035): PostgreSQL, PgBouncer, Valkey and pgBackRest.
+  - name: openvibe-data
+    rules:
+      - alert: DataPostgresDown
+        expr: pg_up == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "PostgreSQL does not answer its exporter: every migrated service is down"
+      - alert: DataPgBouncerDown
+        expr: pgbouncer_up == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "PgBouncer does not answer: services reach PostgreSQL through it"
+      - alert: DataValkeyDown
+        expr: redis_up == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: "Valkey does not answer: limits, caches, queues and fan-out are degraded"
+      - alert: DataPostgresConnectionsHigh
+        expr: sum(pg_stat_database_numbackends) / scalar(pg_settings_max_connections) > 0.8
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "PostgreSQL connections above 80% of max_connections: check PgBouncer pool sizes"
+      - alert: DataWalArchiveFailing
+        expr: increase(pg_stat_archiver_failed_count[15m]) > 0
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: "WAL archiving to the pgBackRest repository is failing: point-in-time recovery is at risk"
+      - alert: DataBackupStale
+        expr: time() - max(openvibe_pgbackrest_last_success_timestamp_seconds) > 26 * 3600
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: "No successful pgBackRest backup for more than 26 hours"
+      - alert: DataValkeyMemoryHigh
+        expr: redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1) > 0.9
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Valkey above 90% of maxmemory: only TTL keys can be evicted"

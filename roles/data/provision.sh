@@ -88,6 +88,7 @@ CONF
     )
     mkdir -p -m 755 /etc/pgbackrest   # umask 077 would make it 700, and postgres must read the file inside
     install_file "$TMP/pgbackrest.conf" /etc/pgbackrest/pgbackrest.conf 640 root:postgres || true
+    install_file "$F/backup-metric.sh" /usr/local/lib/openvibe-data/backup-metric.sh 755 root:root || true
     for u in pgbackrest-backup@.service pgbackrest-full.timer pgbackrest-diff.timer; do
         install_file "$F/$u" "/etc/systemd/system/$u" 644 root:root && RELOAD_UNITS=1
     done

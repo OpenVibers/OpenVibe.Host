@@ -38,6 +38,13 @@ runTests([
         assert.match(vk, /^aclfile /m);
         assert.ok(vk.split('\n').every((l) => l.startsWith('#') || !/\s#/.test(l)), 'Valkey takes no end-of-line comments');
     }),
+    test('alerts cover the data role, and the backup metric is written only after a successful backup', () => {
+        const rules = fs.readFileSync(path.join(__dirname, '..', 'deploy', 'prometheus', 'openvibe-rules.yml'), 'utf8');
+        for (const a of ['DataPostgresDown', 'DataPgBouncerDown', 'DataValkeyDown', 'DataPostgresConnectionsHigh', 'DataWalArchiveFailing', 'DataBackupStale', 'DataValkeyMemoryHigh']) assert.ok(rules.includes(`alert: ${a}`), a);
+        const unit = read('files/pgbackrest-backup@.service');
+        assert.match(unit, /^ExecStartPost=\+\/usr\/local\/lib\/openvibe-data\/backup-metric\.sh %i$/m, 'ExecStartPost runs only after ExecStart succeeded');
+        assert.match(read('files/backup-metric.sh'), /openvibe_pgbackrest_last_success_timestamp_seconds/);
+    }),
     test('exporters bind loopback, archiving goes through pgBackRest, and secrets are never echoed', () => {
         const p = read('provision.sh');
         for (const port of ['9187', '9121', '9127']) assert.match(p, new RegExp(`127\\.0\\.0\\.1:${port}|127\\.0\\.0\\.1 *:?${port}`));
