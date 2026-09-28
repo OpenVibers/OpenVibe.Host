@@ -5,7 +5,8 @@
 #
 # Before: the service's postgres branch is merged to main with green CI, its auto-deploy is frozen
 # (ovhost freeze <svc> --reason …), and add-service.sh <svc> has written its database settings.
-# It clones main as ubuntu into /var/tmp/pg-<svc> and installs it; stops the unit; keeps a read-only
+# It clones main as ubuntu into /var/tmp/pg-<svc> and installs it; waits until the service's protected sessions are
+# idle (two checks a minute apart); stops the unit; keeps a read-only
 # <svc>.pre-postgres-<time>.db backup next to the file; runs that release's scripts/migrate-to-postgres.js
 # (openvibe-sdk runSqliteMigration: migrate, import, verify counts and checksums) with the unit's
 # environment, as ubuntu; on any failure it starts the old release again and stops. Then it unfreezes and
@@ -20,17 +21,29 @@ WORK=/var/tmp/pg-$SVC; UB=$(id -u ubuntu); GB=$(id -g ubuntu)
 rm -rf "$WORK"; install -d -o ubuntu -g ubuntu "$WORK"
 REMOTE=$(git -C "$DIR" remote get-url origin)
 setpriv --reuid=$UB --regid=$GB --init-groups env HOME=/home/ubuntu bash -c "cd $WORK && git clone -q --depth 1 --branch main '$REMOTE' src && cd src && npm ci --omit=dev --no-audit --no-fund 2>&1 | tail -1 && git log --oneline -1"
+# Protected sessions (the inventory's probe: Media's recordings, Live's streams) would be cut by the stop: wait for two
+# idle checks a minute apart, as a deploy's --wait-idle does, for up to 12 hours. A probe that cannot answer counts as busy.
+quiet=0
+for _ in $(seq 1 720); do
+    n=$(ovhost status "$SVC" --json | node -e 'const r = JSON.parse(require("fs").readFileSync(0, "utf8"))[0] || {}; const p = r.protected; process.stdout.write(!p ? "none" : p.count == null ? "unknown" : String(p.count));')
+    [ "$n" = none ] && break
+    if [ "$n" = 0 ]; then quiet=$((quiet + 1)); [ $quiet -ge 2 ] && break; else quiet=0; echo "[switch] waiting: $n protected session(s)"; fi
+    sleep 60
+done
+[ "$n" = none ] || [ $quiet -ge 2 ] || { echo "[switch] still busy after 12 hours: not switching"; rm -rf "$WORK"; exit 1; }
 echo "[switch] stopping $UNIT"; systemctl stop "$UNIT"
 sqlite3 "$DB" ".backup $WORK/source.db"; chown ubuntu:ubuntu "$WORK/source.db"
 TS=$(date -u +%Y%m%dT%H%M%SZ); cp "$WORK/source.db" "$DATA/$SVC.pre-postgres-$TS.db"; chmod 0400 "$DATA/$SVC.pre-postgres-$TS.db"; echo "[switch] backup $DATA/$SVC.pre-postgres-$TS.db"
 echo "[switch] importing"
-set -a; . /etc/openvibe/$SVC.env; set +a
-ENVS=$(systemctl show "$UNIT" -p Environment --value); [ -n "$ENVS" ] && export $ENVS >/dev/null
-cd "$WORK/src"
-if ! setpriv --reuid=$UB --regid=$GB --init-groups env HOME=/home/ubuntu node scripts/migrate-to-postgres.js --sqlite "$WORK/source.db" 2>&1 | grep -v " 0 rows"; then
+# The unit's own environment, parsed by systemd (EnvironmentFile= and Environment=): sourcing the file with bash would
+# mangle values systemd reads fine (JSON, quotes). As ubuntu, in the release just installed.
+SETENV=(); while IFS= read -r kv; do [ -n "$kv" ] && SETENV+=(-E "$kv"); done < <(systemctl show "$UNIT" -p Environment --value | tr ' ' '\n')
+ENVFILES=(); for f in $(systemctl show "$UNIT" -p EnvironmentFiles --value | grep -o '^[^ ]*\|; [^ ]*' | tr -d '; '); do ENVFILES+=(-p "EnvironmentFile=$f"); done
+[ ${#ENVFILES[@]} -gt 0 ] || ENVFILES=(-p "EnvironmentFile=/etc/openvibe/$SVC.env")
+if ! systemd-run --quiet --wait --pipe --collect --uid="$UB" --gid="$GB" -p WorkingDirectory="$WORK/src" -E HOME=/home/ubuntu "${ENVFILES[@]}" "${SETENV[@]}" \
+        "$(command -v node)" scripts/migrate-to-postgres.js --sqlite "$WORK/source.db" 2>&1 | grep -v " 0 rows"; then
     echo "[switch] IMPORT FAILED: starting the old release again"; systemctl start "$UNIT"; exit 1
 fi
-cd /
 echo "[switch] deploying"
 ovhost unfreeze "$SVC" >/dev/null
 ovhost deploy "$SVC" 2>&1 | tail -3
