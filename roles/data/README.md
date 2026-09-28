@@ -17,6 +17,8 @@ sudo roles/data/provision.sh --check     # what would change
 sudo roles/data/provision.sh             # apply (idempotent)
 sudo roles/data/add-service.sh wiki      # database ov_wiki, roles ov_wiki / ov_wiki_app, Valkey user ov_svc_wiki,
                                          # and DATABASE_URL, DATABASE_DIRECT_URL, VALKEY_URL, VALKEY_PREFIX in /etc/openvibe/wiki.env
+sudo roles/data/switch-service.sh news   # the production switch from SQLite: stop, back up, import and verify, deploy
+                                         # (after the postgres branch is merged with green CI and auto-deploy is frozen)
 ```
 
 Generated passwords live only in `/etc/openvibe/data.env` (root, 0600). PostgreSQL receives SCRAM secrets and
