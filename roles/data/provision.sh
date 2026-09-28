@@ -169,12 +169,20 @@ done
 
 # ── 8. The pgBackRest stanza and its schedule ───────────────────────────────────────────────
 if [ "$HAVE_REPO" = 1 ]; then
-    if ! runuser -u postgres -- pgbackrest --stanza=openvibe info --output=json 2>/dev/null | grep -q '"status":{"code":0'; then
+    # pgBackRest info status: 0 ok, 1 missing stanza path, 2 no valid backups, 3 missing stanza data (others: errors).
+    code=$(runuser -u postgres -- pgbackrest --stanza=openvibe info --output=json 2>/dev/null \
+        | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d[0]["status"]["code"] if d else 1)' 2>/dev/null || echo 1)
+    if [ "$code" = 1 ] || [ "$code" = 3 ]; then
         log "creating the pgBackRest stanza"
         runuser -u postgres -- pgbackrest --stanza=openvibe stanza-create
         runuser -u postgres -- pgbackrest --stanza=openvibe check
-        log "starting the first full backup (pgbackrest-backup@full.service)"
+        code=2
+    fi
+    if [ "$code" = 2 ] && ! systemctl is-active -q pgbackrest-backup@full.service; then
+        log "no valid backup yet: starting a full backup (pgbackrest-backup@full.service)"
         systemctl start --no-block pgbackrest-backup@full.service
+    elif [ "$code" != 0 ] && [ "$code" != 2 ]; then
+        log "WARNING: pgBackRest reports status $code for stanza openvibe (run: sudo -u postgres pgbackrest --stanza=openvibe info)"
     fi
     systemctl enable -q --now pgbackrest-full.timer pgbackrest-diff.timer
 fi
