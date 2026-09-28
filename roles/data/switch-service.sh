@@ -12,14 +12,23 @@
 # environment, as ubuntu; on any failure it starts the old release again and stops. Then it unfreezes and
 # deploys (ovhost deploy), and makes the SQLite file read-only: it is the 7-day rollback (compatibility
 # register C-89: sudo ovhost rollback <svc> to the release before, which reads the file).
+#
+# A service that is not one unit in /opt/openvibe.<svc> (OpenRe: two units plus per-release transport workers, a
+# release layout) sets, in the environment:
+#   SWITCH_UNITS="a.service b.service 'worker@*.service'"   every unit to stop (the first one's environment runs the
+#                                                          import); a pattern stops every running instance
+#   SWITCH_DIR=/opt/openre.stream                           the checkout (a release layout's origin is in repo/)
+#   SWITCH_AFTER="/opt/openre.stream/current/deploy/scripts/deploy.sh workers"   run after the deploy (as root)
 set -euo pipefail
-SVC=$1; UNIT=openvibe-$SVC.service; DIR=/opt/openvibe.$SVC; DATA=/var/lib/openvibe-$SVC; DB=$DATA/$SVC.db
+SVC=$1; UNIT=openvibe-$SVC.service; DIR=${SWITCH_DIR:-/opt/openvibe.$SVC}; DATA=/var/lib/openvibe-$SVC; DB=$DATA/$SVC.db
+read -r -a UNITS <<< "${SWITCH_UNITS:-$UNIT}"; UNIT=${UNITS[0]}
 # A second argument names the SQLite file when it is not /var/lib/openvibe-<svc>/<svc>.db (Host: /var/lib/openvibe-host-api/host.db).
 if [ -n "${2:-}" ]; then DB=$2; DATA=$(dirname "$DB"); fi
 WORK=/var/tmp/pg-$SVC; UB=$(id -u ubuntu); GB=$(id -g ubuntu)
 [ -f "$DB" ] || { echo "no $DB"; exit 1; }
 rm -rf "$WORK"; install -d -o ubuntu -g ubuntu "$WORK"
-REMOTE=$(git -C "$DIR" remote get-url origin)
+GITDIR=$DIR; [ -d "$DIR/repo/.git" ] || [ -f "$DIR/repo/HEAD" ] && GITDIR=$DIR/repo
+REMOTE=$(git -C "$GITDIR" remote get-url origin)
 setpriv --reuid=$UB --regid=$GB --init-groups env HOME=/home/ubuntu bash -c "cd $WORK && git clone -q --depth 1 --branch main '$REMOTE' src && cd src && npm ci --omit=dev --no-audit --no-fund 2>&1 | tail -1 && git log --oneline -1"
 # Protected sessions (the inventory's probe: Media's recordings, Live's streams) would be cut by the stop: wait for two
 # idle checks a minute apart, as a deploy's --wait-idle does, for up to 12 hours. A probe that cannot answer counts as busy.
@@ -31,7 +40,7 @@ for _ in $(seq 1 720); do
     sleep 60
 done
 [ "$n" = none ] || [ $quiet -ge 2 ] || { echo "[switch] still busy after 12 hours: not switching"; rm -rf "$WORK"; exit 1; }
-echo "[switch] stopping $UNIT"; systemctl stop "$UNIT"
+echo "[switch] stopping ${UNITS[*]}"; systemctl stop "${UNITS[@]}"
 sqlite3 "$DB" ".backup $WORK/source.db"; chown ubuntu:ubuntu "$WORK/source.db"
 TS=$(date -u +%Y%m%dT%H%M%SZ); cp "$WORK/source.db" "$DATA/$SVC.pre-postgres-$TS.db"; chmod 0400 "$DATA/$SVC.pre-postgres-$TS.db"; echo "[switch] backup $DATA/$SVC.pre-postgres-$TS.db"
 echo "[switch] importing"
@@ -42,11 +51,12 @@ ENVFILES=(); for f in $(systemctl show "$UNIT" -p EnvironmentFiles --value | gre
 [ ${#ENVFILES[@]} -gt 0 ] || ENVFILES=(-p "EnvironmentFile=/etc/openvibe/$SVC.env")
 if ! systemd-run --quiet --wait --pipe --collect --uid="$UB" --gid="$GB" -p WorkingDirectory="$WORK/src" -E HOME=/home/ubuntu "${ENVFILES[@]}" "${SETENV[@]}" \
         "$(command -v node)" scripts/migrate-to-postgres.js --sqlite "$WORK/source.db" 2>&1 | grep -v " 0 rows"; then
-    echo "[switch] IMPORT FAILED: starting the old release again"; systemctl start "$UNIT"; exit 1
+    echo "[switch] IMPORT FAILED: starting the old release again"; systemctl start "${UNITS[@]}" 2>/dev/null || systemctl start "$UNIT"; exit 1
 fi
 echo "[switch] deploying"
 ovhost unfreeze "$SVC" >/dev/null
 ovhost deploy "$SVC" 2>&1 | tail -3
+if [ -n "${SWITCH_AFTER:-}" ]; then echo "[switch] $SWITCH_AFTER"; bash -c "$SWITCH_AFTER" 2>&1 | tail -5; fi
 chmod 0400 "$DB"; [ -f "$DB-wal" ] && chmod 0400 "$DB-wal"; [ -f "$DB-shm" ] && chmod 0400 "$DB-shm"
 rm -rf "$WORK"
 echo "[switch] done"
