@@ -6,11 +6,11 @@ entry in the inventory names a **strategy**: an engine plus the defaults the scr
 Every repository keeps `deploy/scripts/deploy.sh` as a thin wrapper that maps its old flags onto ovhost,
 with the old script body kept as `deploy/scripts/deploy-legacy.sh` for the fallback.
 
-**State (2026-09-27):** written and tested against the fake host (`test/strategy-release-layout.test.js`,
-`test/strategy-in-place.test.js`) and in each repository (the wrapper tests). **Not on the host yet**:
-`/usr/local/lib/openvibe-host` and `/etc/openvibe/host.json` are unchanged. Until the operator runs the
-[cutover checklist](#production-cutover-checklist-for-the-operator), every wrapper finds an ovhost without
-`capabilities` and runs its legacy script, so deploys work exactly as before.
+**State (2026-09-28):** in production since the 2026-09-27 cutover (the checklist below was run then).
+Every service, including the six here, deploys with `sudo ovhost deploy <svc>` and rolls back with `sudo ovhost rollback
+<svc>`; the strategies are tested against the fake host (`test/strategy-release-layout.test.js`,
+`test/strategy-in-place.test.js`) and in each repository (the wrapper tests). The wrappers' legacy fallback is only
+reached where an ovhost without `capabilities` answers, which no longer happens on the production host.
 
 | Service | Strategy | Replaces | Wrapper (`deploy/scripts/deploy.sh`) |
 |---|---|---|---|
@@ -202,7 +202,8 @@ log and a freeze refuses.
 
 ## Production cutover checklist (for the operator)
 
-Nothing here has been run. Each step is read-only until step 5.
+Run on 2026-09-27 (the cutover); kept as the record of what was done and as the procedure for a new host. Each step is
+read-only until step 5.
 
 1. **Update ovhost.** `cd /usr/local/lib/openvibe-host && sudo git pull --ff-only && sudo npm ci --omit=dev
    --no-audit --no-fund`, then `ovhost --version` (0.3.0) and `sudo ovhost capabilities` (`deploy-api=1`).
