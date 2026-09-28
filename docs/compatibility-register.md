@@ -137,6 +137,14 @@ The dates below assume each caller moves by **2026-10-09**. The key paths then g
 | C-84 | **Live deploy notice over the Chat bridge** (`chat-remote.js` `deployNotice`) next to the `live.release.deployed` event (Live `e73a92d`). | Live `server/chat/deploy-notice.js`, `server/chat/chat-remote.js` | Chat + Live | *done 2026-09-23*: Chat subscribes to `live.release.deployed` (Chat `ed90461`, table `deploy_releases` keyed by head) and folds by `subject.id`; the 22:14 UTC deploy produced one card via both paths (`duplicate:release`), and since Live `5324f40` (22:18 UTC deploy: `first_via = events`, folded) the bridge hop runs only while Live's Events publishing is off | 2026-10-14 | Keep the bridge call |
 | C-85 | **Live's own go-live follower push** (`server/streaming/golive-notify.js`) next to Network's `live.stream.started` consumer (subscription since 2026-09-23 19:55 UTC; Live `GET /internal/followers`). A shared per-streamer rate limit in Network stops double notifications. | Live `golive-notify.js` + call sites in `routes.js`, `rtmp-server.js`, `whip-handler.js`, `openre/mirror.js`; Network `server/notifications/stream-live.js` | Live + Network | *documented* (Network commit 2a95548): Network's log shows `outcome: notified` for real go-lives; then delete Live's push and retire Network's `POST /internal/events/stream-live`. | 2026-10-07 | Unsubscribe Network from `live.stream.started` |
 
+## PostgreSQL switches (ADR-035, roadmap WS-X2)
+
+Each service that moves keeps its SQLite file read-only for the 7-day N-1 window, as the rollback (the previous release reads it). One row per service, added at its switch.
+
+| # | What | Where | Owner | Removal condition | Target | Rollback lever until then |
+|---|---|---|---|---|---|---|
+| C-89 tips | Tips' SQLite file after the switch to PostgreSQL (2026-09-28 12:46 UTC, release `9987de4`; import verified, 139 interactions, 4 goals, 143 migration maps). Also a pre-switch backup `tips.pre-postgres-20260928T124635Z.db` | `/var/lib/openvibe-tips/tips.db` (0400) | Tips | 7 days without a rollback: `ovhost archive push` both files, then delete | 2026-10-05 | `sudo ovhost rollback tips` to `3cc8c83` (reads the SQLite file); writes made on PostgreSQL since the switch need replaying |
+
 ## Kept by design (not shims)
 
 These match the search terms but are permanent. They are listed so the next review does not re-open them.
