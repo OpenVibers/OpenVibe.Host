@@ -84,7 +84,8 @@ runTests([
             assert.ok(c[0].ignore.includes('signed-out session probe answered 401'));
             const md = fs.readFileSync(out, 'utf8');
             assert.ok(md.startsWith('# Browser check\n\n### Run '), 'appended under the existing heading');
-            assert.match(md, /2\/3 sites pass/);
+            assert.match(md, /2\/3 sites pass \(1 more not checked\)/, 'a skipped site is named, never left out of the count silently (WS-Q task 7)');
+            assert.match(md, /Not checked \(1\): api\.localhost:\d+ \(its root answers text\/plain/);
             assert.match(md, /\| bad\.localhost:\d+ \| 2 \| ✓ \| ✓ \| \*\*1✗\*\* \| ✓ \| ✓ \| ✓ \| ✓ \| ✓ \| ✓ \| 2\/0 \(1\) \| \+12 KB · 0 nodes · \+1 lst \| 0\.5% · 1 req \|/);
             assert.match(md, /signed-out session probe answered 401: 10× on good\.localhost:\d+, billing\.localhost:\d+/);
         } finally { server.close(); fs.rmSync(dir, { recursive: true, force: true }); }

@@ -95,6 +95,10 @@ async function registry() {
     return out;
 }
 
+// Sites the run did not check, with the reason: listed in the summary and the report, never left out
+// silently (roadmap WS-Q task 7: a site that was skipped is not a site that passed).
+const notChecked = [];
+
 async function resolveSites(reg) {
     const list = arg('sites') ? arg('sites').split(',').map((x) => x.trim()).filter(Boolean) : null;
     if (list) {
@@ -110,7 +114,8 @@ async function resolveSites(reg) {
         if (KNOWN_ROUTES[s.id] && KNOWN_ROUTES[s.id].only) { out.push(s); continue; }
         try {
             const r = await get(`${s.origin}/`, 'text/html');
-            if (/text\/html/i.test(r.type)) out.push(s); else errLog(`skip ${s.origin}: its root answers ${r.type || r.status}, not HTML`);
+            if (/text\/html/i.test(r.type)) out.push(s);
+            else { notChecked.push({ origin: s.origin, why: `its root answers ${r.type || r.status}, not HTML` }); errLog(`skip ${s.origin}: its root answers ${r.type || r.status}, not HTML`); }
         } catch (e) { out.push(s); errLog(`${s.origin}: home did not answer (${e.message}); checked anyway`); }
     }
     return out;
@@ -184,7 +189,8 @@ function ignoredOf(rep) {
 function markdown(h, reports, meta) {
     const L = [];
     L.push(`### Run ${meta.at} (${meta.runner}; ${meta.chrome || 'Chrome'})`, '');
-    L.push(`${reports.filter((r) => r.ok).length}/${reports.length} sites pass. Widths ${meta.widths.join(', ')}; axe ${meta.axe}; navigation ${meta.nav}. Cells: ✓ all pass, **n✗** routes failing, n! warnings, - not run.`, '');
+    if (notChecked.length) L.push(`Not checked (${notChecked.length}): ${notChecked.map((n) => `${n.origin.replace(/^https?:\/\//, '')} (${n.why})`).join('; ')}.`, '');
+    L.push(`${reports.filter((r) => r.ok).length}/${reports.length} sites pass${notChecked.length ? ` (${notChecked.length} more not checked)` : ''}. Widths ${meta.widths.join(', ')}; axe ${meta.axe}; navigation ${meta.nav}. Cells: ✓ all pass, **n✗** routes failing, n! warnings, - not run.`, '');
     L.push('| Site | Routes | Status | Errors | Overflow | Scripts | No-JS | Canonical | JSON-LD | axe | Nav | axe serious/critical (moderate) | Growth lap 2→last | Idle 5 s: CPU · requests · infinite animations |');
     L.push('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
     for (const r of reports) {
@@ -304,6 +310,7 @@ async function networkDown(h) {
             console.log(`${r.ok ? 'ok  ' : 'FAIL'} ${r.base}  ${r.routes.length} route(s)${bad.length ? `; failing: ${bad.join(', ')}` : ''}; axe serious ${s.axe.serious}, critical ${s.axe.critical}, moderate ${s.axe.moderate}; nav ${growthCell(r.navigation).replace(/\*\*/g, '')}; idle ${idleCell(r.navigation)}`);
         }
     }
+    if (!has('json')) for (const n of notChecked) console.log(`skip ${n.origin}: ${n.why} (not checked, not counted as passing)`);
     if (arg('out')) fs.appendFileSync(arg('out'), `\n${markdown(h, reports, meta)}`);
     process.exit(code === 0 && reports.every((r) => r.ok) ? 0 : 1);
 })().catch((err) => { console.error(err.stack || err.message); process.exit(2); });
