@@ -44,6 +44,7 @@ runTests([
         assert.match(p, /pgbackrest --stanza=openvibe archive-push %p/);
         assert.match(p, /repo1-cipher-type=aes-256-cbc/);
         assert.match(p, /repo1-path=\/openvibe-pgbackrest/, 'beside, never under, the pruned backup prefix');
+        assert.match(p, /REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;/, 'service roles cannot reach the maintenance database');
         const lib = read('lib.sh');
         assert.match(lib, /SCRAM-SHA-256\$\{it\}/, 'passwords reach SQL as SCRAM secrets');
         // A secret may be hashed (sha256hex, scram) or written into a file by redirection; never printed to the output.

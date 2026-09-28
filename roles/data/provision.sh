@@ -132,6 +132,9 @@ REVOKE ALL ON FUNCTION pgbouncer.get_auth(TEXT) FROM PUBLIC;
 GRANT USAGE ON SCHEMA pgbouncer TO pgbouncer_auth;
 GRANT EXECUTE ON FUNCTION pgbouncer.get_auth(TEXT) TO pgbouncer_auth;
 CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+-- Service roles reach only their own database: nobody else connects to the maintenance database.
+REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;
+GRANT CONNECT ON DATABASE postgres TO pgbouncer_auth, ov_monitor;
 SQL
 
 # ── 6. PgBouncer (its auth user's password is the one plaintext it must hold: root and postgres only) ──
