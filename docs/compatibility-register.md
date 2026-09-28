@@ -144,6 +144,7 @@ Each service that moves keeps its SQLite file read-only for the 7-day N-1 window
 | # | What | Where | Owner | Removal condition | Target | Rollback lever until then |
 |---|---|---|---|---|---|---|
 | C-89 tips | Tips' SQLite file after the switch to PostgreSQL (2026-09-28 12:46 UTC, release `9987de4`; import verified, 139 interactions, 4 goals, 143 migration maps). Also a pre-switch backup `tips.pre-postgres-20260928T124635Z.db` | `/var/lib/openvibe-tips/tips.db` (0400) | Tips | 7 days without a rollback: `ovhost archive push` both files, then delete | 2026-10-05 | `sudo ovhost rollback tips` to `3cc8c83` (reads the SQLite file); writes made on PostgreSQL since the switch need replaying |
+| C-89 wiki | Wiki's SQLite file after the switch to PostgreSQL (2026-09-28 13:29 UTC, release `ec90476`; import verified: 2 spaces, 11 pages, 13 revisions, 24 citations, 10 discussion refs, 50 outbox events). Also `wiki.pre-postgres-20260928T132947Z.db` | `/var/lib/openvibe-wiki/wiki.db` (0400) | Wiki | 7 days without a rollback: `ovhost archive push` both files, then delete | 2026-10-05 | `sudo ovhost rollback wiki` to `a81573f` (reads the SQLite file); writes made on PostgreSQL since the switch need replaying |
 
 ## Kept by design (not shims)
 
