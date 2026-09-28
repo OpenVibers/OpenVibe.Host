@@ -1,0 +1,10 @@
+[Unit]
+Description=Report this inventory's machines to the OpenVibe node registry every five minutes (WS-X1)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

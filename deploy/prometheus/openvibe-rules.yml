@@ -101,6 +101,19 @@ groups:
         labels: { severity: page }
         annotations:
           summary: "Operator alerts were not delivered for more than 15 minutes (ovhost alerts relay: Prometheus, the token or Network)"
+      # The node registry (openvibe-nodes.timer; WS-X1): products find the nearest node from it.
+      - alert: OpenVibeNodeReportStale
+        expr: time() - openvibe_nodes_report_last_success_timestamp_seconds > 60 * 60
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "The node registry has not heard from this host for more than an hour (ovhost nodes report)"
+      - alert: OpenVibeNodeDown
+        expr: openvibe_nodes{status="down"} > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "A node's beacon has not answered for 15 minutes (ovhost nodes report --dry-run names it)"
   # The data role (roles/data, ADR-035): PostgreSQL, PgBouncer, Valkey and pgBackRest.
   - name: openvibe-data
     rules:
