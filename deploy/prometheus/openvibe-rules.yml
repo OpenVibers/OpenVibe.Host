@@ -146,3 +146,18 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: "Valkey above 90% of maxmemory: only TTL keys can be evicted"
+  # The deploy controller (ovhost reconcile, WS-X11).
+  - name: openvibe-deploy-controller
+    rules:
+      - alert: OpenVibeReconcileFailed
+        expr: openvibe_reconcile_failed_total_last > 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: "ovhost reconcile: an automatic deploy failed or rolled back (see /var/lib/openvibe-host/reconcile.json)"
+      - alert: OpenVibeReconcileStalled
+        expr: time() - openvibe_reconcile_last_run_timestamp_seconds > 3600
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: "ovhost reconcile has not completed a pass for an hour: auto services are not following main"

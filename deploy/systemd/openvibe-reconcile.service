@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenVibe deploy controller: auto services follow main at green CI (ovhost reconcile, WS-X11)
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/deploy-strategies.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root, as `ovhost deploy`: it fetches and installs as each checkout's owner, writes units and vhosts, and restarts.
+User=root
+ExecStart=/usr/local/bin/ovhost reconcile
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
+# OVHOST_GITHUB_TOKEN (read-only, optional: raises GitHub's 60-an-hour anonymous limit; O19)
+EnvironmentFile=-/etc/openvibe/reconcile.env
+UMask=0022
+TimeoutStartSec=30min
+Nice=5

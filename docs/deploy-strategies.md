@@ -313,3 +313,39 @@ comments: the `//` notes below are for reading only.
   "installUnits": true                           // the unit file is installed whenever it differs
 }
 ```
+
+## The deploy controller: `ovhost reconcile` (roadmap WS-X11 phase 1, D72)
+
+Main at its last green CI commit is the desired state. `openvibe-reconcile.timer` runs `ovhost reconcile` every
+5 minutes. For each service whose inventory entry has `"deploy": { "policy": "auto" }` (default `manual`):
+
+1. It plans with a fetch. Up to date: nothing happens.
+2. If the new commits change only documentation and tests (`README.md`, `STATUS.json`, `docs/*.md`, `test/`,
+   `.github/`, `*.test.*`), it does nothing; the change rides the next deploy.
+3. It reads GitHub's check runs for that exact commit. It deploys only when every one completed and passed.
+   None yet, one still running, a failure, or GitHub unreachable all wait for the next pass (or block, on red).
+4. It deploys with the same code as `ovhost deploy --wait-idle` (freezes, protected sessions, readiness and
+   automatic rollback all apply), then sends the release notification.
+
+`gated` and `manual` services are listed with what waits for a person. They are never deployed by the
+controller. Each pass is written to `/var/lib/openvibe-host/reconcile.json` and to the textfile collector.
+Alerts: `OpenVibeReconcileFailed` (page: an automatic deploy failed or rolled back) and `OpenVibeReconcileStalled`
+(ticket: no pass for an hour).
+
+```bash
+sudo ovhost reconcile --dry-run          # what it would do now
+sudo ovhost reconcile wiki blog          # one pass for some services
+sudo systemctl list-timers openvibe-reconcile.timer
+```
+
+Install (once):
+
+```bash
+sudo cp /opt/openvibe.host/deploy/systemd/openvibe-reconcile.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-reconcile.timer
+```
+
+An optional read-only GitHub token (`OVHOST_GITHUB_TOKEN` in `/etc/openvibe/reconcile.env`, O19) lifts the
+60-requests-an-hour anonymous limit. Without one, only a commit that changed code costs API calls.
+Later phases (WS-X11): CI-built signed packages instead of `git` and `npm` on the host, contract-ordered waves,
+canaries, and the GitHub App webhook for immediate passes.
