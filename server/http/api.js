@@ -43,6 +43,7 @@ function createApi(ctx) {
         next();
     });
     router.use(viewers.middleware('api'));
+    if (ctx.actorLimits) router.use(ctx.actorLimits);
 
     const siteUrl = (hostname) => {
         const u = new URL(config.baseUrl);

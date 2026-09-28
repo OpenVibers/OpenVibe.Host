@@ -96,6 +96,8 @@ function createApp(opts = {}) {
     const registry = sharedMetrics.createRegistry();
     const httpMetrics = sharedMetrics.httpMetrics(registry, { normalize: (req) => (req.hostTarget === 'site' ? 'tenant_site' : req.hostTarget === 'unknown' ? 'unknown_host' : null) });
     const proc = sharedMetrics.processMetrics(registry);
+    // Per-actor limits on writes (server/http/actor-limits.js; roadmap WS-R task 4), one budget for the API and the dashboard.
+    ctx.actorLimits = require('./http/actor-limits').createHostActorLimits({ registry });
     sharedMetrics.releaseInfo(registry, { service: 'host', release: release.release });
     registry.gauge({
         name: 'host_sites', help: 'Active tenant sites',

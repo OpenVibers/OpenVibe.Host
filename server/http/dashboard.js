@@ -25,6 +25,7 @@ function createDashboard(ctx) {
     };
 
     router.use(viewers.middleware('dashboard'));
+    if (ctx.actorLimits) router.use(ctx.actorLimits);
     router.use((req, res, next) => { privateNoStore(res); next(); });
 
     function page(req, res, status, title, body, notice, { indexable = false } = {}) {

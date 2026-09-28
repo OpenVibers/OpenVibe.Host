@@ -16,6 +16,10 @@ const http = require('http');
 const { startNetwork } = require('./mocks');
 const { site: siteTar } = require('./tar');
 
+// The Stage B suites deploy dozens of times a minute as one person: per-actor limits are tested on their own
+// (test/actor-limits.test.js), so they are off here unless a test turns them on.
+if (process.env.HOST_ACTOR_LIMITS === undefined) process.env.HOST_ACTOR_LIMITS = 'off';
+
 function makeClock(start = Date.parse('2026-09-22T12:00:00Z')) {
     let t = start;
     return { now: () => t, advance: (ms) => { t += ms; return t; }, set: (v) => { t = v; } };
