@@ -142,8 +142,8 @@ const { boot, check, done } = require('./stageb/boot');
 
     await check('events: created/activated in the outbox with valid envelopes and no file contents', async () => {
         const contracts = require('openvibe-contracts');
-        const created = t.events('host.deploy.created');
-        const activated = t.events('host.deploy.activated');
+        const created = await t.events('host.deploy.created');
+        const activated = await t.events('host.deploy.activated');
         assert.ok(created.length >= 4);
         assert.ok(activated.some((e) => e.payload.rollback === true));
         for (const e of [...created, ...activated]) {

@@ -149,7 +149,7 @@ async function runProof(host, args) {
     for (const t of ['ovhost', 'systemctl', 'runuser']) { fs.writeFileSync(path.join(bin, t), STUB); fs.chmodSync(path.join(bin, t), 0o755); }
     fs.symlinkSync(process.execPath, path.join(bin, 'node'));
     const state = path.join(dir, 'd41');
-    return withRpc(host, (rpc) => new Promise((resolve) => {
+    return await withRpc(host, (rpc) => new Promise((resolve) => {
         const child = spawn('bash', [SCRIPT, ...args], {
             env: {
                 PATH: `${bin}:${process.env.PATH}`, HOME: dir, D41_RPC: rpc, D41_REQUIRE_ROOT: '0', D41_STATE_DIR: state,

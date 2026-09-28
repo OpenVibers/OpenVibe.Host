@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # roles/data/switch-service.sh — the production switch of one service from its SQLite file to PostgreSQL (ADR-035).
 #
-#   sudo roles/data/switch-service.sh <service>
+#   sudo roles/data/switch-service.sh <service> [<sqlite file>]
 #
 # Before: the service's postgres branch is merged to main with green CI, its auto-deploy is frozen
 # (ovhost freeze <svc> --reason …), and add-service.sh <svc> has written its database settings.
@@ -13,6 +13,8 @@
 # register C-89: sudo ovhost rollback <svc> to the release before, which reads the file).
 set -euo pipefail
 SVC=$1; UNIT=openvibe-$SVC.service; DIR=/opt/openvibe.$SVC; DATA=/var/lib/openvibe-$SVC; DB=$DATA/$SVC.db
+# A second argument names the SQLite file when it is not /var/lib/openvibe-<svc>/<svc>.db (Host: /var/lib/openvibe-host-api/host.db).
+if [ -n "${2:-}" ]; then DB=$2; DATA=$(dirname "$DB"); fi
 WORK=/var/tmp/pg-$SVC; UB=$(id -u ubuntu); GB=$(id -g ubuntu)
 [ -f "$DB" ] || { echo "no $DB"; exit 1; }
 rm -rf "$WORK"; install -d -o ubuntu -g ubuntu "$WORK"

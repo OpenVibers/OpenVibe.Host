@@ -29,11 +29,11 @@ function createWorker({ config, store, domains, blobs, outbox, log = console }) 
     }
 
     /** Remove objects no row references, once they are older than `graceMs`. */
-    function sweepObjects({ graceMs = 3600 * 1000 } = {}) {
+    async function sweepObjects({ graceMs = 3600 * 1000 } = {}) {
         const known = store.db.prepare('SELECT 1 FROM host_blobs WHERE project_id = ? AND sha256 = ?');
         let removed = 0;
         for (const o of blobs.list()) {
-            if (known.get(o.projectId, o.sha256)) continue;
+            if (await known.get(o.projectId, o.sha256)) continue;
             try {
                 if (Date.now() - fs.statSync(o.file).mtimeMs < graceMs) continue;
                 fs.unlinkSync(o.file);
@@ -51,8 +51,8 @@ function createWorker({ config, store, domains, blobs, outbox, log = console }) 
             if (!config.worker.enabled) return;
             const every = (ms, fn) => { const t = setInterval(fn, ms); t.unref(); timers.push(t); };
             every(config.domains.recheckIntervalMs, domainTick);
-            every(3600 * 1000, () => { try { sweepObjects(); } catch (err) { log.warn('[Host] object sweep failed:', err.message); } });
-            every(24 * 3600 * 1000, () => { try { outbox.outbox.prune(); } catch (err) { log.warn('[Host] outbox prune failed:', err.message); } });
+            every(3600 * 1000, async () => { try { await sweepObjects(); } catch (err) { log.warn('[Host] object sweep failed:', err.message); } });
+            every(24 * 3600 * 1000, async () => { try { await outbox.outbox.prune(); } catch (err) { log.warn('[Host] outbox prune failed:', err.message); } });
             setTimeout(domainTick, 5000).unref();
         },
         stop() { for (const t of timers) clearInterval(t); timers.length = 0; },

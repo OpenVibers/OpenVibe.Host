@@ -12,7 +12,7 @@
 const { createReadiness } = require('openvibe-shared/ready');
 const { CHARTER_TABLES } = require('./db');
 
-function createHostReadiness({ store, blobs, auth, outbox, release = null, minFreeBytes = () => 0 }) {
+function createHostReadiness({ store, blobs, auth, outbox, release = null, minFreeBytes = () => 0, valkey = null }) {
     const { db } = store;
     return createReadiness({
         service: 'host',
@@ -20,8 +20,8 @@ function createHostReadiness({ store, blobs, auth, outbox, release = null, minFr
         checks: [
             {
                 name: 'db', required: true,
-                check: () => {
-                    const names = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((r) => r.name));
+                check: async () => {
+                    const names = new Set((await db.prepare("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema()").all()).map((r) => r.name));
                     const missing = CHARTER_TABLES.filter((t) => !names.has(t));
                     return missing.length ? `missing ${missing.join(', ')}` : true;
                 },
@@ -36,6 +36,7 @@ function createHostReadiness({ store, blobs, auth, outbox, release = null, minFr
                     return free >= floor ? { ok: true, detail: { free_bytes: free } } : `${free} bytes free, below HOST_MIN_FREE_BYTES (${floor}): new deploys are refused`;
                 },
             },
+            { name: 'valkey', required: false, check: async () => (valkey ? valkey.ready() : { skipped: 'VALKEY_URL not set: per-actor limits count in this process only' }) },
             {
                 name: 'network_jwks', required: false,
                 check: () => {
@@ -46,8 +47,8 @@ function createHostReadiness({ store, blobs, auth, outbox, release = null, minFr
             },
             {
                 name: 'events_relay', required: false,
-                check: () => {
-                    const s = outbox.status();
+                check: async () => {
+                    const s = await outbox.status();
                     if (!s.enabled) return `relay off (Events URL or service credentials not configured); ${s.pending} events waiting`;
                     if (s.rejected) return `${s.rejected} events rejected by OpenVibe.Events`;
                     return { ok: true, detail: { pending: s.pending } };
@@ -55,8 +56,8 @@ function createHostReadiness({ store, blobs, auth, outbox, release = null, minFr
             },
             {
                 name: 'domain_checks', required: false,
-                check: () => {
-                    const stale = db.prepare("SELECT COUNT(*) AS n FROM host_domains WHERE kind = 'custom' AND status = 'pending' AND COALESCE(last_checked_at, created_at) < ?").get(store.now() - 3600 * 1000).n;
+                check: async () => {
+                    const stale = (await db.prepare("SELECT COUNT(*) AS n FROM host_domains WHERE kind = 'custom' AND status = 'pending' AND COALESCE(last_checked_at, created_at) < ?").get(store.now() - 3600 * 1000)).n;
                     return stale ? `${stale} pending custom domains not checked in the last hour (is the worker on?)` : true;
                 },
             },

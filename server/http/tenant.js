@@ -89,18 +89,18 @@ function createTenantServer({ store, config, blobs, takedowns = null, log = cons
     /**
      * -> { kind: 'dashboard' } | { kind: 'site', site } | { kind: 'unknown', host }
      */
-    function resolve(rawHost) {
+    async function resolve(rawHost) {
         const host = normaliseHost(rawHost);
         if (!host) return { kind: 'unknown', host: null };
         if (host === config.dashboardHost || LOOPBACK_HOSTS.has(host)) return { kind: 'dashboard' };
         if (host.endsWith(suffix)) {
             const label = host.slice(0, -suffix.length);
             if (!label || label.includes('.')) return { kind: 'unknown', host };
-            const site = q.siteByName.get(label);
+            const site = await q.siteByName.get(label);
             return site ? { kind: 'site', site, host } : { kind: 'unknown', host };
         }
         if (!isHostname(host)) return { kind: 'unknown', host };
-        const site = q.siteByCustom.get(host);
+        const site = await q.siteByCustom.get(host);
         return site ? { kind: 'site', site, host } : { kind: 'unknown', host };
     }
 
@@ -160,8 +160,8 @@ function createTenantServer({ store, config, blobs, takedowns = null, log = cons
         stream.pipe(res);
     }
 
-    function notFound(req, res, site, reason) {
-        const page = site.active_deploy_id ? q.file.get(site.active_deploy_id, '404.html') : null;
+    async function notFound(req, res, site, reason) {
+        const page = site.active_deploy_id ? await q.file.get(site.active_deploy_id, '404.html') : null;
         if (page && page.project_id === site.project_id) return send(req, res, site, page, { status: 404, cache: 'no-cache' });
         res.statusCode = 404;
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -174,13 +174,13 @@ function createTenantServer({ store, config, blobs, takedowns = null, log = cons
     }
 
     /** Serves one request for a resolved site. */
-    function handle(req, res, site) {
+    async function handle(req, res, site) {
         baseHeaders(res, { sandbox: site.environment === 'sandbox' });
         if (req.method !== 'GET' && req.method !== 'HEAD') {
             return plain(res, 405, 'Static site: only GET and HEAD are supported.', { Allow: 'GET, HEAD' });
         }
         // Taken down by staff: nothing of the tenant's is served, on any of its hosts, until lifted.
-        if (takedowns && takedowns.ofSite(site)) {
+        if (takedowns && await takedowns.ofSite(site)) {
             // Clear-Site-Data asks the browser to drop what the site left behind for this visitor
             // (caches, storage and service workers a phishing page may have installed).
             return plain(res, 451, 'This site is unavailable: OpenVibe.Host staff took it down after a report.', { 'Clear-Site-Data': '"cache", "storage"' });
@@ -196,12 +196,12 @@ function createTenantServer({ store, config, blobs, takedowns = null, log = cons
         const q0 = target.indexOf('?');
         const rawPath = q0 >= 0 ? target.slice(0, q0) : target;
         const search = q0 >= 0 ? target.slice(q0) : '';
-        if (!site.active_deploy_id) return notFound(req, res, site, 'no-deploy');
+        if (!site.active_deploy_id) return await notFound(req, res, site, 'no-deploy');
         const c = candidates(rawPath);
-        if (!c) return notFound(req, res, site, 'invalid');
+        if (!c) return await notFound(req, res, site, 'invalid');
         const deployId = site.active_deploy_id;
         for (const p of c.list) {
-            const row = q.file.get(deployId, p);
+            const row = await q.file.get(deployId, p);
             if (row && row.project_id === site.project_id) {
                 const hashed = isHashedAsset(p);
                 // Browsers keep fingerprinted assets for a year; a shared CDN in front of the tenant
@@ -211,14 +211,14 @@ function createTenantServer({ store, config, blobs, takedowns = null, log = cons
                 return send(req, res, site, row, { cache: hashed ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate' });
             }
         }
-        if (!c.dir && c.dirIndex && q.file.get(deployId, c.dirIndex)) {
+        if (!c.dir && c.dirIndex && await q.file.get(deployId, c.dirIndex)) {
             // /docs → /docs/ so relative links inside docs/index.html resolve; built from the raw path.
             res.statusCode = 301;
             res.setHeader('Location', `${rawPath}/${search}`);
             res.setHeader('Cache-Control', 'no-cache');
             return res.end();
         }
-        return notFound(req, res, site, 'missing');
+        return await notFound(req, res, site, 'missing');
     }
 
     function unknownHost(req, res) {

@@ -163,7 +163,7 @@ const DAY = 24 * 3600 * 1000;
         const up = await t.api('POST', `/api/v1/sites/${site.id}/deploys?activate=1`, { as: ci, body: siteTar({ 'index.html': 'from CI' }), headers: { 'content-type': 'application/gzip' } });
         assert.strictEqual(up.status, 201, up.text);
         assert.strictEqual(up.json().deploy.created_by, `app:${appId}`);
-        assert.deepStrictEqual(t.events('host.deploy.activated').pop().actor, { type: 'app', id: appId });
+        assert.deepStrictEqual((await t.events('host.deploy.activated')).pop().actor, { type: 'app', id: appId });
         assert.strictEqual((await t.get('quota-site.openvibe.host', '/')).text, 'from CI');
         const mk = await t.api('POST', `/api/v1/projects/${project.id}/sites`, { as: ci, json: { name: 'ci-site' } });
         assert.strictEqual(mk.status, 403);

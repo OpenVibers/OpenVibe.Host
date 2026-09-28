@@ -49,103 +49,103 @@ function createApi(ctx) {
         const u = new URL(config.baseUrl);
         return `${u.protocol}//${hostname}${u.port ? `:${u.port}` : ''}`;
     };
-    const siteOut = (s) => { const hostname = sites.defaultHostname(s.name); return out.site(s, { hostname, url: siteUrl(hostname), takedown: takedowns.ofSite(s) }); };
-    const projectOut = (p, role) => out.project(p, { role, quota: projects.quotaOf(p), usage: projects.usageOf(p), takedown: takedowns.ofProject(p.id) });
+    const siteOut = async (s) => { const hostname = sites.defaultHostname(s.name); return out.site(s, { hostname, url: siteUrl(hostname), takedown: await takedowns.ofSite(s) }); };
+    const projectOut = async (p, role) => out.project(p, { role, quota: await projects.quotaOf(p), usage: await projects.usageOf(p), takedown: await takedowns.ofProject(p.id) });
     const tp = (req) => (req.ov ? req.ov.traceparent : undefined);
-    const loadProject = (req, need) => {
-        const project = projects.get(req.params.id);
-        const role = ctx.access.authorize(project, req.viewer, need);
+    const loadProject = async (req, need) => {
+        const project = await projects.get(req.params.id);
+        const role = await ctx.access.authorize(project, req.viewer, need);
         return { project, role };
     };
 
     // ── Projects ────────────────────────────────────────────
-    router.get('/projects', guard('host.site.manage'), run((req) => {
+    router.get('/projects', guard('host.site.manage'), run(async (req) => {
         if (req.viewer.kind === 'anonymous') throw new ApiError(401, 'auth.required', 'sign in with OpenVibe, or present a service token');
-        return { projects: projects.listFor(req.viewer).map((p) => out.project(p, { takedown: takedowns.ofProject(p.id) })) };
+        return { projects: (await Promise.all((await projects.listFor(req.viewer)).map(async (p) => out.project(p, { takedown: await takedowns.ofProject(p.id) })))) };
     }));
-    router.post('/projects', guard('host.site.manage'), jsonBody, run((req) => {
+    router.post('/projects', guard('host.site.manage'), jsonBody, run(async (req) => {
         if (req.viewer.kind === 'anonymous') throw new ApiError(401, 'auth.required', 'sign in with OpenVibe, or present a service token');
-        const p = projects.create(req.viewer, req.body || {});
-        return { project: projectOut(p, 'owner') };
+        const p = await projects.create(req.viewer, req.body || {});
+        return { project: await projectOut(p, 'owner') };
     }, 201));
-    router.get('/projects/:id', guard('host.site.manage'), run((req) => {
-        const { project, role } = loadProject(req, 'read');
-        return { project: projectOut(project, role), sites: sites.listForProject(project.id).map(siteOut), members: projects.members(project).map((m) => ({ principal: m.principal, role: m.role, added_at: out.iso(m.created_at) })) };
+    router.get('/projects/:id', guard('host.site.manage'), run(async (req) => {
+        const { project, role } = await loadProject(req, 'read');
+        return { project: await projectOut(project, role), sites: (await Promise.all((await sites.listForProject(project.id)).map(siteOut))), members: (await projects.members(project)).map((m) => ({ principal: m.principal, role: m.role, added_at: out.iso(m.created_at) })) };
     }));
-    router.delete('/projects/:id', guard('host.site.manage'), run((req) => {
-        const { project } = loadProject(req, 'read');
-        return projects.remove(req.viewer, project, { sites });
+    router.delete('/projects/:id', guard('host.site.manage'), run(async (req) => {
+        const { project } = await loadProject(req, 'read');
+        return await projects.remove(req.viewer, project, { sites });
     }));
-    router.get('/projects/:id/quota', guard('host.site.manage'), run((req) => {
-        const { project } = loadProject(req, 'read');
-        return { quota: out.quotaOut(projects.quotaOf(project)), usage: out.usageOut(projects.usageOf(project)) };
+    router.get('/projects/:id/quota', guard('host.site.manage'), run(async (req) => {
+        const { project } = await loadProject(req, 'read');
+        return { quota: out.quotaOut(await projects.quotaOf(project)), usage: out.usageOut(await projects.usageOf(project)) };
     }));
-    router.put('/projects/:id/quota', guard('host.site.manage'), jsonBody, run((req) => {
-        const project = projects.get(req.params.id);
-        const q = projects.setQuota(req.viewer, project, req.body || {});
-        return { quota: out.quotaOut(q), usage: out.usageOut(projects.usageOf(project)) };
+    router.put('/projects/:id/quota', guard('host.site.manage'), jsonBody, run(async (req) => {
+        const project = await projects.get(req.params.id);
+        const q = await projects.setQuota(req.viewer, project, req.body || {});
+        return { quota: out.quotaOut(q), usage: out.usageOut(await projects.usageOf(project)) };
     }));
-    router.put('/projects/:id/members/:principal', guard('host.site.manage'), jsonBody, run((req) => {
-        const { project } = loadProject(req, 'read');
-        const list = projects.setMember(req.viewer, project, req.params.principal, String((req.body || {}).role || ''));
+    router.put('/projects/:id/members/:principal', guard('host.site.manage'), jsonBody, run(async (req) => {
+        const { project } = await loadProject(req, 'read');
+        const list = await projects.setMember(req.viewer, project, req.params.principal, String((req.body || {}).role || ''));
         return { members: list.map((m) => ({ principal: m.principal, role: m.role, added_at: out.iso(m.created_at) })) };
     }));
-    router.delete('/projects/:id/members/:principal', guard('host.site.manage'), run((req) => {
-        const { project } = loadProject(req, 'read');
-        const list = projects.removeMember(req.viewer, project, req.params.principal);
+    router.delete('/projects/:id/members/:principal', guard('host.site.manage'), run(async (req) => {
+        const { project } = await loadProject(req, 'read');
+        const list = await projects.removeMember(req.viewer, project, req.params.principal);
         return { members: list.map((m) => ({ principal: m.principal, role: m.role, added_at: out.iso(m.created_at) })) };
     }));
 
     // ── Takedowns (staff only; members see them on the project and site) ──
     // Serving stops at once and the content is kept for review (domain/takedowns.js).
-    router.post('/projects/:id/takedown', guard('host.site.manage'), jsonBody, run((req) => {
-        const { project } = loadProject(req, 'read');
-        return { takedown: out.takedownOut(takedowns.takeDown(req.viewer, 'project', project.id, (req.body || {}).reason)) };
+    router.post('/projects/:id/takedown', guard('host.site.manage'), jsonBody, run(async (req) => {
+        const { project } = await loadProject(req, 'read');
+        return { takedown: out.takedownOut(await takedowns.takeDown(req.viewer, 'project', project.id, (req.body || {}).reason)) };
     }, 201));
-    router.delete('/projects/:id/takedown', guard('host.site.manage'), jsonBody, run((req) => {
-        const { project } = loadProject(req, 'read');
-        return takedowns.lift(req.viewer, 'project', project.id, (req.body || {}).note);
+    router.delete('/projects/:id/takedown', guard('host.site.manage'), jsonBody, run(async (req) => {
+        const { project } = await loadProject(req, 'read');
+        return await takedowns.lift(req.viewer, 'project', project.id, (req.body || {}).note);
     }));
-    router.post('/sites/:id/takedown', guard('host.site.manage'), jsonBody, run((req) => {
-        const { site } = sites.load(req.viewer, req.params.id, 'read');
-        return { takedown: out.takedownOut(takedowns.takeDown(req.viewer, 'site', site.id, (req.body || {}).reason)) };
+    router.post('/sites/:id/takedown', guard('host.site.manage'), jsonBody, run(async (req) => {
+        const { site } = await sites.load(req.viewer, req.params.id, 'read');
+        return { takedown: out.takedownOut(await takedowns.takeDown(req.viewer, 'site', site.id, (req.body || {}).reason)) };
     }, 201));
-    router.delete('/sites/:id/takedown', guard('host.site.manage'), jsonBody, run((req) => {
-        const { site } = sites.load(req.viewer, req.params.id, 'read');
-        return takedowns.lift(req.viewer, 'site', site.id, (req.body || {}).note);
+    router.delete('/sites/:id/takedown', guard('host.site.manage'), jsonBody, run(async (req) => {
+        const { site } = await sites.load(req.viewer, req.params.id, 'read');
+        return await takedowns.lift(req.viewer, 'site', site.id, (req.body || {}).note);
     }));
 
     // ── Sites ───────────────────────────────────────────────
-    router.get('/projects/:id/sites', guard('host.site.manage'), run((req) => {
-        const { project } = loadProject(req, 'read');
-        return { sites: sites.listForProject(project.id).map(siteOut) };
+    router.get('/projects/:id/sites', guard('host.site.manage'), run(async (req) => {
+        const { project } = await loadProject(req, 'read');
+        return { sites: (await Promise.all((await sites.listForProject(project.id)).map(siteOut))) };
     }));
-    router.post('/projects/:id/sites', guard('host.site.manage'), jsonBody, run((req) => {
-        const project = projects.get(req.params.id);
-        ctx.access.authorize(project, req.viewer, 'read');
-        return { site: siteOut(sites.create(req.viewer, project, req.body || {})) };
+    router.post('/projects/:id/sites', guard('host.site.manage'), jsonBody, run(async (req) => {
+        const project = await projects.get(req.params.id);
+        await ctx.access.authorize(project, req.viewer, 'read');
+        return { site: await siteOut(await sites.create(req.viewer, project, req.body || {})) };
     }, 201));
-    router.get('/sites/:id', guard('host.site.manage'), run((req) => {
-        const { site } = sites.load(req.viewer, req.params.id, 'read');
-        return { site: siteOut(site), domains: domains.listForSite(site.id).map((d) => out.domain(d, domains.instructions(d, site))) };
+    router.get('/sites/:id', guard('host.site.manage'), run(async (req) => {
+        const { site } = await sites.load(req.viewer, req.params.id, 'read');
+        return { site: await siteOut(site), domains: (await domains.listForSite(site.id)).map((d) => out.domain(d, domains.instructions(d, site))) };
     }));
-    router.delete('/sites/:id', guard('host.site.manage'), run((req) => sites.remove(req.viewer, req.params.id, { deploys })));
+    router.delete('/sites/:id', guard('host.site.manage'), run(async (req) => await sites.remove(req.viewer, req.params.id, { deploys })));
 
     // ── Deploys ─────────────────────────────────────────────
-    router.get('/sites/:id/deploys', guard('host.deploy.create'), run((req) => {
+    router.get('/sites/:id/deploys', guard('host.deploy.create'), run(async (req) => {
         // Reads need the least member role (deployer); staff may read them too, e.g. to review a takedown.
-        const { site } = sites.load(req.viewer, req.params.id, 'read');
+        const { site } = await sites.load(req.viewer, req.params.id, 'read');
         return {
             active_deploy_id: site.active_deploy_id || null,
-            deploys: deploys.list(site.id, Number(req.query.limit) || 50).map((d) => out.deploy(d, { active: d.id === site.active_deploy_id })),
-            activations: deploys.activationsOf(site.id, 20).map(out.activation),
+            deploys: (await deploys.list(site.id, Number(req.query.limit) || 50)).map((d) => out.deploy(d, { active: d.id === site.active_deploy_id })),
+            activations: (await deploys.activationsOf(site.id, 20)).map(out.activation),
         };
     }));
 
     router.post('/sites/:id/deploys', guard('host.deploy.create'), async (req, res) => {
         let release = null;
         try {
-            const pre = deploys.precheck(req.viewer, req.params.id);
+            const pre = await deploys.precheck(req.viewer, req.params.id);
             release = ctx.uploadGate.enter();
             if (!release) { res.set('Retry-After', '30'); throw new ApiError(503, 'upload.busy', 'Host is validating other uploads right now; try again in 30 seconds'); }
             let up;
@@ -155,12 +155,12 @@ function createApi(ctx) {
                 if (!(err instanceof UploadError)) throw err;
                 if (err.closeConnection) res.set('Connection', 'close');
                 const multipart = String(req.headers['content-type'] || '').startsWith('multipart/');
-                const r = deploys.recordFailure(req.viewer, pre, { source: err.source || (multipart ? 'files' : 'archive'), code: err.code, problems: [{ code: err.code, message: err.message }], traceparent: tp(req) });
+                const r = await deploys.recordFailure(req.viewer, pre, { source: err.source || (multipart ? 'files' : 'archive'), code: err.code, problems: [{ code: err.code, message: err.message }], traceparent: tp(req) });
                 return contracts.http.sendProblem(res, err.status, err.code, { detail: err.message, ctx: req.ov, extra: { deploy_id: r.deploy.id, log: r.log.map((l) => `${l.level}: ${l.message}`) } });
             }
             const activate = truthy(up.fields.activate != null ? up.fields.activate : req.query.activate);
-            const r = deploys.create(req.viewer, pre, up.entries, { source: up.source, activate, notes: up.notes, traceparent: tp(req) });
-            const site = sites.get(pre.site.id);
+            const r = await deploys.create(req.viewer, pre, up.entries, { source: up.source, activate, notes: up.notes, traceparent: tp(req) });
+            const site = await sites.get(pre.site.id);
             res.status(201).json({ deploy: out.deploy(r.deploy, { active: site.active_deploy_id === r.deploy.id, log: r.log }), activated: Boolean(r.activated && r.activated.changed), url: siteUrl(sites.defaultHostname(site.name)) });
         } catch (err) {
             // Refused before the body was read (404, 429, 503): close instead of draining a large upload.
@@ -171,41 +171,41 @@ function createApi(ctx) {
         }
     });
 
-    router.get('/deploys/:id', guard('host.deploy.create'), run((req) => {
-        const { deploy, site } = deploys.load(req.viewer, req.params.id, 'read');
-        return { deploy: out.deploy(deploy, { active: site.active_deploy_id === deploy.id, files: deploys.filesOf(deploy.id) }) };
+    router.get('/deploys/:id', guard('host.deploy.create'), run(async (req) => {
+        const { deploy, site } = await deploys.load(req.viewer, req.params.id, 'read');
+        return { deploy: out.deploy(deploy, { active: site.active_deploy_id === deploy.id, files: await deploys.filesOf(deploy.id) }) };
     }));
-    router.get('/deploys/:id/log', guard('host.deploy.create'), run((req) => {
-        const { deploy } = deploys.load(req.viewer, req.params.id, 'read');
-        return { deploy_id: deploy.id, state: deploy.state, log: deploys.logOf(deploy.id).map(out.logLine) };
+    router.get('/deploys/:id/log', guard('host.deploy.create'), run(async (req) => {
+        const { deploy } = await deploys.load(req.viewer, req.params.id, 'read');
+        return { deploy_id: deploy.id, state: deploy.state, log: (await deploys.logOf(deploy.id)).map(out.logLine) };
     }));
-    router.post('/deploys/:id/activate', guard('host.deploy.create'), jsonBody, run((req) => {
+    router.post('/deploys/:id/activate', guard('host.deploy.create'), jsonBody, run(async (req) => {
         const body = req.body || {};
-        const r = deploys.activate(req.viewer, req.params.id, { expectedActive: 'expected_active' in body ? body.expected_active : undefined, traceparent: tp(req) });
+        const r = await deploys.activate(req.viewer, req.params.id, { expectedActive: 'expected_active' in body ? body.expected_active : undefined, traceparent: tp(req) });
         return { active_deploy_id: r.deploy_id, previous_deploy_id: r.previous_deploy_id, changed: r.changed };
     }));
-    router.post('/sites/:id/rollback', guard('host.deploy.create'), jsonBody, run((req) => {
+    router.post('/sites/:id/rollback', guard('host.deploy.create'), jsonBody, run(async (req) => {
         const body = req.body || {};
-        const r = deploys.rollback(req.viewer, req.params.id, { deployId: body.deploy_id || null, expectedActive: 'expected_active' in body ? body.expected_active : undefined, traceparent: tp(req) });
+        const r = await deploys.rollback(req.viewer, req.params.id, { deployId: body.deploy_id || null, expectedActive: 'expected_active' in body ? body.expected_active : undefined, traceparent: tp(req) });
         return { active_deploy_id: r.deploy_id, previous_deploy_id: r.previous_deploy_id, changed: r.changed };
     }));
-    router.delete('/deploys/:id', guard('host.site.manage'), run((req) => deploys.remove(req.viewer, req.params.id)));
+    router.delete('/deploys/:id', guard('host.site.manage'), run(async (req) => await deploys.remove(req.viewer, req.params.id)));
 
     // ── Domains ─────────────────────────────────────────────
-    router.get('/sites/:id/domains', guard('host.domain.manage'), run((req) => {
-        const { site } = sites.load(req.viewer, req.params.id, 'read');
-        return { domains: domains.listForSite(site.id).map((d) => out.domain(d, domains.instructions(d, site))) };
+    router.get('/sites/:id/domains', guard('host.domain.manage'), run(async (req) => {
+        const { site } = await sites.load(req.viewer, req.params.id, 'read');
+        return { domains: (await domains.listForSite(site.id)).map((d) => out.domain(d, domains.instructions(d, site))) };
     }));
-    router.post('/sites/:id/domains', guard('host.domain.manage'), jsonBody, run((req) => {
-        const { domain, site } = domains.add(req.viewer, req.params.id, req.body || {});
+    router.post('/sites/:id/domains', guard('host.domain.manage'), jsonBody, run(async (req) => {
+        const { domain, site } = await domains.add(req.viewer, req.params.id, req.body || {});
         return { domain: out.domain(domain, domains.instructions(domain, site)) };
     }, 201));
     router.post('/domains/:id/verify', guard('host.domain.manage'), run(async (req) => {
         const d = await domains.verify(req.viewer, req.params.id, { traceparent: tp(req) });
-        const site = sites.get(d.site_id);
+        const site = await sites.get(d.site_id);
         return { domain: out.domain(d, domains.instructions(d, site)) };
     }));
-    router.delete('/domains/:id', guard('host.domain.manage'), run((req) => domains.remove(req.viewer, req.params.id)));
+    router.delete('/domains/:id', guard('host.domain.manage'), run(async (req) => await domains.remove(req.viewer, req.params.id)));
 
     router.use((req, res) => contracts.http.sendProblem(res, 404, 'route.not_found', { detail: `no route ${req.method} ${req.baseUrl}${req.path}`, ctx: req.ov }));
     return router;

@@ -34,20 +34,20 @@ function createTakedowns({ store }) {
     const shape = (row) => (row ? { scope: row.target_kind, reason: row.reason, since: row.created_at } : null);
 
     /** The takedown that covers a site (its own, or its project's), or null. */
-    const ofSite = (site) => shape(q.forSite.get(site.id, site.project_id));
+    const ofSite = async (site) => shape(await q.forSite.get(site.id, site.project_id));
     /** The project-wide takedown, or null. */
-    const ofProject = (projectId) => shape(q.forProject.get(projectId));
+    const ofProject = async (projectId) => shape(await q.forProject.get(projectId));
 
     /** Members may not publish into, or change, content that is taken down. */
-    function assertOpen(site) {
-        const t = ofSite(site);
+    async function assertOpen(site) {
+        const t = await ofSite(site);
         if (t) throw new ApiError(403, 'site.taken_down', `this ${t.scope} was taken down by OpenVibe staff (${t.reason}); nothing can be published or changed until staff lift it`);
     }
 
     /** Deleting taken-down content would destroy what staff are reviewing: staff only. */
-    function assertDeletable(viewer, { site = null, projectId = null }) {
+    async function assertDeletable(viewer, { site = null, projectId = null }) {
         if (viewer && viewer.staff) return;
-        const row = site ? q.forSite.get(site.id, site.project_id) : q.anyInProject.get({ p: projectId });
+        const row = site ? await q.forSite.get(site.id, site.project_id) : await q.anyInProject.get({ p: projectId });
         if (row) throw new ApiError(409, 'site.taken_down', `this ${row.target_kind} was taken down by OpenVibe staff and is kept for review; it cannot be deleted until staff lift the takedown`);
     }
 
@@ -56,22 +56,22 @@ function createTakedowns({ store }) {
     }
 
     /** kind: 'site' | 'project'. -> the takedown */
-    function takeDown(viewer, kind, targetId, reasonRaw) {
+    async function takeDown(viewer, kind, targetId, reasonRaw) {
         requireStaff(viewer);
         const reason = String(reasonRaw || '').trim();
         if (!reason || reason.length > REASON_MAX) throw new ApiError(422, 'takedown.reason_required', `a takedown needs a reason of 1–${REASON_MAX} characters (members see it)`);
         try {
-            q.insert.run(kind, targetId, reason, principalOf(viewer), store.now());
+            await q.insert.run(kind, targetId, reason, principalOf(viewer), store.now());
         } catch (err) {
-            if (/UNIQUE/.test(err.message)) throw new ApiError(409, 'takedown.exists', `this ${kind} is already taken down`);
+            if (err.code === '23505') throw new ApiError(409, 'takedown.exists', `this ${kind} is already taken down`);
             throw err;
         }
         return { scope: kind, reason, since: store.now() };
     }
 
-    function lift(viewer, kind, targetId, note) {
+    async function lift(viewer, kind, targetId, note) {
         requireStaff(viewer);
-        const r = q.lift.run(principalOf(viewer), store.now(), note == null ? null : String(note).slice(0, REASON_MAX), kind, targetId);
+        const r = await q.lift.run(principalOf(viewer), store.now(), note == null ? null : String(note).slice(0, REASON_MAX), kind, targetId);
         if (r.changes !== 1) throw new ApiError(404, 'takedown.not_found', `this ${kind} is not taken down`);
         return { lifted: true };
     }

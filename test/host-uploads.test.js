@@ -22,7 +22,7 @@ const { tarball } = require('./stageb/tar');
     let baseline = countObjects();
 
     async function refused(entries, code, { gzip = true, raw = null, contentType } = {}) {
-        const before = t.events('host.deploy.failed').length;
+        const before = (await t.events('host.deploy.failed')).length;
         const r = await t.api('POST', `/api/v1/sites/${site.id}/deploys?activate=1`, { as: alice, body: raw || tarball(entries, { gzip }), headers: { 'content-type': contentType || 'application/gzip' } });
         assert.ok([413, 422].includes(r.status), `${code}: status ${r.status} ${r.text}`);
         const body = r.json();
@@ -33,7 +33,7 @@ const { tarball } = require('./stageb/tar');
         assert.strictEqual(failed.state, 'failed');
         assert.strictEqual(failed.failure_code, code);
         assert.strictEqual(failed.file_count, 0);
-        assert.strictEqual(t.events('host.deploy.failed').length, before + 1);
+        assert.strictEqual((await t.events('host.deploy.failed')).length, before + 1);
         assert.strictEqual((await t.get('uploads.openvibe.host', '/')).text, 'GOOD', 'the active deploy is unchanged');
         assert.strictEqual(countObjects(), baseline, 'nothing was stored');
         return body;
@@ -121,7 +121,7 @@ const { tarball } = require('./stageb/tar');
         const one = list.deploys.find((d) => d.failure_code === 'deploy.link_refused');
         const log = (await t.api('GET', `/api/v1/deploys/${one.id}/log`, { as: alice })).json().log;
         assert.ok(log.some((l) => l.level === 'error' && /link/.test(l.message)));
-        for (const e of t.events('host.deploy.failed')) assert.ok(!JSON.stringify(e).includes('sk_live'), 'no file contents in events');
+        for (const e of await t.events('host.deploy.failed')) assert.ok(!JSON.stringify(e).includes('sk_live'), 'no file contents in events');
     });
 
     await t.close();

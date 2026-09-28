@@ -65,10 +65,11 @@ const DASHBOARD_CSP_HEADER = Object.entries(DASHBOARD_CSP).map(([k, v]) => `${k}
  * opts: config, store | dbPath, now (clock), fetchImpl, auth (a createAuthClient-like object),
  *       resolver ({ resolveTxt }), log
  */
-function createApp(opts = {}) {
+async function createApp(opts = {}) {
     const config = opts.config || configLib.load();
     const log = opts.log || console;
-    const store = opts.store || openStore(opts.dbPath || config.dbPath, { now: opts.now });
+    // PostgreSQL (ADR-035): opened and migrated here unless the caller (a test, a script) hands in a store.
+    const store = opts.store || await openStore(config, { now: opts.now, log });
     const blobs = createBlobStore(opts.storageDir || config.storageDir);
     require('./http/errors').setLogger(log);
 
@@ -97,11 +98,14 @@ function createApp(opts = {}) {
     const httpMetrics = sharedMetrics.httpMetrics(registry, { normalize: (req) => (req.hostTarget === 'site' ? 'tenant_site' : req.hostTarget === 'unknown' ? 'unknown_host' : null) });
     const proc = sharedMetrics.processMetrics(registry);
     // Per-actor limits on writes (server/http/actor-limits.js; roadmap WS-R task 4), one budget for the API and the dashboard.
-    ctx.actorLimits = require('./http/actor-limits').createHostActorLimits({ registry });
+    // Valkey (ADR-035): shared, never-authoritative state (per-actor limit counters). Optional.
+    const valkey = opts.valkey !== undefined ? opts.valkey : (config.valkey.url ? require('openvibe-sdk/valkey').createValkey({ url: config.valkey.url, prefix: config.valkey.prefix, log }) : null);
+    ctx.valkey = valkey;
+    ctx.actorLimits = require('./http/actor-limits').createHostActorLimits({ registry, valkey });
     sharedMetrics.releaseInfo(registry, { service: 'host', release: release.release });
     registry.gauge({
         name: 'host_sites', help: 'Active tenant sites',
-        collect: () => [{ labels: {}, value: store.db.prepare("SELECT COUNT(*) AS n FROM host_sites WHERE status = 'active'").get().n }],
+        collect: async () => [{ labels: {}, value: (await store.db.prepare("SELECT COUNT(*) AS n FROM host_sites WHERE status = 'active'").get()).n }],
     });
     ctx.stopMetrics = proc.stop;
     app.locals.metrics = registry;
@@ -110,11 +114,11 @@ function createApp(opts = {}) {
     app.use(httpMetrics.middleware);
 
     // ── Host dispatch: tenant sites never reach anything below ──
-    app.use((req, res, next) => {
-        const target = tenant.resolve(req.headers.host);
+    app.use(async (req, res, next) => {
+        const target = await tenant.resolve(req.headers.host);
         req.hostTarget = target.kind;
         if (target.kind === 'dashboard') return next();
-        if (target.kind === 'site') return tenant.handle(req, res, target.site);
+        if (target.kind === 'site') return await tenant.handle(req, res, target.site);
         return tenant.unknownHost(req, res);
     });
 
@@ -135,7 +139,7 @@ function createApp(opts = {}) {
     release.mount(app, { registry: registry });
     // GET /limits.json: the developer limits enforced here, from config (WS-N task 7; Codes renders them).
     require('./limits').mountLimits(app, config);
-    const readiness = createHostReadiness({ store, blobs, auth, outbox, release: release.release, minFreeBytes: () => config.uploads.minFreeBytes });
+    const readiness = createHostReadiness({ store, blobs, auth, outbox, release: release.release, minFreeBytes: () => config.uploads.minFreeBytes, valkey: ctx.valkey });
     app.get('/api/ready', readiness.handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));
     // The dashboard host: only the public front page and the legal pages are crawlable. Tenant sites

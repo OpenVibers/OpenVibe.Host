@@ -97,7 +97,7 @@ const { site: siteTar } = require('./stageb/tar');
         assert.strictEqual((await t.get('alpha.openvibe.host', '/')).text, 'ALPHA TWO');
         assert.strictEqual((await t.get('www.alpha-example.org', '/')).text, 'ALPHA TWO');
         assert.strictEqual((await t.api('DELETE', `/api/v1/sites/${alpha.id}/takedown`, { as: staff })).status, 404);
-        const rows = t.ctx.store.db.prepare('SELECT target_kind, reason, lifted_at IS NOT NULL AS lifted, lift_note FROM host_takedowns').all();
+        const rows = await t.ctx.store.db.prepare('SELECT target_kind, reason, (lifted_at IS NOT NULL)::int AS lifted, lift_note FROM host_takedowns').all();
         assert.deepStrictEqual(rows, [{ target_kind: 'site', reason: 'phishing report #42', lifted: 1, lift_note: 'reviewed: false positive' }], 'the history is kept');
     });
 
@@ -134,7 +134,7 @@ const { site: siteTar } = require('./stageb/tar');
         const pc = await t.project(alice, 'C');
         const gamma = await t.site(alice, pc.id, 'gamma');
         const body = siteTar({ 'index.html': 'GAMMA' });
-        const failedBefore = t.ctx.store.db.prepare("SELECT COUNT(*) AS n FROM host_deploys WHERE state = 'failed'").get().n;
+        const failedBefore = (await t.ctx.store.db.prepare("SELECT COUNT(*) AS n FROM host_deploys WHERE state = 'failed'").get()).n;
         // The first upload sends its headers and half its body, then waits.
         let firstResponse;
         let finish;
@@ -157,7 +157,7 @@ const { site: siteTar } = require('./stageb/tar');
         await first;
         assert.strictEqual(firstResponse.status, 201, firstResponse.text);
         assert.strictEqual(t.ctx.uploadGate.inFlight, 0, 'the slot is released');
-        assert.strictEqual(t.ctx.store.db.prepare("SELECT COUNT(*) AS n FROM host_deploys WHERE state = 'failed'").get().n, failedBefore, 'a busy refusal is not the tenant\'s failed deploy');
+        assert.strictEqual((await t.ctx.store.db.prepare("SELECT COUNT(*) AS n FROM host_deploys WHERE state = 'failed'").get()).n, failedBefore, 'a busy refusal is not the tenant\'s failed deploy');
         const third = await t.upload(alice, gamma.id, { 'index.html': 'THIRD' });
         assert.strictEqual(third.status, 201, third.text);
         // A refused upload releases its slot too.

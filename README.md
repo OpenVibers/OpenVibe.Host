@@ -49,10 +49,10 @@ Stage A adds a few safety rules of its own:
 
 ## Depends on
 
-- OpenVibe.Contracts (`openvibe-contracts` v0.66.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
+- OpenVibe.Contracts (`openvibe-contracts` v0.76.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
-- OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.12.0 transactional outbox (openvibe-sdk/limits for the per-actor limits).
-- `openvibe-shared` v1.25.0 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
+- OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.20.3 transactional outbox (openvibe-sdk/limits for the per-actor limits).
+- `openvibe-shared` v1.27.0 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
 - OpenVibe.Media: not yet. The roadmap stores artifacts "through Media where practical"; Stage B keeps them on local disk for now (see [Not done yet](#not-done-yet-stage-b)).
 
 ## Capabilities
@@ -212,8 +212,7 @@ Two things deploy from this repository:
   The unit is `openvibe-host.service` on `127.0.0.1:4910`, the env file `/etc/openvibe/host.env`. Its state is
   `/var/lib/openvibe-host-api` (not ovhost's own `/var/lib/openvibe-host`).
   Rollback: ovhost puts the previous sha back by itself when `/api/ready` does not answer 2xx after the
-  restart; afterwards `sudo ovhost rollback host --to <sha>`. Nothing blocks a rollback: the schema
-  code only adds tables and columns.
+  restart; afterwards `sudo ovhost rollback host --to <sha>`. Migrations only add tables and columns.
 
 ## Installing on the host (for the operator)
 
@@ -303,11 +302,11 @@ The three capability ids and the service manifest are released in `openvibe-cont
 
 ### Activation and rollback
 
-Activation is one SQLite transaction: a compare-and-set on the site's `active_deploy_id`, an activation record and the `host.deploy.activated` event. If any part fails, none of it happens. `expected_active` turns a racing operator's switch into a 409. Rollback goes to a named ready deploy of the same site, or to the most recent previously active one that still exists. The active deploy cannot be deleted. Deleting another deploy removes its objects when no other deploy of the project uses them.
+Activation is one PostgreSQL transaction: a compare-and-set on the site's `active_deploy_id`, an activation record and the `host.deploy.activated` event. If any part fails, none of it happens. `expected_active` turns a racing operator's switch into a 409. Rollback goes to a named ready deploy of the same site, or to the most recent previously active one that still exists. The active deploy cannot be deleted. Deleting another deploy removes its objects when no other deploy of the project uses them.
 
 ### Events
 
-Through the `openvibe-sdk` v0.5.0 transactional outbox (`event_outbox`), inside the transaction that makes the change:
+Through the `openvibe-sdk` v0.20.3 transactional outbox (`event_outbox`), inside the transaction that makes the change:
 
 | Event | When | Payload |
 |---|---|---|
@@ -322,7 +321,7 @@ These tenant events have subject `deploy` and visibility `internal`; `host.deplo
 
 ### Dashboard
 
-Server-rendered pages with the shared chrome (`openvibe-shared` v1.5.1: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
+Server-rendered pages with the shared chrome (`openvibe-shared` v1.27.0: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
 
 ### Observability
 
@@ -333,7 +332,7 @@ Server-rendered pages with the shared chrome (`openvibe-shared` v1.5.1: navbar a
 - OpenVibe.Network OAuth client **`host`**, redirect `https://openvibe.host/auth/callback`, scope `profile theme`. The same client is the service principal `svc:host`.
 - Grant `[host, events.event.publish, openvibe.events]`.
 - Callers of Host get `[<client>, host.site.manage | host.deploy.create | host.domain.manage, openvibe.host]` as needed. None exist yet (Codes, the expected first caller, is not built).
-- Released in `openvibe-contracts` v0.24.0 (CI contract check blocking); v0.32.0 adds the takedown routes to `host.site.manage.implementedBy`.
+- Released in `openvibe-contracts` v0.76.0 (CI contract check blocking); v0.32.0 adds the takedown routes to `host.site.manage.implementedBy`.
 
 ### Deploying Stage B (for the operator)
 
@@ -352,7 +351,7 @@ The service runs on the host (loopback, since 2026-09-23) and the pending tenant
 ### Not done yet (Stage B)
 
 - Uploads are held in memory while they are validated (bounded by `HOST_MAX_UPLOAD_BYTES` and `HOST_MAX_UNPACKED_BYTES`), so the service needs that much headroom per concurrent upload.
-- Objects live on the service's local disk, not in OpenVibe.Media; there is no replication and no backup beyond `ovhost backup host` (the SQLite database only).
+- Objects live on the service's local disk, not in OpenVibe.Media; there is no replication and no backup beyond `ovhost backup host`. The database (`ov_host` on the host's data role, ADR-035; schema in [migrations/](migrations/)) is backed up with the others by pgBackRest.
 - Certificates for custom domains are issued by hand (step 8); there is no automatic ACME flow.
 - Projects are created in Host. When Network has projects (ADR-014), Host should accept only Network project ids and read membership from Network.
 - `openvibe.host` is not on the Public Suffix List, so a tenant page can still set `Domain=openvibe.host` cookies (a cookie bomb breaks the dashboard and other tenant sites for that visitor). The protections above do not depend on it. [docs/threat-review.md §5](docs/threat-review.md#5-the-public-suffix-list-question) records the decision (launch without it) and the recommended follow-up (dashboard off the tenant zone, then list the zone).

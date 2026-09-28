@@ -10,6 +10,9 @@ jobs:
     with:
       syntax-dirs: lib server
       contracts-service: host
+      # ADR-035: PostgreSQL 18 + PgBouncer (transaction mode) + Valkey 9 containers (openvibe-sdk
+      # scripts/test-services.sh). npm test runs every file on PGlite; test:pg runs them all through PgBouncer.
+      test: 'eval "$(node_modules/openvibe-sdk/scripts/test-services.sh up)" && npm test && npm run test:pg'
       contracts-src: lib server
       extra: node --check bin/ovhost && for f in scripts/*.sh; do bash -n "$f"; done
   # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo (Track Q).

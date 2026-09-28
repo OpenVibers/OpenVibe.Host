@@ -53,6 +53,9 @@ async function boot(opts = {}) {
     };
     const configLib = require('../../server/config');
     const { createApp } = require('../../server/app');
+    const { createStore } = require('../../server/db');
+    // One database per boot (PGlite, or HOST_TEST_STORE=pg: the containers); a restart keeps it, like a file did.
+    const testdb = await require('../helpers/db').testDb();
     const quiet = { log() {}, warn() {}, error: (...a) => { if (process.env.VERBOSE) console.error(...a); } };
 
     let server = null;
@@ -61,7 +64,7 @@ async function boot(opts = {}) {
 
     async function start() {
         const config = configLib.load(env);
-        built = createApp({ config, now: clock.now, log: quiet, resolver, fetchImpl: opts.fetchImpl });
+        built = await createApp({ config, store: createStore(testdb.db, { now: clock.now }), now: clock.now, log: quiet, resolver, fetchImpl: opts.fetchImpl });
         await built.ctx.auth.ensureKey();
         server = await new Promise((resolve) => { const s = http.createServer(built.app); s.listen(0, '127.0.0.1', () => resolve(s)); });
         t.port = server.address().port;
@@ -71,7 +74,7 @@ async function boot(opts = {}) {
     }
     async function stop() {
         if (server) { server.closeAllConnections(); await new Promise((r) => server.close(r)); }
-        if (built) { built.ctx.worker.stop(); await built.ctx.outbox.stop(); built.ctx.stopMetrics(); built.ctx.store.close(); }
+        if (built) { built.ctx.worker.stop(); await built.ctx.outbox.stop(); built.ctx.stopMetrics(); }
         server = null; built = null;
     }
 
@@ -107,7 +110,7 @@ async function boot(opts = {}) {
     t.get = (host, p, o = {}) => request({ ...o, method: o.method || 'GET', host, path: p });
 
     /** Outbox rows as parsed envelopes. */
-    t.events = (type = null) => t.ctx.store.db.prepare('SELECT envelope FROM event_outbox ORDER BY id').all().map((r) => JSON.parse(r.envelope)).filter((e) => !type || e.event_type === type);
+    t.events = async (type = null) => (await t.ctx.store.db.prepare('SELECT envelope FROM event_outbox ORDER BY id').all()).map((r) => (typeof r.envelope === 'string' ? (typeof r.envelope === 'string' ? (typeof r.envelope === 'string' ? JSON.parse(r.envelope) : r.envelope) : r.envelope) : r.envelope)).filter((e) => !type || e.event_type === type);
 
     t.user = (name, extra) => network.addUser(name, extra);
     t.project = async (user, name = 'Project', extra = {}) => {
@@ -131,7 +134,7 @@ async function boot(opts = {}) {
     };
 
     t.restart = async () => { await stop(); await start(); };
-    t.close = async () => { await stop(); await network.close(); fs.rmSync(dir, { recursive: true, force: true }); };
+    t.close = async () => { await stop(); await testdb.close(); await network.close(); fs.rmSync(dir, { recursive: true, force: true }); };
     await start();
     return t;
 }

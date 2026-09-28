@@ -79,7 +79,7 @@ const DIR = path.join(__dirname, '..', 'docs', 'capabilities-proposal');
         await t.ctx.outbox.outbox.flush();
         assert.deepStrictEqual(received.map((e) => e.event_type).sort(), ['host.deploy.activated', 'host.deploy.created', 'host.deploy.failed']);
         assert.ok(received.every((e) => e.source === 'host'));
-        assert.strictEqual(t.ctx.outbox.status().pending, 0);
+        assert.strictEqual((await t.ctx.outbox.status()).pending, 0);
         await t.close();
         await events.close();
     });

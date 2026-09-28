@@ -71,7 +71,7 @@ function createViewerResolver({ auth, config }) {
         const token = bearerToken(req);
         if (!token) return ANONYMOUS;
         const payload = decodeJwtPayload(token);
-        if (payload && typeof payload.sub === 'string' && PRINCIPAL_SUB.test(payload.sub)) return fromServiceToken(req, token);
+        if (payload && typeof payload.sub === 'string' && PRINCIPAL_SUB.test(payload.sub)) return await fromServiceToken(req, token);
         const v = await fromUserToken(token);
         if (!v) throw new ViewerError(401, 'auth.invalid_token', 'the bearer token is not a valid OpenVibe token');
         return v;

@@ -42,7 +42,7 @@ const ORIGIN = 'https://openvibe.host';
         }
         const deployKeys = Object.keys(d).sort();
         assert.deepStrictEqual(deployKeys, ['active', 'created_at', 'created_by', 'failure_code', 'file_count', 'id', 'log', 'manifest_sha256', 'new_bytes', 'project_id', 'site_id', 'source', 'state', 'total_bytes'].sort());
-        const events = JSON.stringify(t.events());
+        const events = JSON.stringify(await t.events());
         assert.ok(!events.includes('sk_live') && !events.includes(SECRET));
     });
 

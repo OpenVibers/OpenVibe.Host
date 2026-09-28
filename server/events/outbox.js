@@ -15,7 +15,7 @@
  */
 const { createClient } = require('openvibe-sdk/core');
 const { createServiceTokenClient } = require('openvibe-sdk/auth');
-const { createEventsClient, createOutbox } = require('openvibe-sdk/events');
+const { createEventsClient, createPgOutbox } = require('openvibe-sdk/events');
 
 const EVENT_TYPES = Object.freeze(['host.deploy.created', 'host.deploy.activated', 'host.deploy.failed', 'host.domain.verified']);
 
@@ -33,7 +33,9 @@ function createHostOutbox({ db, config, fetchImpl, now, log = console }) {
     }
     const events = createEventsClient(createClient(clientOpts), { source: 'host' });
     let lastError = null;
-    const outbox = createOutbox(db, {
+    // The PostgreSQL outbox: rows are written in the change's own transaction (enqueue(db, …) joins the ambient
+    // transaction); several processes relay one table safely (leases).
+    const outbox = createPgOutbox(db, {
         events,
         intervalMs: config.events.intervalMs,
         now,
@@ -43,12 +45,11 @@ function createHostOutbox({ db, config, fetchImpl, now, log = console }) {
             lastError = msg;
         },
     });
-    outbox.ensureSchema();
 
     /** Inside the caller's transaction. Returns the complete envelope (with its event_id). */
-    function emit(envelope, { traceparent } = {}) {
+    async function emit(envelope, { traceparent } = {}) {
         if (!EVENT_TYPES.includes(envelope.event_type)) throw new Error(`undeclared event type ${envelope.event_type}`);
-        return outbox.enqueue(envelope, { traceparent });
+        return await outbox.enqueue(db, envelope, { traceparent });
     }
 
     return {
@@ -58,7 +59,7 @@ function createHostOutbox({ db, config, fetchImpl, now, log = console }) {
         start() { if (enabled) outbox.start(); },
         stop: () => outbox.stop(),
         kick() { if (enabled) outbox.kick(); },
-        status: () => ({ enabled, pending: outbox.pending(), rejected: outbox.rejected(), last_error: lastError }),
+        status: async () => ({ enabled, pending: await outbox.pending(), rejected: await outbox.rejected(), last_error: lastError }),
     };
 }
 

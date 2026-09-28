@@ -63,7 +63,7 @@ const DAY = 24 * 3600 * 1000;
         const r = await t.api('POST', `/api/v1/domains/${dom.id}/verify`, { as: alice });
         assert.strictEqual(r.json().domain.status, 'verified');
         assert.strictEqual(r.json().domain.served, true);
-        const ev = t.events('host.domain.verified');
+        const ev = await t.events('host.domain.verified');
         assert.strictEqual(ev.length, 1);
         assert.deepStrictEqual(ev[0].payload, { project_id: pa.id, site_id: sa.id, site: 'alice-site', hostname: HOST });
         const g = await t.get(HOST, '/');
@@ -115,7 +115,7 @@ const DAY = 24 * 3600 * 1000;
         const never = (await t.api('POST', `/api/v1/sites/${sb.id}/domains`, { as: bob, json: { hostname: 'never.example.org' } })).json().domain;
         t.clock.advance(8 * DAY);
         await t.ctx.worker.domainTick();
-        const after = t.ctx.domains.get(never.id);
+        const after = await t.ctx.domains.get(never.id);
         assert.strictEqual(after.status, 'failed');
     });
 
@@ -123,10 +123,10 @@ const DAY = 24 * 3600 * 1000;
         t.dns.delete(`_openvibe-host.${HOST}`);
         t.clock.advance(DAY + 1000);
         await t.ctx.worker.domainTick();
-        assert.strictEqual(t.ctx.domains.get(dom.id).status, 'verified', 'still served during the grace period');
-        assert.ok(t.ctx.domains.get(dom.id).record_missing_since);
+        assert.strictEqual((await t.ctx.domains.get(dom.id)).status, 'verified', 'still served during the grace period');
+        assert.ok((await t.ctx.domains.get(dom.id)).record_missing_since);
         for (let i = 0; i < 8; i++) { t.clock.advance(DAY + 1000); await t.ctx.worker.domainTick(); }
-        assert.strictEqual(t.ctx.domains.get(dom.id).status, 'lapsed');
+        assert.strictEqual((await t.ctx.domains.get(dom.id)).status, 'lapsed');
         assert.strictEqual((await t.get(HOST, '/')).status, 404);
     });
 

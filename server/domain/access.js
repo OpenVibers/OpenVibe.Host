@@ -47,10 +47,10 @@ function createAccess({ store }) {
     const { db } = store;
     const memberStmt = db.prepare('SELECT role FROM host_project_members WHERE project_id = ? AND principal = ?');
 
-    function roleOf(project, viewer) {
+    async function roleOf(project, viewer) {
         const p = principalOf(viewer);
         if (!p) return null;
-        const row = memberStmt.get(project.id, p);
+        const row = await memberStmt.get(project.id, p);
         return row ? row.role : null;
     }
 
@@ -58,7 +58,7 @@ function createAccess({ store }) {
      * Throws unless the viewer may act on the project at `need` (read|deploy|maintain|own|staff).
      * `notFound` is the problem thrown when the viewer has no business knowing the resource exists.
      */
-    function authorize(project, viewer, need, notFound = new ApiError(404, 'project.not_found', 'no such project')) {
+    async function authorize(project, viewer, need, notFound = new ApiError(404, 'project.not_found', 'no such project')) {
         if (!project || project.status !== 'active') throw notFound;
         if (!viewer || viewer.kind === 'anonymous') throw new ApiError(401, 'auth.required', 'sign in with OpenVibe, or present a service token');
         if (viewer.kind === 'service' && viewer.env === 'sandbox' && project.environment !== 'sandbox') {
@@ -68,7 +68,7 @@ function createAccess({ store }) {
             if (viewer.staff) return 'staff';
             throw new ApiError(403, 'auth.staff_only', 'only OpenVibe staff can change quotas');
         }
-        const role = roleOf(project, viewer);
+        const role = await roleOf(project, viewer);
         if (!role) {
             if (viewer.staff && need !== 'deploy') return 'staff';
             throw notFound;

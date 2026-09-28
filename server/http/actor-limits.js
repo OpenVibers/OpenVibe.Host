@@ -10,7 +10,7 @@
  */
 'use strict';
 
-const { createActorLimiter } = require('openvibe-sdk/limits');
+const { createActorLimiter, createValkeyLimitStore } = require('openvibe-sdk/limits');
 
 const num = (v, d) => { const n = parseInt(v, 10); return Number.isFinite(n) && n > 0 ? n : d; };
 
@@ -21,7 +21,7 @@ const ROUTES = [
     ['host.project.create', /^POST$/, /^\/projects\/?$/, { minute: 5, hour: 30 }],
 ];
 
-function createHostActorLimits({ env = process.env, registry = null, now } = {}) {
+function createHostActorLimits({ env = process.env, registry = null, now, valkey = null } = {}) {
     // HOST_ACTOR_LIMITS=off: a rollback lever (and what the Stage B suites use: they deploy dozens of times a minute).
     if (/^(off|0|false)$/i.test(String(env.HOST_ACTOR_LIMITS || ''))) return function noLimits(req, res, next) { next(); };
     const refused = registry && typeof registry.counter === 'function'
@@ -38,6 +38,8 @@ function createHostActorLimits({ env = process.env, registry = null, now } = {})
         limits: { minute: num(env.HOST_LIMITS_MINUTE, 120), hour: num(env.HOST_LIMITS_HOUR, 3000) },
         actor,
         ...(now ? { now } : {}),
+        // Shared across processes on Valkey (ADR-035) when VALKEY_URL is set; in-process otherwise.
+        ...(valkey ? { store: createValkeyLimitStore(valkey) } : {}),
         onLimited(e) {
             console.warn(`[Limits] ${e.name}: ${e.actor} refused, over ${e.limit} per ${e.window}`);
             if (refused) refused.inc({ limit: e.name, window: e.window });

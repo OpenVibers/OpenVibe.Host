@@ -23,8 +23,8 @@ function createProjects({ store, config, access, blobs, takedowns, log = console
     const q = {
         byId: db.prepare('SELECT * FROM host_projects WHERE id = ?'),
         forPrincipal: db.prepare(`SELECT p.*, m.role FROM host_projects p JOIN host_project_members m ON m.project_id = p.id
-                                  WHERE m.principal = ? AND p.status = 'active' ORDER BY p.created_at DESC, p.rowid DESC LIMIT 200`),
-        all: db.prepare("SELECT p.*, NULL AS role FROM host_projects p WHERE p.status = 'active' ORDER BY p.created_at DESC, p.rowid DESC LIMIT 200"),
+                                  WHERE m.principal = ? AND p.status = 'active' ORDER BY p.created_at DESC, p.seq DESC LIMIT 200`),
+        all: db.prepare("SELECT p.*, NULL AS role FROM host_projects p WHERE p.status = 'active' ORDER BY p.created_at DESC, p.seq DESC LIMIT 200"),
         ownedCount: db.prepare("SELECT COUNT(*) AS n FROM host_projects WHERE owner_subject = ? AND status = 'active'"),
         insert: db.prepare(`INSERT INTO host_projects (id, network_project_id, owner_subject, name, environment, status, created_at, updated_at)
                             VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`),
@@ -33,38 +33,38 @@ function createProjects({ store, config, access, blobs, takedowns, log = console
         removeMember: db.prepare('DELETE FROM host_project_members WHERE project_id = ? AND principal = ?'),
         members: db.prepare('SELECT principal, role, added_by, created_at FROM host_project_members WHERE project_id = ? ORDER BY created_at'),
         quotaRow: db.prepare('SELECT * FROM host_quotas WHERE project_id = ?'),
-        storageUsed: db.prepare('SELECT COALESCE(SUM(size), 0) AS n, COUNT(*) AS c FROM host_blobs WHERE project_id = ?'),
+        storageUsed: db.prepare('SELECT COALESCE(SUM(size), 0)::bigint AS n, COUNT(*) AS c FROM host_blobs WHERE project_id = ?'),
         deploysSince: db.prepare('SELECT COUNT(*) AS n FROM host_deploys WHERE project_id = ? AND created_at > ?'),
         siteCount: db.prepare("SELECT COUNT(*) AS n FROM host_sites WHERE project_id = ? AND status = 'active'"),
         customDomainCount: db.prepare("SELECT COUNT(*) AS n FROM host_domains WHERE project_id = ? AND kind = 'custom' AND status IN ('pending','verified')"),
         markDeleted: db.prepare("UPDATE host_projects SET status = 'deleted', deleted_at = ?, updated_at = ? WHERE id = ?"),
     };
 
-    function get(id) {
-        return isId('project', id) ? q.byId.get(id) || null : null;
+    async function get(id) {
+        return isId('project', id) ? await q.byId.get(id) || null : null;
     }
 
     /** The effective quota: the project's override where set, else the environment's default. */
-    function quotaOf(project) {
+    async function quotaOf(project) {
         const defaults = config.quotas[project.environment] || config.quotas.production;
-        const row = q.quotaRow.get(project.id) || {};
+        const row = await q.quotaRow.get(project.id) || {};
         const out = {};
         for (const [col, key] of Object.entries(QUOTA_FIELDS)) out[key] = row[col] != null ? row[col] : defaults[key];
         return out;
     }
 
-    function usageOf(project) {
-        const s = q.storageUsed.get(project.id);
+    async function usageOf(project) {
+        const s = await q.storageUsed.get(project.id);
         return {
             storageBytes: s.n,
             objects: s.c,
-            deploysLast24h: q.deploysSince.get(project.id, store.now() - DAY).n,
-            sites: q.siteCount.get(project.id).n,
-            customDomains: q.customDomainCount.get(project.id).n,
+            deploysLast24h: (await q.deploysSince.get(project.id, store.now() - DAY)).n,
+            sites: (await q.siteCount.get(project.id)).n,
+            customDomains: (await q.customDomainCount.get(project.id)).n,
         };
     }
 
-    function create(viewer, input = {}) {
+    async function create(viewer, input = {}) {
         const owner = principalOf(viewer);
         if (!owner || !ids.isSubjectId('user', owner)) {
             throw new ApiError(403, 'project.owner_must_be_user', 'a project is owned by a person (usr_…): an app or service must name the owner with X-OV-Subject');
@@ -82,51 +82,51 @@ function createProjects({ store, config, access, blobs, takedowns, log = console
             if (!NETWORK_PROJECT_RE.test(networkProjectId)) throw new ApiError(422, 'project.invalid_network_project_id', 'network_project_id is not a project id');
         }
         const maxOwned = (config.projects && config.projects.maxPerOwner) || 10;
-        if (q.ownedCount.get(owner).n >= maxOwned) throw new ApiError(429, 'quota.projects', `you already own ${maxOwned} projects`);
+        if ((await q.ownedCount.get(owner)).n >= maxOwned) throw new ApiError(429, 'quota.projects', `you already own ${maxOwned} projects`);
         const id = newId('project', store.now());
         const now = store.now();
         try {
-            store.tx(() => {
-                q.insert.run(id, networkProjectId, owner, name, environment, now, now);
-                q.addMember.run(id, owner, 'owner', owner, now);
+            await store.tx(async () => {
+                await q.insert.run(id, networkProjectId, owner, name, environment, now, now);
+                await q.addMember.run(id, owner, 'owner', owner, now);
             });
         } catch (err) {
-            if (/UNIQUE/.test(err.message)) throw new ApiError(409, 'project.network_project_taken', 'that Network project already has a Host project');
+            if (err.code === '23505') throw new ApiError(409, 'project.network_project_taken', 'that Network project already has a Host project');
             throw err;
         }
-        return get(id);
+        return await get(id);
     }
 
-    function listFor(viewer) {
-        if (viewer.kind === 'user' && viewer.staff && viewer.allProjects) return q.all.all();
+    async function listFor(viewer) {
+        if (viewer.kind === 'user' && viewer.staff && viewer.allProjects) return await q.all.all();
         const p = principalOf(viewer);
-        return p ? q.forPrincipal.all(p) : [];
+        return p ? await q.forPrincipal.all(p) : [];
     }
 
-    function members(project) {
-        return q.members.all(project.id);
+    async function members(project) {
+        return await q.members.all(project.id);
     }
 
-    function setMember(viewer, project, principal, role) {
-        access.authorize(project, viewer, 'own');
+    async function setMember(viewer, project, principal, role) {
+        await access.authorize(project, viewer, 'own');
         if (!PRINCIPAL_RE.test(String(principal))) throw new ApiError(422, 'member.invalid_principal', 'a member is a usr_ subject, an app:app_ principal or a svc: principal');
         if (!['maintainer', 'deployer', 'owner'].includes(role)) throw new ApiError(422, 'member.invalid_role', 'role is owner, maintainer or deployer');
         if (role === 'owner' && !principal.startsWith('usr_')) throw new ApiError(422, 'member.invalid_role', 'only a person can be an owner');
         if (principal === project.owner_subject && role !== 'owner') throw new ApiError(409, 'member.owner_fixed', 'the project owner stays owner');
-        q.addMember.run(project.id, principal, role, principalOf(viewer), store.now());
-        return members(project);
+        await q.addMember.run(project.id, principal, role, principalOf(viewer), store.now());
+        return await members(project);
     }
 
-    function removeMember(viewer, project, principal) {
-        access.authorize(project, viewer, 'own');
+    async function removeMember(viewer, project, principal) {
+        await access.authorize(project, viewer, 'own');
         if (principal === project.owner_subject) throw new ApiError(409, 'member.owner_fixed', 'the project owner cannot be removed');
-        q.removeMember.run(project.id, principal);
-        return members(project);
+        await q.removeMember.run(project.id, principal);
+        return await members(project);
     }
 
-    function setQuota(viewer, project, input = {}) {
-        access.authorize(project, viewer, 'staff');
-        const row = q.quotaRow.get(project.id) || {};
+    async function setQuota(viewer, project, input = {}) {
+        await access.authorize(project, viewer, 'staff');
+        const row = await q.quotaRow.get(project.id) || {};
         const next = {};
         for (const col of Object.keys(QUOTA_FIELDS)) {
             if (!(col in input)) { next[col] = row[col] != null ? row[col] : null; continue; }
@@ -135,27 +135,27 @@ function createProjects({ store, config, access, blobs, takedowns, log = console
             if (!Number.isSafeInteger(v) || v < 0) throw new ApiError(422, 'quota.invalid', `${col} must be a non-negative integer or null (the default)`);
             next[col] = v;
         }
-        db.prepare(`INSERT INTO host_quotas (project_id, storage_bytes, deploys_per_day, max_files, max_file_bytes, sites, custom_domains, updated_by, updated_at)
+        await db.prepare(`INSERT INTO host_quotas (project_id, storage_bytes, deploys_per_day, max_files, max_file_bytes, sites, custom_domains, updated_by, updated_at)
                     VALUES (@project_id, @storage_bytes, @deploys_per_day, @max_files, @max_file_bytes, @sites, @custom_domains, @updated_by, @updated_at)
                     ON CONFLICT (project_id) DO UPDATE SET storage_bytes = excluded.storage_bytes, deploys_per_day = excluded.deploys_per_day,
                       max_files = excluded.max_files, max_file_bytes = excluded.max_file_bytes, sites = excluded.sites,
                       custom_domains = excluded.custom_domains, updated_by = excluded.updated_by, updated_at = excluded.updated_at`)
             .run({ project_id: project.id, ...next, updated_by: principalOf(viewer), updated_at: store.now() });
-        return quotaOf(project);
+        return await quotaOf(project);
     }
 
     /** Owner (or staff) deletes the project: every site stops serving at once; objects are removed. */
-    function remove(viewer, project, { sites }) {
-        access.authorize(project, viewer, 'own');
-        takedowns.assertDeletable(viewer, { projectId: project.id });
+    async function remove(viewer, project, { sites }) {
+        await access.authorize(project, viewer, 'own');
+        await takedowns.assertDeletable(viewer, { projectId: project.id });
         const now = store.now();
-        store.tx(() => {
-            for (const s of sites.listForProject(project.id)) sites.markDeleted(s, now);
-            db.prepare("UPDATE host_deploys SET state = 'deleted', deleted_at = ? WHERE project_id = ? AND state <> 'deleted'").run(now, project.id);
-            db.prepare("DELETE FROM host_deploy_files WHERE deploy_id IN (SELECT id FROM host_deploys WHERE project_id = ?)").run(project.id);
-            db.prepare('DELETE FROM host_blobs WHERE project_id = ?').run(project.id);
-            db.prepare('DELETE FROM host_domains WHERE project_id = ?').run(project.id);
-            q.markDeleted.run(now, now, project.id);
+        await store.tx(async () => {
+            for (const s of await sites.listForProject(project.id)) await sites.markDeleted(s, now);
+            await db.prepare("UPDATE host_deploys SET state = 'deleted', deleted_at = ? WHERE project_id = ? AND state <> 'deleted'").run(now, project.id);
+            await db.prepare("DELETE FROM host_deploy_files WHERE deploy_id IN (SELECT id FROM host_deploys WHERE project_id = ?)").run(project.id);
+            await db.prepare('DELETE FROM host_blobs WHERE project_id = ?').run(project.id);
+            await db.prepare('DELETE FROM host_domains WHERE project_id = ?').run(project.id);
+            await q.markDeleted.run(now, now, project.id);
         });
         try { blobs.removeProject(project.id); } catch (err) { log.warn('[Host] could not remove project objects:', err.message); }
         return { deleted: true };

@@ -9,7 +9,8 @@
  */
 const { createApp } = require('./app');
 
-const { app, ctx } = createApp();
+(async () => {
+const { app, ctx } = await createApp();
 const { config } = ctx;
 
 const server = app.listen(config.port, config.host, () => {
@@ -27,10 +28,11 @@ function shutdown(signal) {
     server.close(async () => {
         try { await ctx.outbox.stop(); } catch { /* best effort */ }
         try { ctx.stopMetrics(); } catch { /* best effort */ }
-        try { ctx.store.close(); } catch { /* already closed */ }
+        try { await ctx.store.close(); } catch { /* already closed */ }
         process.exit(0);
     });
     setTimeout(() => process.exit(0), 5000).unref();
 }
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+})().catch((err) => { console.error('[Host] failed to start:', err); process.exit(1); });

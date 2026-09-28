@@ -57,7 +57,7 @@ function createDomains({ store, config, access, projects, sites, outbox, resolve
     const reserved = firstPartyDomains(config);
     const q = {
         byId: db.prepare('SELECT * FROM host_domains WHERE id = ?'),
-        forSite: db.prepare("SELECT * FROM host_domains WHERE site_id = ? ORDER BY kind DESC, created_at, rowid"),
+        forSite: db.prepare("SELECT * FROM host_domains WHERE site_id = ? ORDER BY kind DESC, created_at, seq"),
         verifiedByHost: db.prepare("SELECT * FROM host_domains WHERE hostname = ? AND status = 'verified'"),
         onSite: db.prepare('SELECT * FROM host_domains WHERE site_id = ? AND hostname = ?'),
         insert: db.prepare(`INSERT INTO host_domains (id, project_id, site_id, hostname, kind, status, token, created_by, created_at)
@@ -74,13 +74,13 @@ function createDomains({ store, config, access, projects, sites, outbox, resolve
 
     const challengeName = (hostname) => `${CHALLENGE_PREFIX}.${hostname}`;
 
-    function load(viewer, id, need) {
-        const domain = isId('domain', id) ? q.byId.get(id) : null;
+    async function load(viewer, id, need) {
+        const domain = isId('domain', id) ? await q.byId.get(id) : null;
         const notFound = new ApiError(404, 'domain.not_found', 'no such domain');
         if (!domain) throw notFound;
-        const site = sites.get(domain.site_id);
+        const site = await sites.get(domain.site_id);
         if (!site || site.status !== 'active') throw notFound;
-        access.authorize(projects.get(domain.project_id), viewer, need, notFound);
+        await access.authorize(await projects.get(domain.project_id), viewer, need, notFound);
         return { domain, site };
     }
 
@@ -109,18 +109,18 @@ function createDomains({ store, config, access, projects, sites, outbox, resolve
         };
     }
 
-    function add(viewer, siteId, input = {}) {
-        const { site, project } = sites.load(viewer, siteId, 'maintain');
+    async function add(viewer, siteId, input = {}) {
+        const { site, project } = await sites.load(viewer, siteId, 'maintain');
         const hostname = checkHostname(input.hostname);
         if (project.environment === 'sandbox') throw new ApiError(403, 'domain.sandbox', 'sandbox projects are served on their default domain only');
-        const quota = projects.quotaOf(project);
-        if (projects.usageOf(project).customDomains >= quota.customDomains) throw new ApiError(429, 'quota.custom_domains', `this project may have ${quota.customDomains} custom domains`);
-        if (q.onSite.get(site.id, hostname)) throw new ApiError(409, 'domain.exists', `${hostname} is already on this site`);
-        if (q.verifiedByHost.get(hostname)) throw new ApiError(409, 'domain.taken', `${hostname} is already verified for another site`);
+        const quota = await projects.quotaOf(project);
+        if ((await projects.usageOf(project)).customDomains >= quota.customDomains) throw new ApiError(429, 'quota.custom_domains', `this project may have ${quota.customDomains} custom domains`);
+        if (await q.onSite.get(site.id, hostname)) throw new ApiError(409, 'domain.exists', `${hostname} is already on this site`);
+        if (await q.verifiedByHost.get(hostname)) throw new ApiError(409, 'domain.taken', `${hostname} is already verified for another site`);
         const id = newId('domain', store.now());
         const token = crypto.randomBytes(20).toString('hex');
-        q.insert.run(id, project.id, site.id, hostname, token, principalOf(viewer), store.now());
-        const domain = q.byId.get(id);
+        await q.insert.run(id, project.id, site.id, hostname, token, principalOf(viewer), store.now());
+        const domain = await q.byId.get(id);
         return { domain, site };
     }
 
@@ -143,40 +143,40 @@ function createDomains({ store, config, access, projects, sites, outbox, resolve
         if (domain.last_checked_at && now - domain.last_checked_at < MIN_RECHECK_MS) return domain;
         const r = await lookup(domain.hostname);
         const expected = `${TXT_PREFIX}${domain.token}`;
-        if (!r.ok) { q.checked.run(store.now(), r.error, domain.id); return q.byId.get(domain.id); }
+        if (!r.ok) { await q.checked.run(store.now(), r.error, domain.id); return await q.byId.get(domain.id); }
         if (!r.values.includes(expected)) {
-            q.checked.run(store.now(), r.values.length ? `${challengeName(domain.hostname)} has TXT records, but not the expected value` : `no TXT record at ${challengeName(domain.hostname)} yet`, domain.id);
-            return q.byId.get(domain.id);
+            await q.checked.run(store.now(), r.values.length ? `${challengeName(domain.hostname)} has TXT records, but not the expected value` : `no TXT record at ${challengeName(domain.hostname)} yet`, domain.id);
+            return await q.byId.get(domain.id);
         }
         try {
-            store.tx(() => {
-                if (q.verifiedByHost.get(domain.hostname)) throw new ApiError(409, 'domain.taken', `${domain.hostname} was verified for another site first`);
-                const site = sites.get(domain.site_id);
+            await store.tx(async () => {
+                if (await q.verifiedByHost.get(domain.hostname)) throw new ApiError(409, 'domain.taken', `${domain.hostname} was verified for another site first`);
+                const site = await sites.get(domain.site_id);
                 if (!site || site.status !== 'active') throw new ApiError(404, 'domain.not_found', 'no such domain');
-                if (q.verified.run(store.now(), store.now(), domain.id).changes !== 1) return;
-                outbox.emit({
+                if ((await q.verified.run(store.now(), store.now(), domain.id)).changes !== 1) return;
+                await outbox.emit({
                     event_type: 'host.domain.verified', actor: viewer ? actorRef(viewer) : { type: 'service', id: 'host' }, visibility: 'internal', priority: 'low',
                     subject: { type: 'domain', id: domain.id },
                     payload: { project_id: domain.project_id, site_id: domain.site_id, site: site.name, hostname: domain.hostname },
                 }, { traceparent });
             });
         } catch (err) {
-            if (err instanceof ApiError && err.code === 'domain.taken') { q.setStatus.run('failed', err.message, domain.id); return q.byId.get(domain.id); }
+            if (err instanceof ApiError && err.code === 'domain.taken') { await q.setStatus.run('failed', err.message, domain.id); return await q.byId.get(domain.id); }
             throw err;
         }
         outbox.kick();
-        return q.byId.get(domain.id);
+        return await q.byId.get(domain.id);
     }
 
     async function verify(viewer, id, opts = {}) {
-        const { domain } = load(viewer, id, 'maintain');
-        return verifyDomain(domain, viewer, opts);
+        const { domain } = await load(viewer, id, 'maintain');
+        return await verifyDomain(domain, viewer, opts);
     }
 
-    function remove(viewer, id) {
-        const { domain } = load(viewer, id, 'maintain');
+    async function remove(viewer, id) {
+        const { domain } = await load(viewer, id, 'maintain');
         if (domain.kind === 'default') throw new ApiError(409, 'domain.default', 'the default domain goes away only with the site');
-        q.remove.run(domain.id);
+        await q.remove.run(domain.id);
         return { deleted: true };
     }
 
@@ -184,9 +184,9 @@ function createDomains({ store, config, access, projects, sites, outbox, resolve
     async function recheck({ limit = 50 } = {}) {
         const now = store.now();
         const summary = { verified: 0, failed: 0, lapsed: 0, checked: 0 };
-        for (const d of q.duePending.all(now - config.domains.recheckIntervalMs + 1000, limit)) {
+        for (const d of await q.duePending.all(now - config.domains.recheckIntervalMs + 1000, limit)) {
             if (now - d.created_at > config.domains.pendingDays * DAY) {
-                q.setStatus.run('failed', `not verified within ${config.domains.pendingDays} days`, d.id);
+                await q.setStatus.run('failed', `not verified within ${config.domains.pendingDays} days`, d.id);
                 summary.failed++;
                 continue;
             }
@@ -194,15 +194,15 @@ function createDomains({ store, config, access, projects, sites, outbox, resolve
             summary.checked++;
             if (after.status === 'verified') summary.verified++;
         }
-        for (const d of q.dueVerified.all(now - DAY, limit)) {
+        for (const d of await q.dueVerified.all(now - DAY, limit)) {
             const r = await lookup(d.hostname);
             summary.checked++;
-            if (!r.ok) { q.checked.run(store.now(), r.error, d.id); continue; }
-            if (r.values.includes(`${TXT_PREFIX}${d.token}`)) { q.present.run(store.now(), d.id); continue; }
-            q.missing.run(store.now(), store.now(), `the TXT record at ${challengeName(d.hostname)} is gone`, d.id);
-            const row = q.byId.get(d.id);
+            if (!r.ok) { await q.checked.run(store.now(), r.error, d.id); continue; }
+            if (r.values.includes(`${TXT_PREFIX}${d.token}`)) { await q.present.run(store.now(), d.id); continue; }
+            await q.missing.run(store.now(), store.now(), `the TXT record at ${challengeName(d.hostname)} is gone`, d.id);
+            const row = await q.byId.get(d.id);
             if (row.record_missing_since && store.now() - row.record_missing_since > config.domains.lapseDays * DAY) {
-                q.setStatus.run('lapsed', `the TXT record has been gone for more than ${config.domains.lapseDays} days; the domain is no longer served`, d.id);
+                await q.setStatus.run('lapsed', `the TXT record has been gone for more than ${config.domains.lapseDays} days; the domain is no longer served`, d.id);
                 summary.lapsed++;
                 log.warn(`[Host] custom domain ${d.hostname} lapsed (TXT record gone)`);
             }
@@ -212,9 +212,9 @@ function createDomains({ store, config, access, projects, sites, outbox, resolve
 
     return {
         load, add, verify, verifyDomain, remove, recheck, instructions, checkHostname,
-        listForSite: (siteId) => q.forSite.all(siteId),
-        get: (id) => (isId('domain', id) ? q.byId.get(id) || null : null),
-        verifiedCustom: () => db.prepare("SELECT hostname, site_id FROM host_domains WHERE kind = 'custom' AND status = 'verified' ORDER BY hostname").all(),
+        listForSite: async (siteId) => await q.forSite.all(siteId),
+        get: async (id) => (isId('domain', id) ? await q.byId.get(id) || null : null),
+        verifiedCustom: async () => await db.prepare("SELECT hostname, site_id FROM host_domains WHERE kind = 'custom' AND status = 'verified' ORDER BY hostname").all(),
         challengeName, TXT_PREFIX,
     };
 }

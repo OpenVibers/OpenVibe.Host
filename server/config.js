@@ -44,6 +44,10 @@ function load(env = process.env) {
         sitesDomain,
         trustProxy: env.TRUST_PROXY != null ? Number(env.TRUST_PROXY) : 1,   // nginx (realip) → Node
 
+        // PostgreSQL (ADR-035): DATABASE_URL serves (PgBouncer), DATABASE_DIRECT_URL migrates (owner role).
+        db: { url: env.DATABASE_URL || '', directUrl: env.DATABASE_DIRECT_URL || '' },
+        valkey: { url: env.VALKEY_URL || '', prefix: env.VALKEY_PREFIX || 'ov:host:' },
+        // The SQLite file of releases before the switch: read once by scripts/migrate-to-postgres.js.
         dbPath: env.HOST_DB_PATH || './data/host.db',
         // Content-addressed deploy objects, one directory per project (tenancy keyed by project id).
         storageDir: env.HOST_STORAGE_DIR || './data/objects',
