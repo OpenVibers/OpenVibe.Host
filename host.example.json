@@ -1,6 +1,6 @@
 {
   "_about": "Example ovhost inventory for the single OpenVibe host (openvibe-oregon). Copy to /etc/openvibe/host.json (root:root, 0640) and correct anything that differs on the machine; the real file is never committed. Paths, units, ports and env file locations come from OpenVibe.Network docs/roadmap-baseline/data/services.json and prod-snapshot.json (22 Sep 2026) and each repository's deploy/ directory. env.required lists NAMES only.",
-  "_databases": "Databases (lib/inventory.js): each services.<id>.databases[] item is one of two engines. SQLite (the default) is a file the service user's worker copies: { \"name\": \"live\", \"path\": \"/opt/openvibe.live/data/live.db\" }. PostgreSQL is a database in the cluster: { \"name\": \"trade\", \"engine\": \"postgresql\", \"database\": \"ov_trade\" } — the name must match ov_[a-z0-9_]+, and there is no path (ovhost reaches it as the postgres OS user over peer auth, and pgBackRest, not ovhost, copies it). tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, host, events, community, billing, media and openre are PostgreSQL; network, chat, tools, games and live are still SQLite. A drill block follows the engine: a PostgreSQL database maps to { \"url\": \"DATABASE_URL\", \"directUrl\": \"DATABASE_DIRECT_URL\" } and the drill creates a scratch database and role to restore into.",
+  "_databases": "Databases (lib/inventory.js): each services.<id>.databases[] item is one of two engines. SQLite (the default) is a file the service user's worker copies: { \"name\": \"live\", \"path\": \"/opt/openvibe.live/data/live.db\" }. PostgreSQL is a database in the cluster: { \"name\": \"trade\", \"engine\": \"postgresql\", \"database\": \"ov_trade\" } \u2014 the name must match ov_[a-z0-9_]+, and there is no path (ovhost reaches it as the postgres OS user over peer auth, and pgBackRest, not ovhost, copies it). tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, host, events, community, billing, media, openre and games are PostgreSQL; network, chat, tools and live are still SQLite. A drill block follows the engine: a PostgreSQL database maps to { \"url\": \"DATABASE_URL\", \"directUrl\": \"DATABASE_DIRECT_URL\" } and the drill creates a scratch database and role to restore into.",
   "host": "openvibe-oregon",
   "stateDir": "/var/lib/openvibe-host",
   "backupDir": "/var/backups/openvibe",
@@ -814,11 +814,7 @@
     "games": {
       "repo": "/opt/openvibe.games",
       "strategy": "pnpm-build",
-      "_strategyNote": "The production procedure (git pull; pnpm install --frozen-lockfile; pnpm build; systemctl restart openvibe-games) as ovhost deploy games, with git as the checkout owner (not sudo git), the tracked apps/*/dist-types/ a previous build rewrote restored from git before the merge (generated), every workspace package's dependencies verified, better-sqlite3 loaded under this Node before the restart, /api/ready polled, and on failure the checkout restored, reinstalled and rebuilt (the build writes apps/client/dist, which is served) and the unit restarted again. Players online are reported (drain report) and reconnect; --wait-idle holds until nobody plays.",
-      "generated": [
-        "apps/client/dist-types/",
-        "apps/server/dist-types/"
-      ],
+      "_strategyNote": "The production procedure (git pull; pnpm install --frozen-lockfile; pnpm build; systemctl restart openvibe-games) as ovhost deploy games, with git as the checkout owner (not sudo git), every workspace package's dependencies verified, pg and openvibe-sdk/db loaded under this Node before the restart, /api/ready polled, and on failure the checkout restored, reinstalled and rebuilt (the build writes apps/client/dist, which is served) and the unit restarted again. Players online are reported (drain report) and reconnect; --wait-idle holds until nobody plays. Games is on PostgreSQL (ov_games) since its ADR-0007 M1; nothing is tracked build output any more.",
       "units": [
         "openvibe-games.service"
       ],
@@ -831,14 +827,14 @@
       "preflight": {
         "checks": [
           {
-            "label": "better-sqlite3 loads under this Node",
+            "label": "pg and openvibe-sdk/db load under this Node",
             "packages": [
               "apps/server"
             ],
             "argv": [
               "node",
               "-e",
-              "new (require('better-sqlite3'))(':memory:').close()"
+              "require('pg'); require('openvibe-sdk/db')"
             ]
           }
         ]
@@ -846,14 +842,18 @@
       "databases": [
         {
           "name": "world",
-          "path": "/opt/openvibe.games/data/world.db"
+          "engine": "postgresql",
+          "database": "ov_games"
         }
       ],
       "drill": {
-        "_notes": "Reviewed 2026-09-23 (OpenVibe.Games 7863fc6): one HTTP listener (PORT/HOST; /ws and /editor-ws are upgrades on it), tsx runs src/main.ts with no build, and the unit's DB_PATH (Environment=) never reaches the drill because the drill sets it. EVENTS_PUBLISH=off stops the outbox relay, MEDIA_MIRROR=off the map-asset mirror, an empty OV_OAUTH_CLIENT_SECRET every service call. The 30 Hz tick loop keeps running (readiness needs it) and flushes the world into the copy only; map.json stays production's file, read-only in the sandbox. Count only tables the simulation does not write. Passed on the host 2026-09-24 05:40 UTC (take `ovhost backup games` first).",
+        "_notes": "Games M1 (ADR-0007): PostgreSQL ov_games. One HTTP listener (PORT/HOST; /ws and /editor-ws are upgrades on it), tsx runs src/main.ts with no build. The drill restores into a scratch database and sets DATABASE_URL/DATABASE_DIRECT_URL to it and VALKEY_URL to a closed port. EVENTS_PUBLISH=off stops the outbox relay, MEDIA_MIRROR=off the map-asset mirror, an empty OV_OAUTH_CLIENT_SECRET every service call. The 30 Hz tick keeps running (readiness needs it) and its write-behind flusher writes into the scratch copy only; map.json stays production's file, read-only in the sandbox. Count only tables the simulation does not write. Not run on the host since the PostgreSQL move.",
         "port": 18000,
         "databases": {
-          "world": "DB_PATH"
+          "world": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -862,7 +862,8 @@
           "EVENTS_PUBLISH": "off",
           "EVENTS_URL": "",
           "MEDIA_MIRROR": "off",
-          "TMPDIR": "{tmp}/tmp"
+          "TMPDIR": "{tmp}/tmp",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "dirs": [
           "{tmp}/tmp"
@@ -884,7 +885,7 @@
         "counts": [
           {
             "db": "world",
-            "table": "players"
+            "table": "characters"
           },
           {
             "db": "world",
