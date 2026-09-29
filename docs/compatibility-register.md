@@ -29,10 +29,10 @@ Contracts has no deprecated contracts and no aliases (`OpenVibe.Contracts/compat
 |---|---|
 | Cut over; the shim is now only a rollback lever | C-01–C-03 (chat), C-10–C-13 (pastes), C-20–C-21 (AI) |
 | Prepared; the old path is still authoritative | C-30–C-31 (Billing), C-40–C-42 (OpenRe) |
-| Running in parallel, waiting on telemetry | C-50–C-58 (internal key), C-60–C-61 (Events v1 signatures) |
-| Legacy secret or credential still accepted | C-50–C-57 (`INTERNAL_API_KEY`), C-59 (hard-coded), C-42, C-70, C-71 (Media app keys), Games `EDITOR_KEY` |
+| Running in parallel, waiting on telemetry | C-60–C-61 (Events v1 signatures) |
+| Legacy secret or credential still accepted | C-42, C-70, C-71 (Media app keys) |
 | Legacy data kept for rollback | C-72 (analytics backups with IPs), C-73 (frozen Live tables) |
-| No removal condition in any repo before this register (proposed here) | C-06, C-14, C-24, C-54, C-58, C-59, C-70, C-73, C-74, C-77, C-80, Games `EDITOR_KEY` |
+| No removal condition in any repo before this register (proposed here) | C-06, C-14, C-24, C-70, C-73, C-74, C-77, C-80 |
 | Closed; never built, nothing to migrate | C-82 (Realtime, ADR-005; archived 2026-09-25) |
 
 ## Chat (Wave 6: cut over 2026-09-23 02:03 UTC)
@@ -83,29 +83,25 @@ Contracts has no deprecated contracts and no aliases (`OpenVibe.Contracts/compat
 | C-41 | **OpenRe port 1936** (`OPENRE_RTMP_PORT`). Port 1935 stays Live's until Live stops listening. Then `OPENRE_RTMP_EXTRA_PORTS=1935`. | OpenRe `server/config.js:24,72`, `README.md:139-145` | OpenRe | *documented*: after Live's RTMP ingest retires (C-40). 1936 stays permanently, because handed-out URLs use it. | with C-40 | none needed |
 | C-42 | **OpenRe `MEDIA_API_KEY`**, `OPENRE_MEDIA_AUTH=key` (default). This is an interim shared Media tenant key. The target is `service`. The **capability bridge** allows a capability unknown to contracts on the grant alone. | OpenRe `server/config.js:138-139`, `server/media-client.js:31-36`, `server/auth/index.js:16-19,79-84`, `README.md:103,125` | OpenRe + Media | *documented*: Media names capabilities on its VOD routes, and the grant `[openre, media.object.upload, openvibe.media]` exists. The bridge becomes a no-op once contracts define the ids (contracts v0.16.0 is already pinned, `package.json:26`). | 2026-10-23 | Set `OPENRE_MEDIA_AUTH=key`. |
 
-## The shared internal key (`INTERNAL_API_KEY` / `X-Internal-Key`)
+## The shared internal key (`INTERNAL_API_KEY` / `X-Internal-Key`): retired 2026-09-29
 
-Network `docs/retirement.md` gives the procedure:
-- Telemetry in `principal_usage` has run since 2026-09-23. Guarded routes are counted as `auth='internal-key'`, other internal routes as `auth='internal-key-route'`.
-- Move a caller to a service token, wait until the route shows no legacy-key calls for **14 days**, remove the key path for that route, and finally delete `INTERNAL_API_KEY` from every env file.
-- ADR-003: "the key is retired per route once legacy use reaches zero".
-- First observation: `GET /internal/url-registry/resolved`, from Live's registry refresh (2026-09-23 04:50 UTC).
-- **No HTTP route lists `principal_usage`.** Read it with the SQL in `docs/retirement.md`.
+C-50 to C-59 are closed, in one sweep (plan T2: convert, then delete; no telemetry window). Every internal call in the
+estate now carries a service token with the one capability it performs (Contracts v0.79.0 added the last eight:
+`network.avatar.write`, `network.registry.read`, `network.coins.read`, `live.avatar.write`, `live.url_registry.refresh`,
+`live.analytics.read`, `media.avatar.ingest`, `tools.analytics.read`).
 
-The dates below assume each caller moves by **2026-10-09**. The key paths then go on **2026-10-23**, and the variable goes from every env file on **2026-11-06**. Where a route has no counter, the entry says so.
-
-| # | What | Where | Owner | Removal condition | Target | Rollback lever until then |
-|---|---|---|---|---|---|---|
-| C-50 | **Network key-only `/internal/*` routes**: verify-token, users/*, link-account, user-avatar, audit, stats, url-registry/resolved, coins/stats, notifications/unread\|mark-read\|resolve-users, issue-token, resolve-anon, anon-admin, anon-list, identity/legacy-map. The key defaults to `'change-me-in-production'`, and `OV_INTERNAL_KEY` is a second env name for it. | Network `server/internal/routes.js:39-57,75-720`, `server/config.js:28-29` | Network | *documented*: 14 days with zero `legacy-key` rows per route (`docs/retirement.md`). | 2026-10-23 | The key keeps working per route until that route's key path is removed. |
-| C-51 | **Network routes that take a token or the key** (`TOKEN_ROUTES`): identity resolve and resolve-batch, coins credit/debit/transfer, notifications push and push-bulk, events/stream-live, modules. `principals.guard(…, { legacy: true })`. | Network `server/internal/routes.js:59-60`, `server/identity/principals.js:235-247` | Network | Same as C-50, per route. | 2026-10-23 | Callers fall back to the key (ADR-003 §Rollback). |
-| C-52 | **Live's key-only outbound calls to Network**: `/internal/url-registry/resolved`, `/internal/identity/legacy-map`, `/internal/coins/stats`, `/internal/resolve-anon`, `/internal/link-account`, `/internal/user-avatar`, `/internal/notifications/mark-read`. | Live `server/config.js:290-300`, `server/auth/identity-sync.js:45-47`, `server/monetization/wallet-client.js:151-152`, `server/chat/chat-server.js:167-171`, `server/utils/notify.js:85,103,143` | Live | Move each call to a service token, then C-50. | callers 2026-10-09 | none needed |
-| C-53 | **Live's token-with-key-fallback calls** (`TOKEN_PATHS`). When no token can be had they fall back to the key and pause token attempts for 5 min. This includes the go-live notification (`/internal/events/stream-live`), whose second path is ADR-020's Events consumer. `notify._post` returns null when there is no key, even on token-capable paths. | Live `server/net/network-principal.js:21,47-61`, `server/utils/notify.js:38-39`; ADR-020 §Migration consequences | Live + Network | *documented* (ADR-020): the two paths run side by side "until parity is shown; then the push call is removed". Precondition: Network can read Live's followers (D09 or a capability-guarded read). *Proposed*: drop the key fallback when C-51 goes. | Key fallback 2026-10-23; push call unknown (blocked on D09) | Re-enable the direct push (ADR-020 §Rollback). |
-| C-54 | **Live's key-only inbound routes** (loopback only): `POST /internal/ai/site-copy`, `/internal/url-registry/refresh`, `/internal/user-avatar`, ~~`/internal/user-role`~~ (removed 2026-09-26: Network `60455b3`, Live `3a99cdc`; roles reach Live as `network.user.updated`, WS-B task 2), `GET /internal/analytics-summary`, `POST /api/cosmetics/internal-unlock`. | Live `server/internal/routes.js:8-18,30-106`, `server/index.js:557-565`, `server/monetization/cosmetics-routes.js:85-99` | Live (routes), Network (callers) | *proposed*: add service-token guards on Live (`server/net/service-guard.js` exists), move Network's callers, then 14 days with no key use. **Live has no key-use counter.** Add one, or read Live's access log. | 2026-10-23 | none needed |
-| C-55 | **Network's outbound key calls**: Live `/internal/user-avatar`, Media `/internal/avatar-ingest`, Live `/internal/analytics-summary`, Live `/internal/ai/site-copy` (C-21), ~~Live `/internal/user-role`~~ (removed 2026-09-26, Network `60455b3`) (reads `INTERNAL_API_KEY \|\| OV_INTERNAL_KEY`), and admin analytics. | Network `server/profile/avatar.js:66,75`, `server/chrome/service.js:77,138`, `server/admin/routes.js:120,220-224`, `server/admin/analytics-routes.js:16,57` | Network | Move to service tokens with capabilities on the callee. | 2026-10-09 | none needed |
-| C-56 | **Media `POST /internal/avatar-ingest`**: key only, loopback, ≥16-character key, otherwise 404. `VIEW_HASH_SECRET` falls back to `MEDIA_SECRET` and then `INTERNAL_API_KEY`. | Media `server/index.js:55-63`, `server/views/service.js:27-33` | Media | *proposed*: a service-token guard on avatar-ingest; set `VIEW_HASH_SECRET` explicitly so removing the key does not change view hashes. | 2026-10-23 | none needed |
-| C-57 | **Tools satellites** `/api/internal/analytics` and `/analytics/bots`: key only, alias `OV_INTERNAL_KEY`. `apps/gateway/.env.example:30-31` describes it wrongly. | Tools `apps/_shared/internal-auth.js:11-17` | Tools | *proposed*: the gateway aggregates with a service token, or loopback without a key. | 2026-10-23 | none needed |
-| C-58 | **REMOVED 2026-09-23** (Network `6a1acd3`; `test/data-ownership.test.js` keeps it out). **Network's cross-database read of Live.** On every boot, `syncLinkedLiveRoles` opens Live's database read-only, from `OPENVIBELIVE_DB_PATH`, then `/opt/openvibelive/data/live.db`, then `../live/data/live.db`. This breaks ADR-007 ("no service reads or writes another service's database"). None of the default paths is Live's production path (`/opt/openvibe.live/data/live.db`). Whether it runs in production: **unknown**. Check `/etc/openvibe/network.env` for `OPENVIBELIVE_DB_PATH`. | Network `server/db/database.js:28-99`, called at `:751` | Network | *proposed*: remove the function. Roles already reach Network through `/internal/user-role` and the identity map. | 2026-10-09 | none needed |
-| C-59 | **REMOVED 2026-09-23** (Live `e505868`: nothing listened on :3200; `internal-unlock` takes only `INTERNAL_API_KEY`, the bridge is off unless `LEGACY_QUEST_API_URL` is set). **Hard-coded legacy secret** `X-Internal-Secret: openvibe-internal-2026`. Live's `/api/cosmetics/internal-unlock` accepts it from loopback. Live's `questApi` sends it to `LEGACY_QUEST_API = http://127.0.0.1:3200`, the pre-OpenVibe game. Games now runs on :8000. Whether anything listens on :3200: **unknown**. Check `ss -ltnp` on the host. | Live `server/monetization/cosmetics-routes.js:86-94`, `server/monetization/cosmetics.js:11,222-275` | Live (+ Games for inventory) | *proposed*: remove the literal secret and the :3200 client. If cosmetics still need the game inventory, Games exposes it behind a service token. | 2026-10-09 | none needed |
+- **Network** (`79a4eea`, `3bff136`): the 13 key-only internal routes nothing called are deleted; every other route takes
+  only a service token (`TOKEN_ROUTES` and the key gate are gone); its own calls to Live, Media and Tools carry its
+  self-signed token; `config.internalKey` is deleted. Probe: the old key gets 401 `token.missing`.
+- **Live** (`660833d`, `bea231e`, `66f590b`): sends only its token, accepts only tokens; `server/net/internal-key.js` and
+  `config.internalApiKey` are deleted; the openvibe-quest bridge and `internal-unlock` are deleted (C-59).
+- **Media** (`8364eee`): avatar ingest takes `media.avatar.ingest`; owner resolution sends only its token.
+  **Tools** (`55e4b84`): the gateway and seven tool sites take `tools.analytics.read`. Both delete their last key path in
+  the next release (in progress 2026-09-29), after which nothing in the estate reads the variable.
+- **Shared 2.0.0**: `internalApiAuth`, `verifyTokenInternal`, `getUserProfile` removed.
+- **Host:** `INTERNAL_API_KEY` is gone from every `/etc/openvibe/*.env` (backup `/root/env-backup-t2-20260929124244`);
+  Media's `VIEW_HASH_SECRET` carries the value its view hashes were derived from, so no view count reset.
+- C-58 (Network's cross-database read of Live) was already removed 2026-09-23.
 
 ## Events delivery signatures
 
@@ -183,4 +179,4 @@ These match the search terms but are permanent. They are listed so the next revi
 - **Analytics `ip`/`user_id`/`city` columns** kept and always NULL: Network `server/analytics/schema.js:1-14`, Tools `apps/_shared/analytics/schema.js:3-6`.
 - **Billing `legacy_order_id`/`legacy_live_txn`/`legacy_live_id`**: import provenance (`server/db.js:120,142,162`). Tips `legacy_source` and VIP `vip_migration_maps` are the same kind of provenance.
 - **Tools registry fallback list** until Network answers (`registry/services.js:16-24`), and `isLegacyHost` for the old paste/login hosts (`index.js:104-105`).
-- **Games `EDITOR_KEY`**: "Fallback admin secret for the map editor (until openvibe.network SSO)" (`apps/server/src/config.ts:82-83`). This one *is* a legacy secret, with no removal date. *Proposed*: SSO staff check for the editor by 2026-11-06, owner Games.
+- **Games `EDITOR_KEY`**: **removed 2026-09-29** (Games `3ea36b3`, ADR-0007 M1): the editor and the mods API take the Network staff session or `games.mod.manage`; the variable is gone from the host env.
