@@ -1,8 +1,8 @@
 'use strict';
 /**
- * The proposals the lead releases in the next openvibe-contracts version are valid, match what the
- * code enforces and emits, and do not collide with released ids; and the outbox relay really
- * delivers Host's events to OpenVibe.Events with a Network service token.
+ * Host's capabilities and service manifest as openvibe-contracts released them match what the code
+ * enforces and emits; and the outbox relay really delivers Host's events to OpenVibe.Events with a
+ * Network service token.
  */
 const assert = require('assert');
 const fs = require('fs');
@@ -10,30 +10,24 @@ const path = require('path');
 const contracts = require('openvibe-contracts');
 const { boot, check, done } = require('./stageb/boot');
 const { listen } = require('./stageb/mocks');
-const { PROPOSED } = require('../server/auth/capabilities');
+const { CAPABILITIES } = require('../server/auth/capabilities');
 const { EVENT_TYPES } = require('../server/events/outbox');
 
-const DIR = path.join(__dirname, '..', 'docs', 'capabilities-proposal');
-
 (async () => {
-    const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.json'));
-    const caps = files.map((f) => JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')));
-    const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'docs', 'service-manifest-proposal.json'), 'utf8'));
+    const ids = Object.values(CAPABILITIES);
+    const caps = ids.map((id) => contracts.capabilities.get(id));
+    const manifest = JSON.parse(fs.readFileSync(require.resolve('openvibe-contracts/manifests/services/host.json'), 'utf8'));
 
-    await check('every capability proposal is a valid capabilities.capability@1 with 3 segments, owned by host', async () => {
-        for (const c of caps) {
-            const v = contracts.validate('capabilities.capability@1', c);
-            assert.ok(v.valid, `${c.id}: ${JSON.stringify(v.errors)}`);
+    await check('every capability Host guards is released, active and owned by host', async () => {
+        for (const [i, c] of caps.entries()) {
+            assert.ok(c, `${ids[i]} is not in openvibe-contracts`);
             assert.strictEqual(c.owner, 'host');
-            assert.strictEqual(c.id.split('.').length, 3);
-            assert.strictEqual(`${c.id}.json`, files[caps.indexOf(c)]);
-            assert.ok(!contracts.capabilities.get(c.id) || contracts.capabilities.get(c.id).owner === 'host', `${c.id} collides with a released capability`);
+            assert.strictEqual(c.status, 'active', c.id);
         }
     });
 
-    await check('the proposals are exactly the capabilities the routes guard, and every route guards one', async () => {
-        assert.deepStrictEqual(caps.map((c) => c.id).sort(), [...PROPOSED].sort());
-        assert.deepStrictEqual([...manifest.capabilities].sort(), [...PROPOSED].sort());
+    await check('the released capabilities are exactly the ones the routes guard, and every route guards one', async () => {
+        assert.deepStrictEqual([...manifest.capabilities].sort(), [...ids].sort());
         const api = fs.readFileSync(path.join(__dirname, '..', 'server', 'http', 'api.js'), 'utf8');
         const routes = [...api.matchAll(/router\.(get|post|put|delete)\('([^']+)', guard\('([a-z.]+)'\)/g)].map((m) => ({ method: m[1].toUpperCase(), route: `/api/v1${m[2]}`, cap: m[3] }));
         const all = [...api.matchAll(/router\.(get|post|put|delete)\('/g)].length;
@@ -45,11 +39,9 @@ const DIR = path.join(__dirname, '..', 'docs', 'capabilities-proposal');
         }
     });
 
-    await check('the service manifest proposal is a valid registry.service-manifest@1 declaring every emitted event', async () => {
-        const v = contracts.validate('registry.service-manifest@1', manifest);
-        assert.ok(v.valid, JSON.stringify(v.errors));
+    await check('the released service manifest declares every event the service emits', async () => {
         assert.strictEqual(manifest.id, 'host');
-        assert.deepStrictEqual([...manifest.eventsProduced].sort(), [...EVENT_TYPES].sort());
+        for (const e of EVENT_TYPES) assert.ok(manifest.eventsProduced.includes(e), e);
         for (const c of caps) for (const e of c.events) assert.ok(manifest.eventsProduced.includes(e), e);
         const src = ['server/domain/deploys.js', 'server/domain/domains.js'].map((f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8')).join('\n');
         for (const m of src.matchAll(/event_type: '([a-z_.]+)'/g)) assert.ok(manifest.eventsProduced.includes(m[1]), m[1]);

@@ -301,7 +301,7 @@ People present their Network user JWT as a Bearer token. Services and apps prese
 
 Errors are RFC 9457 problems (`application/problem+json`, with the legacy `error` field). A refused upload answers 413/422 with `deploy_id` and the log lines; `503 upload.busy` (with `Retry-After`) when `HOST_MAX_CONCURRENT_UPLOADS` uploads are already being validated; `507 storage.host_full` while the disk has less than `HOST_MIN_FREE_BYTES` free. Network staff (`role: admin`) can read every project, site, deploy and log, delete sites, projects and domains, set quotas, and **take a site or project down** (451 on every host, content kept for review, members see the reason and cannot publish or delete around it); they cannot publish into a tenant's site.
 
-The three capability ids and the service manifest are released in `openvibe-contracts` (since v0.24.0; v0.32.0 adds the takedown routes to `host.site.manage`), and the CI contract check is blocking. [`docs/capabilities-proposal/`](docs/capabilities-proposal/) mirrors them; `host.site.manage` there also lists the four takedown routes, which the next Contracts release should add (see [docs/launch.md](docs/launch.md#the-window-in-this-order)).
+The four capability ids (`host.site.config` since v0.83.0) and the service manifest are released in `openvibe-contracts`, which Host pins, and the CI contract check is blocking; `test/host-contracts-events.test.js` holds the routes, guards and emitted events to the released manifests.
 
 ### Activation and rollback
 

@@ -38,9 +38,9 @@ runTests([
         assert.ok(!/(sk_|ghp_|BEGIN [A-Z ]*PRIVATE KEY|password\s*[:=]\s*\S)/i.test(text), 'no secret values in the example');
     }),
 
-    test('the service manifest proposal is valid against the contracts schema', () => {
+    test('the released service manifest is valid against the contracts schema', () => {
         const contracts = require('openvibe-contracts');
-        const m = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'docs', 'service-manifest-proposal.json'), 'utf8'));
+        const m = JSON.parse(fs.readFileSync(require.resolve('openvibe-contracts/manifests/services/host.json'), 'utf8'));
         contracts.assertValid('registry.service-manifest', m);
         assert.strictEqual(m.id, 'host');
         assert.deepStrictEqual(m.capabilities, ['host.site.manage', 'host.deploy.create', 'host.domain.manage', 'host.site.config'], 'Stage A has no API; the Stage B service enforces these four');
