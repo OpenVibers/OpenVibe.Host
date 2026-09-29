@@ -1,12 +1,13 @@
 [Unit]
-Description=OpenVibe backups: every service's SQLite databases, then an encrypted off-host copy
+Description=OpenVibe backups: verify pgBackRest for the PostgreSQL services, dump SQLite databases and the scheduled logical PostgreSQL dumps, then an encrypted off-host copy
 Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/backups.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Root: ovhost drops to each service user for the SQLite backup (runuser) and is the only reader of
+# Root: ovhost drops to each service user for the SQLite backup and to the postgres OS user for the
+# PostgreSQL dumps and the pgBackRest verification (runuser) and is the only reader of
 # /etc/openvibe/backup.env, the encryption key and the root-only backups. The env file is read by
 # ovhost itself, not loaded into this unit's environment.
 User=root
@@ -18,7 +19,8 @@ UMask=0077
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
-# media.db and live.db are the large ones; the SQLite worker's own limit is 6 h per database.
+# The PostgreSQL logical dumps are the large ones now (they run as the postgres OS user), and the
+# SQLite worker's own limit is 6 h per database; a pg_dump is given the same. 6 h covers a whole run.
 TimeoutStartSec=6h
 PrivateTmp=true
 NoNewPrivileges=true

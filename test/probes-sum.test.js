@@ -5,6 +5,7 @@
 const assert = require('assert');
 const { countProtected } = require('../lib/probes');
 const { normalise } = require('../lib/inventory');
+const { createFakeHost } = require('./fake-host');
 
 const counts = { '/opt/t/apps/img/data/jobs.db': 2, '/opt/t/apps/audio/data/jobs.db': 0, '/opt/t/apps/docs/data/jobs.db': 1 };
 const exec = {
@@ -23,6 +24,26 @@ const svc = { units: ['openvibe-tools.service'], runAs: 'ubuntu', protected: { k
     const r = await countProtected(exec, broken);
     assert.strictEqual(r.count, null, 'one part that cannot answer makes the total unknown, never a smaller number');
     assert.match(r.unknown, /^part 2: no such database/);
+
+    // A postgresql-count part asks the cluster over psql, as the postgres OS user (peer auth); the
+    // number it answers is the count, and a psql failure is unknown — never zero.
+    const host = createFakeHost();
+    host.addUnit('openvibe-tools.service');
+    host.sqliteHandler = () => [{ n: 2 }];
+    host.psqlHandler = (database, sql) => { assert.strictEqual(database, 'ov_tools'); assert.match(sql, /^SELECT/); return [{ n: 7 }]; };
+    const pgPart = { kind: 'postgresql-count', database: 'ov_tools', sql: 'SELECT count(*) AS n FROM tool_jobs', label: 'running tool jobs' };
+    assert.deepStrictEqual(await countProtected(host.exec, { units: ['openvibe-tools.service'], runAs: 'ubuntu', protected: pgPart }), { count: 7, label: 'running tool jobs' });
+    assert.deepStrictEqual(host.psqlCalls.at(-1), { database: 'ov_tools', sql: pgPart.sql, as: 'postgres' });
+    const pgSum = { units: ['openvibe-tools.service'], runAs: 'ubuntu', protected: { kind: 'sum', label: 'running tool jobs', probes: [part('img'), pgPart] } };
+    assert.strictEqual((await countProtected(host.exec, pgSum)).count, 9, 'a postgresql-count part adds to the sum');
+    host.psqlHandler = () => { throw new Error('psql: could not connect to server'); };
+    const down = await countProtected(host.exec, { units: ['openvibe-tools.service'], runAs: 'ubuntu', protected: pgPart });
+    assert.strictEqual(down.count, null, 'a probe that cannot ask is unknown');
+    assert.notStrictEqual(down.count, 0, 'never read as zero');
+    assert.match(down.unknown, /could not connect/);
+    const downSum = await countProtected(host.exec, pgSum);
+    assert.strictEqual(downSum.count, null);
+    assert.match(downSum.unknown, /^part 2: psql: could not connect/);
 
     // The inventory checks each part.
     const base = { owner: 'ubuntu', repo: '/opt/t', units: ['openvibe-tools.service'] };

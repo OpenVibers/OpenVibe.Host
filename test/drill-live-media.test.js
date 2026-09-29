@@ -18,7 +18,6 @@ const { normalise } = require('../lib/inventory');
 
 const EXAMPLE = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'host.example.json'), 'utf8'));
 const LIVE_DB = '/opt/openvibe.live/data/live.db';
-const MEDIA_DB = '/opt/openvibe.media/data/media.db';
 
 const envOf = (text) => Object.fromEntries(text.trim().split('\n').filter((l) => !l.startsWith('#')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
 const stateChanges = (host) => host.calls.filter((c) => c.cmd === 'systemctl' && !['show', 'is-active', 'is-enabled', 'cat', 'status', 'list-units'].includes(c.args[0]));
@@ -95,7 +94,7 @@ async function mediaHost({ switchInCheckout = true } = {}) {
     doc.services.media = JSON.parse(JSON.stringify(EXAMPLE.services.media));
     host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
     if (switchInCheckout) {
-        host.put('/opt/openvibe.media/server/drill.js', "const enabled = parse(process.env.MEDIA_DRILL);\n", { owner: 'ubuntu' });
+        host.put('/opt/openvibe.media/server/drill.js', "const enabled = parse(process.env.MEDIA_DRILL);\nif (!env.DATABASE_URL) out.push('DATABASE_URL');\n", { owner: 'ubuntu' });
         host.put('/opt/openvibe.media/server/public/routes.js', "if (drill.refuseBytes(res)) return;\n", { owner: 'ubuntu' });
     }
     host.put('/etc/systemd/system/openvibe-media.service', [
@@ -105,15 +104,17 @@ async function mediaHost({ switchInCheckout = true } = {}) {
     const unit = host.units.get('openvibe-media.service');
     host.alivePids.add(unit.mainPid);
     host.listeners.set(4100, [{ pid: unit.mainPid, process: 'node' }]);
-    host.put(MEDIA_DB, 'sqlite-production', { owner: 'ubuntu', mode: 0o640 });
+    // Media is PostgreSQL now (host.example.json): the production database is in the cluster, and the
+    // drill restores a logical dump into a scratch database instead of copying a file.
+    host.pgDatabases.add('ov_media');
+    host.pgBackups = [{ type: 'diff', timestamp: { stop: Math.floor(Date.parse('2026-09-22T12:00:00Z') / 1000) } }];
     host.http.set('http://127.0.0.1:4100/api/ready', () => ({ status: 200, body: { ready: true } }));
     for (const tab of ['videos', 'clips']) host.http.set(`http://127.0.0.1:4100/browse?tab=${tab}`, () => ({ status: 200, body: BROWSE(tab) }));
     const counts = { media_objects: 6021, vods: 1300, clips: 4700, apps: 4 };
-    host.sqliteHandler = (db, sql) => {
-        if (/integrity_check/.test(sql)) return [{ integrity_check: 'ok' }];
-        if (/is_recording/.test(sql)) return [{ n: 0 }];
+    host.psqlHandler = (database, sql) => {
+        if (/pg_stat_archiver/i.test(sql)) return [{ n: String(host.pgArchiver.failed_count) }];
         const m = /FROM "([a-z_]+)"/.exec(sql);
-        return [{ n: m ? counts[m[1]] ?? 0 : 0 }];
+        return [{ n: String(m ? counts[m[1]] ?? 0 : 0) }];
     };
     host.onSystemdRun = (spec) => {
         const envFile = spec.envFiles[spec.envFiles.length - 1];
@@ -137,7 +138,7 @@ runTests([
         const live = inv.services.live.drill;
         assert.strictEqual(live.supported, true);
         assert.strictEqual(live.port, 13000);
-        assert.deepStrictEqual(live.databases, { live: { env: 'DB_PATH', dir: false } });
+        assert.deepStrictEqual(live.databases, { live: { engine: 'sqlite', env: 'DB_PATH', dir: false } });
         assert.strictEqual(live.env.LIVE_DRILL, '1');
         assert.strictEqual(live.env.DATA_DIR, '{tmp}/data');
         assert.strictEqual(live.env.HOST, '127.0.0.1');
@@ -148,11 +149,11 @@ runTests([
         const media = inv.services.media.drill;
         assert.strictEqual(media.supported, true);
         assert.strictEqual(media.port, 14100);
-        assert.deepStrictEqual(media.databases, { media: { env: 'DB_PATH', dir: false } });
+        assert.deepStrictEqual(media.databases, { media: { engine: 'postgresql', url: 'DATABASE_URL', directUrl: 'DATABASE_DIRECT_URL' } });
         assert.strictEqual(media.env.MEDIA_DRILL, '1');
         for (const k of ['VOD_PATH', 'CLIPS_PATH', 'PASTES_PATH', 'ASSETS_PATH', 'FILES_PATH', 'OBJECTS_PATH']) assert.match(media.env[k], /^\{tmp\}\/storage\//, k);
         assert.ok(!('THUMBNAILS_PATH' in media.env), '/browse lists production\'s thumbnail directory');
-        assert.deepStrictEqual(media.requires.map((r) => r.contains), ['MEDIA_DRILL', 'refuseBytes']);
+        assert.deepStrictEqual(media.requires.map((r) => r.contains), ['MEDIA_DRILL', 'DATABASE_URL', 'refuseBytes']);
         assert.deepStrictEqual(media.compare.map((c) => c.path), ['/browse?tab=videos', '/browse?tab=clips']);
         assert.deepStrictEqual(media.counts.map((c) => c.table), ['media_objects', 'vods', 'clips', 'apps']);
     }),
@@ -217,15 +218,24 @@ runTests([
         assert.deepStrictEqual(run.argv, ['/usr/bin/env', 'node', '/opt/openvibe.media/server/index.js']);
         assert.ok(run.props.includes('SocketBindAllow=tcp:14100'));
         const env = envOf(host.drillEnv);
-        assert.deepStrictEqual(env, {
+        const { DATABASE_URL, DATABASE_DIRECT_URL, ...envRest } = env;
+        assert.deepStrictEqual(envRest, {
             PORT: '14100', HOST: '127.0.0.1', MEDIA_DRILL: '1',
             VOD_PATH: `${rec.dir}/storage/vods`, CLIPS_PATH: `${rec.dir}/storage/clips`, PASTES_PATH: `${rec.dir}/storage/pastes`,
             ASSETS_PATH: `${rec.dir}/storage/assets`, FILES_PATH: `${rec.dir}/storage/files`, OBJECTS_PATH: `${rec.dir}/storage/objects`,
-            EVENTS_URL: '', OV_OAUTH_CLIENT_SECRET: '', DB_PATH: `${rec.dir}/db/media.db`,
+            EVENTS_URL: '', OV_OAUTH_CLIENT_SECRET: '', VALKEY_URL: 'redis://127.0.0.1:9/0',
         });
-        assert.deepStrictEqual(host.drillDirAtStart, ['db', 'db/media.db', 'drill.env'], 'nothing but the copy and the override file; storage is never created');
+        // The generated URL names the scratch database and role; both direct and pooled vars point at
+        // the cluster port (5432), never PgBouncer.
+        const scratch = rec.scratch.database;
+        assert.match(DATABASE_URL, new RegExp(`^postgresql://${scratch}:[0-9a-f]+@127\\.0\\.0\\.1:5432/${scratch}$`));
+        assert.strictEqual(DATABASE_DIRECT_URL, DATABASE_URL);
+        assert.strictEqual(rec.databases[0].integrity, 'pg_restore --list ok');
+        assert.deepStrictEqual(host.drillDirAtStart, ['db', 'drill.env', 'pg', 'pg/media.dump'], 'the dump copy and the override file; storage is never created');
         assert.deepStrictEqual(stateChanges(host), []);
-        assert.strictEqual(host.read(MEDIA_DB), 'sqlite-production');
+        assert.ok(host.pgDatabases.has('ov_media'), 'the production database is untouched');
+        assert.ok(host.droppedDatabases.some((d) => d.name === scratch), 'the scratch database is dropped');
+        assert.ok(!host.pgRoles.has(scratch), 'the scratch role is dropped');
         assert.ok(!(r.out + JSON.stringify(host.systemdRuns)).includes(SECRET));
     }),
 

@@ -1,11 +1,12 @@
 {
   "_about": "Example ovhost inventory for the single OpenVibe host (openvibe-oregon). Copy to /etc/openvibe/host.json (root:root, 0640) and correct anything that differs on the machine; the real file is never committed. Paths, units, ports and env file locations come from OpenVibe.Network docs/roadmap-baseline/data/services.json and prod-snapshot.json (22 Sep 2026) and each repository's deploy/ directory. env.required lists NAMES only.",
+  "_databases": "Databases (lib/inventory.js): each services.<id>.databases[] item is one of two engines. SQLite (the default) is a file the service user's worker copies: { \"name\": \"live\", \"path\": \"/opt/openvibe.live/data/live.db\" }. PostgreSQL is a database in the cluster: { \"name\": \"trade\", \"engine\": \"postgresql\", \"database\": \"ov_trade\" } — the name must match ov_[a-z0-9_]+, and there is no path (ovhost reaches it as the postgres OS user over peer auth, and pgBackRest, not ovhost, copies it). tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, host, events, community, billing, media and openre are PostgreSQL; network, chat, tools, games and live are still SQLite. A drill block follows the engine: a PostgreSQL database maps to { \"url\": \"DATABASE_URL\", \"directUrl\": \"DATABASE_DIRECT_URL\" } and the drill creates a scratch database and role to restore into.",
   "host": "openvibe-oregon",
   "stateDir": "/var/lib/openvibe-host",
   "backupDir": "/var/backups/openvibe",
   "backupStagingDir": "/var/backups/openvibe.staging",
   "drillDir": "/var/lib/openvibe-drills",
-  "_drill": "Restore drills (ovhost drill <service>): each service with a database has a drill block. The drill port is the service port + 10000 on 127.0.0.1. http://127.0.0.1:9 is a closed port, used where an empty value would fall back to a production service on loopback. An empty OV_OAUTH_CLIENT_SECRET stops a service from minting service tokens, so it cannot call other services with its identity. Loopback stays reachable from the drill sandbox (services need Network's public keys), so these overrides are what keep a drill away from production. _notes explain what is left on and why.",
+  "_drill": "Restore drills (ovhost drill <service>): each service with a database has a drill block. The drill port is the service port + 10000 on 127.0.0.1. http://127.0.0.1:9 is a closed port, used where an empty value would fall back to a production service on loopback. An empty OV_OAUTH_CLIENT_SECRET stops a service from minting service tokens, so it cannot call other services with its identity. Loopback stays reachable from the drill sandbox (services need Network's public keys), so these overrides are what keep a drill away from production. A PostgreSQL drill restores the dump into a scratch database under a freshly created role, then sets DATABASE_URL and DATABASE_DIRECT_URL to it and VALKEY_URL to the closed port; it refuses to start if any of the three would keep its production value, because the drilled release would otherwise run its migrations against production (DATABASE_DIRECT_URL) and write into the production Valkey keyspace (VALKEY_URL). _notes explain what is left on and why.",
   "_lifecycle": "Lifecycle (ovhost validate, WS-P task 1): each service's lifecycle comes from its manifest in openvibe-contracts (the service's `manifest` id, default its key), from openvibe-contracts 0.55.0 on. A `lifecycle` block in a service entry replaces the manifest's on this host; none is needed today. validate compares shutdown.deadlineSeconds with each unit's effective TimeoutStopSec and KillSignal, and the checkout's installed openvibe-contracts with contracts.range.",
   "nginx": {
     "sitesAvailable": "/etc/nginx/sites-available",
@@ -305,7 +306,6 @@
       "envFile": "/etc/openvibe/media.env",
       "env": {
         "required": [
-          "DB_PATH",
           "VOD_PATH",
           "MEDIA_B2_ENDPOINT",
           "MEDIA_B2_BUCKET",
@@ -342,7 +342,8 @@
       "databases": [
         {
           "name": "media",
-          "path": "/opt/openvibe.media/data/media.db"
+          "engine": "postgresql",
+          "database": "ov_media"
         }
       ],
       "nginx": {
@@ -351,10 +352,13 @@
         "variant": "http"
       },
       "drill": {
-        "_notes": "Needs OpenVibe.Media 6e74eb0 or later (MEDIA_DRILL, server/drill.js; requires checks the deployed checkout). MEDIA_DRILL=1 refuses to start unless DB_PATH is outside the checkout and /opt/openvibe.media, HOST is loopback and PORT is not 4100. It then serves HTTP only: no app seeding or JWKS refresh, no tiering sweep, health job, junk sweep, clip re-cuts, copy verification, jobs worker, invariant scans, disk guardian, thumbnail cleanup, object purge, backfill, orphan-recording finalize or Events relay, and no webhook (the apps table's URLs are production's). It writes no file and creates no directory, and never opens a file path from the database: every byte route (/v and /c bytes, /t, /a, /f, /o, paste screenshots, live frames) answers 503; watch pages and /browse render from the copy. Every method but GET/HEAD/OPTIONS answers 403, /auth/* 503; net, fetch, child_process (git only: no ffmpeg or ffprobe), dgram and listen are guarded. /api/ready drops the storage and remote-tier checks (mode: drill). The storage paths from media.env move under {tmp}/storage (never created) as a second switch; THUMBNAILS_PATH stays production's, read-only in the sandbox, because /browse counts the thumbnail directory in its tab bar (the drill lists it and serves none of it). /browse caches its tab counts for 60 s in production: take the backup right before the drill. EVENTS_URL and the client secret are blanked too. Not run on the host yet.",
+        "_notes": "Needs OpenVibe.Media 6e74eb0 or later (MEDIA_DRILL, server/drill.js; requires checks the deployed checkout). MEDIA_DRILL=1 refuses to start unless its database is outside the checkout and /opt/openvibe.media, HOST is loopback and PORT is not 4100. It then serves HTTP only: no app seeding or JWKS refresh, no tiering sweep, health job, junk sweep, clip re-cuts, copy verification, jobs worker, invariant scans, disk guardian, thumbnail cleanup, object purge, backfill, orphan-recording finalize or Events relay, and no webhook (the apps table's URLs are production's). It writes no file and creates no directory, and never opens a file path from the database: every byte route (/v and /c bytes, /t, /a, /f, /o, paste screenshots, live frames) answers 503; watch pages and /browse render from the copy. Every method but GET/HEAD/OPTIONS answers 403, /auth/* 503; net, fetch, child_process (git only: no ffmpeg or ffprobe), dgram and listen are guarded. /api/ready drops the storage and remote-tier checks (mode: drill). The storage paths from media.env move under {tmp}/storage (never created) as a second switch; THUMBNAILS_PATH stays production's, read-only in the sandbox, because /browse counts the thumbnail directory in its tab bar (the drill lists it and serves none of it). /browse caches its tab counts for 60 s in production: take the backup right before the drill. EVENTS_URL and the client secret are blanked too. Not run on the host yet.",
         "port": 14100,
         "databases": {
-          "media": "DB_PATH"
+          "media": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -367,12 +371,17 @@
           "FILES_PATH": "{tmp}/storage/files",
           "OBJECTS_PATH": "{tmp}/storage/objects",
           "EVENTS_URL": "",
-          "OV_OAUTH_CLIENT_SECRET": ""
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "requires": [
           {
             "file": "server/drill.js",
             "contains": "MEDIA_DRILL"
+          },
+          {
+            "file": "server/drill.js",
+            "contains": "DATABASE_URL"
           },
           {
             "file": "server/public/routes.js",
@@ -663,14 +672,11 @@
       "databases": [
         {
           "name": "community",
-          "path": "/var/lib/openvibe-community/community.db"
-        },
-        {
-          "name": "community-legacy-path",
-          "path": "/opt/openvibe.community/data/community.db"
+          "engine": "postgresql",
+          "database": "ov_community"
         }
       ],
-      "_databasesNote": "The repo unit puts the database in /var/lib/openvibe-community; the 22 Sep production snapshot found it under /opt/openvibe.community/data. Keep the one that exists (backup skips a missing path).",
+      "_databasesNote": "Community is one PostgreSQL database (ov_community) now. Before the switch it declared two SQLite paths (the repo unit's /var/lib/openvibe-community/community.db and the /opt/openvibe.community/data/community.db the 22 Sep production snapshot found); neither is declared any more, and the frozen files are for `ovhost archive push`.",
       "nginx": {
         "vhost": "openvibe.community.conf",
         "repoVhost": "deploy/nginx/openvibe.community.conf",
@@ -679,7 +685,10 @@
       "drill": {
         "port": 14200,
         "databases": {
-          "community": "COMMUNITY_DB_PATH"
+          "community": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -687,7 +696,8 @@
           "DISCORD_RELAY_ENABLED": "0",
           "OV_OAUTH_CLIENT_SECRET": "",
           "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9",
-          "OV_MEDIA_INTERNAL_URL": "http://127.0.0.1:9"
+          "OV_MEDIA_INTERNAL_URL": "http://127.0.0.1:9",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/pastes?limit=5",
@@ -712,7 +722,7 @@
             "table": "posts"
           }
         ],
-        "_notes": "If the host keeps the database at the legacy path, map \"community-legacy-path\" instead of \"community\" (and in counts). An empty client secret stops identity resolve-batch calls to Network; the dead Live URL makes a PASTES_AUTHORITY=live proxy fail visibly instead of matching production through production. Community has no events relay (EVENTS_URL is unused)."
+        "_notes": "Community is one PostgreSQL database (ov_community) now: the second, legacy SQLite path it used to declare is gone. An empty client secret stops identity resolve-batch calls to Network; the dead Live URL makes a PASTES_AUTHORITY=live proxy fail visibly instead of matching production through production. Community has no events relay (EVENTS_URL is unused)."
       }
     },
     "events": {
@@ -753,7 +763,8 @@
       "databases": [
         {
           "name": "events",
-          "path": "/var/lib/openvibe-events/events.db"
+          "engine": "postgresql",
+          "database": "ov_events"
         }
       ],
       "nginx": {
@@ -768,12 +779,16 @@
       "drill": {
         "port": 14300,
         "databases": {
-          "events": "EVENTS_DB_PATH"
+          "events": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
           "HOST": "127.0.0.1",
-          "EVENTS_WORKER": "off"
+          "EVENTS_WORKER": "off",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "counts": [
           {
@@ -921,7 +936,7 @@
       }
     },
     "host": {
-      "_note": "OpenVibe.Host Stage B (tenant static hosting): the Host API service on port 4910. Not deployed as of 22 Sep 2026. Its database and content-addressed objects live in /var/lib/openvibe-host-api, which is NOT ovhost's own stateDir (/var/lib/openvibe-host). Tenant vhosts: `ovhost nginx tenants host`.",
+      "_note": "OpenVibe.Host Stage B (tenant static hosting): the Host API service on port 4910. Not deployed as of 22 Sep 2026. Its content-addressed objects live in /var/lib/openvibe-host-api, which is NOT ovhost's own stateDir (/var/lib/openvibe-host); its database is the PostgreSQL database ov_host. Tenant vhosts: `ovhost nginx tenants host`.",
       "repo": "/opt/openvibe.host",
       "units": [
         "openvibe-host.service"
@@ -953,7 +968,8 @@
       "databases": [
         {
           "name": "host",
-          "path": "/var/lib/openvibe-host-api/host.db"
+          "engine": "postgresql",
+          "database": "ov_host"
         }
       ],
       "nginx": {
@@ -961,7 +977,10 @@
           "sitesDomain": "openvibe.host",
           "dashboardDomain": "openvibe.host",
           "wildcardCert": "openvibe.host",
-          "database": "/var/lib/openvibe-host-api/host.db",
+          "database": {
+            "engine": "postgresql",
+            "database": "ov_host"
+          },
           "maxUpload": "110m",
           "replaces": [
             "openvibe.host-tenants-pending.conf"
@@ -971,7 +990,10 @@
       "drill": {
         "port": 14910,
         "databases": {
-          "host": "HOST_DB_PATH"
+          "host": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -979,7 +1001,8 @@
           "HOST_WORKER": "off",
           "EVENTS_URL": "",
           "OV_OAUTH_CLIENT_SECRET": "",
-          "HOST_STORAGE_DIR": "{tmp}/objects"
+          "HOST_STORAGE_DIR": "{tmp}/objects",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "dirs": [
           "{tmp}/objects"
@@ -1002,11 +1025,11 @@
             "table": "host_domains"
           }
         ],
-        "_notes": "Restores host.db only: `ovhost backup host` does not copy the content-addressed objects, so tenant content cannot be compared (every /api/v1 read needs auth). HOST_WORKER=off stops DNS rechecks and the object sweep."
+        "_notes": "Restores the ov_host database only: `ovhost backup host` does not copy the content-addressed objects, so tenant content cannot be compared (every /api/v1 read needs auth). HOST_WORKER=off stops DNS rechecks and the object sweep."
       }
     },
     "billing": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.billing",
       "units": [
         "openvibe-billing.service"
@@ -1031,20 +1054,25 @@
       "databases": [
         {
           "name": "billing",
-          "path": "/var/lib/openvibe-billing/billing.db"
+          "engine": "postgresql",
+          "database": "ov_billing"
         }
       ],
       "drill": {
         "port": 14600,
         "databases": {
-          "billing": "BILLING_DB_PATH"
+          "billing": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
           "HOST": "127.0.0.1",
           "BILLING_JOBS": "off",
           "EVENTS_URL": "",
-          "OV_OAUTH_CLIENT_SECRET": ""
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/v1/rates"
@@ -1156,7 +1184,7 @@
       }
     },
     "search": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.search",
       "units": [
         "openvibe-search.service"
@@ -1181,20 +1209,25 @@
       "databases": [
         {
           "name": "search",
-          "path": "/var/lib/openvibe-search/search.db"
+          "engine": "postgresql",
+          "database": "ov_search"
         }
       ],
       "drill": {
         "port": 14710,
         "databases": {
-          "search": "SEARCH_DB_PATH"
+          "search": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
           "HOST": "127.0.0.1",
           "EVENTS_URL": "",
           "SEARCH_EVENTS_SECRET": "",
-          "OV_OAUTH_CLIENT_SECRET": ""
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/v1/search?q=openvibe&limit=10",
@@ -1218,7 +1251,7 @@
       }
     },
     "sources": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.sources",
       "units": [
         "openvibe-sources.service"
@@ -1243,20 +1276,25 @@
       "databases": [
         {
           "name": "sources",
-          "path": "/var/lib/openvibe-sources/sources.db"
+          "engine": "postgresql",
+          "database": "ov_sources"
         }
       ],
       "drill": {
         "port": 14720,
         "databases": {
-          "sources": "SOURCES_DB_PATH"
+          "sources": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
           "HOST": "127.0.0.1",
           "SOURCES_WORKER": "off",
           "EVENTS_URL": "",
-          "OV_OAUTH_CLIENT_SECRET": ""
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "counts": [
           {
@@ -1280,7 +1318,7 @@
       }
     },
     "wiki": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.wiki",
       "units": [
         "openvibe-wiki.service"
@@ -1305,13 +1343,17 @@
       "databases": [
         {
           "name": "wiki",
-          "path": "/var/lib/openvibe-wiki/wiki.db"
+          "engine": "postgresql",
+          "database": "ov_wiki"
         }
       ],
       "drill": {
         "port": 14800,
         "databases": {
-          "wiki": "WIKI_DB_PATH"
+          "wiki": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1320,7 +1362,8 @@
           "OV_OAUTH_CLIENT_SECRET": "",
           "OV_MEDIA_INTERNAL_URL": "",
           "OV_SOURCES_INTERNAL_URL": "",
-          "WIKI_SCHEDULE_INTERVAL_MS": "2147483647"
+          "WIKI_SCHEDULE_INTERVAL_MS": "2147483647",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/v1/spaces",
@@ -1344,7 +1387,7 @@
       }
     },
     "blog": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.blog",
       "units": [
         "openvibe-blog.service"
@@ -1369,13 +1412,17 @@
       "databases": [
         {
           "name": "blog",
-          "path": "/var/lib/openvibe-blog/blog.db"
+          "engine": "postgresql",
+          "database": "ov_blog"
         }
       ],
       "drill": {
         "port": 14810,
         "databases": {
-          "blog": "BLOG_DB_PATH"
+          "blog": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1384,7 +1431,8 @@
           "EVENTS_URL": "",
           "OV_OAUTH_CLIENT_SECRET": "",
           "OV_MEDIA_INTERNAL_URL": "http://127.0.0.1:9",
-          "OV_COMMUNITY_INTERNAL_URL": "http://127.0.0.1:9"
+          "OV_COMMUNITY_INTERNAL_URL": "http://127.0.0.1:9",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/v1/blogs/openvibe/posts?limit=10",
@@ -1408,7 +1456,7 @@
       }
     },
     "tips": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.tips",
       "units": [
         "openvibe-tips.service"
@@ -1433,13 +1481,17 @@
       "databases": [
         {
           "name": "tips",
-          "path": "/var/lib/openvibe-tips/tips.db"
+          "engine": "postgresql",
+          "database": "ov_tips"
         }
       ],
       "drill": {
         "port": 14610,
         "databases": {
-          "tips": "TIPS_DB_PATH"
+          "tips": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1450,7 +1502,8 @@
           "TIPS_CHAT_ADAPTER": "none",
           "OV_OAUTH_CLIENT_SECRET": "",
           "BILLING_URL": "http://127.0.0.1:9",
-          "LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+          "LIVE_INTERNAL_URL": "http://127.0.0.1:9",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/sitemap.xml"
@@ -1473,7 +1526,7 @@
       }
     },
     "vip": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.vip",
       "units": [
         "openvibe-vip.service"
@@ -1498,13 +1551,17 @@
       "databases": [
         {
           "name": "vip",
-          "path": "/var/lib/openvibe-vip/vip.db"
+          "engine": "postgresql",
+          "database": "ov_vip"
         }
       ],
       "drill": {
         "port": 14620,
         "databases": {
-          "vip": "VIP_DB_PATH"
+          "vip": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1514,7 +1571,8 @@
           "VIP_EVENTS_SECRET": "",
           "OV_OAUTH_CLIENT_SECRET": "",
           "BILLING_URL": "http://127.0.0.1:9",
-          "VIP_CHECKOUT_PROVIDERS": ""
+          "VIP_CHECKOUT_PROVIDERS": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/v1/creators/network",
@@ -1539,7 +1597,7 @@
       }
     },
     "news": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.news",
       "units": [
         "openvibe-news.service"
@@ -1564,13 +1622,17 @@
       "databases": [
         {
           "name": "news",
-          "path": "/var/lib/openvibe-news/news.db"
+          "engine": "postgresql",
+          "database": "ov_news"
         }
       ],
       "drill": {
         "port": 14820,
         "databases": {
-          "news": "NEWS_DB_PATH"
+          "news": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1580,7 +1642,8 @@
           "NEWS_EVENTS_SECRET": "",
           "OV_AI_INTERNAL_URL": "",
           "OV_OAUTH_CLIENT_SECRET": "",
-          "OV_SOURCES_INTERNAL_URL": "http://127.0.0.1:9"
+          "OV_SOURCES_INTERNAL_URL": "http://127.0.0.1:9",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/v1/stories?limit=10",
@@ -1603,7 +1666,7 @@
       }
     },
     "reviews": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.reviews",
       "units": [
         "openvibe-reviews.service"
@@ -1628,13 +1691,17 @@
       "databases": [
         {
           "name": "reviews",
-          "path": "/var/lib/openvibe-reviews/reviews.db"
+          "engine": "postgresql",
+          "database": "ov_reviews"
         }
       ],
       "drill": {
         "port": 14830,
         "databases": {
-          "reviews": "REVIEWS_DB_PATH"
+          "reviews": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1643,7 +1710,8 @@
           "EVENTS_URL": "",
           "REVIEWS_EVENTS_SECRET": "",
           "OV_OAUTH_CLIENT_SECRET": "",
-          "OV_SOURCES_INTERNAL_URL": ""
+          "OV_SOURCES_INTERNAL_URL": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/v1/entities?limit=10",
@@ -1667,7 +1735,7 @@
       }
     },
     "deals": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.deals",
       "units": [
         "openvibe-deals.service"
@@ -1692,13 +1760,17 @@
       "databases": [
         {
           "name": "deals",
-          "path": "/var/lib/openvibe-deals/deals.db"
+          "engine": "postgresql",
+          "database": "ov_deals"
         }
       ],
       "drill": {
         "port": 14840,
         "databases": {
-          "deals": "DEALS_DB_PATH"
+          "deals": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1709,7 +1781,8 @@
           "DEALS_EVENTS_SECRET": "",
           "OV_OAUTH_CLIENT_SECRET": "",
           "OV_COMMUNITY_INTERNAL_URL": "http://127.0.0.1:9",
-          "OV_SOURCES_INTERNAL_URL": "http://127.0.0.1:9"
+          "OV_SOURCES_INTERNAL_URL": "http://127.0.0.1:9",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           {
@@ -1737,7 +1810,7 @@
       }
     },
     "coupons": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.coupons",
       "units": [
         "openvibe-coupons.service"
@@ -1762,13 +1835,17 @@
       "databases": [
         {
           "name": "coupons",
-          "path": "/var/lib/openvibe-coupons/coupons.db"
+          "engine": "postgresql",
+          "database": "ov_coupons"
         }
       ],
       "drill": {
         "port": 14850,
         "databases": {
-          "coupons": "COUPONS_DB_PATH"
+          "coupons": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1776,7 +1853,8 @@
           "COUPONS_WORKER": "off",
           "EVENTS_URL": "",
           "OV_OAUTH_CLIENT_SECRET": "",
-          "OV_SOURCES_INTERNAL_URL": ""
+          "OV_SOURCES_INTERNAL_URL": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/sitemaps/merchants.xml",
@@ -1799,7 +1877,7 @@
       }
     },
     "trade": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.trade",
       "units": [
         "openvibe-trade.service"
@@ -1824,13 +1902,17 @@
       "databases": [
         {
           "name": "trade",
-          "path": "/var/lib/openvibe-trade/trade.db"
+          "engine": "postgresql",
+          "database": "ov_trade"
         }
       ],
       "drill": {
         "port": 14860,
         "databases": {
-          "trade": "TRADE_DB_PATH"
+          "trade": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1839,7 +1921,8 @@
           "EVENTS_URL": "",
           "TRADE_EVENTS_WEBHOOK_SECRET": "",
           "OV_OAUTH_CLIENT_SECRET": "",
-          "OV_SOURCES_INTERNAL_URL": "http://127.0.0.1:9"
+          "OV_SOURCES_INTERNAL_URL": "http://127.0.0.1:9",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/v1/instruments?limit=10",
@@ -1862,7 +1945,7 @@
       }
     },
     "codes": {
-      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database path from the repository's deploy/ directory.",
+      "_note": "Not deployed as of the 22 Sep 2026 production snapshot; unit, env file, port and database from the repository's deploy/ directory.",
       "repo": "/opt/openvibe.codes",
       "units": [
         "openvibe-codes.service"
@@ -1887,19 +1970,24 @@
       "databases": [
         {
           "name": "codes",
-          "path": "/var/lib/openvibe-codes/codes.db"
+          "engine": "postgresql",
+          "database": "ov_codes"
         }
       ],
       "drill": {
         "port": 14900,
         "databases": {
-          "codes": "CODES_DB_PATH"
+          "codes": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
           "HOST": "127.0.0.1",
           "EVENTS_URL": "",
-          "OV_OAUTH_CLIENT_SECRET": ""
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/sitemap.xml"
@@ -1946,14 +2034,18 @@
       "databases": [
         {
           "name": "ai",
-          "path": "/var/lib/openvibe-ai/ai.db"
+          "engine": "postgresql",
+          "database": "ov_ai"
         }
       ],
       "drill": {
         "_notes": "Every provider key, base URL and the HTTP seam are blanked and AI_ENABLED=0, so no run can reach a paid provider; OV_OAUTH_CLIENT_SECRET and EVENTS_URL are blanked (no service calls, no events); WHISPER_BIN is blanked (no transcription). Boot marks interrupted runs failed in the restored copy only. Counts cover configuration and citations only: runs, requests and usage grow by the minute, so they are checked by integrity_check, not by an equal count. Passed on the host 2026-09-24 05:40 UTC.",
         "port": 14700,
         "databases": {
-          "ai": "AI_DB_PATH"
+          "ai": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1971,7 +2063,8 @@
           "WHISPER_BIN": "",
           "OV_OAUTH_CLIENT_SECRET": "",
           "EVENTS_URL": "",
-          "AI_STUB_FALLBACK": "1"
+          "AI_STUB_FALLBACK": "1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/health"
@@ -2046,7 +2139,8 @@
       "databases": [
         {
           "name": "openre",
-          "path": "/var/lib/openre/openre.db"
+          "engine": "postgresql",
+          "database": "ov_openre"
         }
       ],
       "drill": {
@@ -2056,7 +2150,10 @@
           "server/index.js"
         ],
         "databases": {
-          "openre": "OPENRE_DB_PATH"
+          "openre": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -2066,7 +2163,8 @@
           "OV_OAUTH_CLIENT_SECRET": "",
           "MEDIA_URL": "http://127.0.0.1:9",
           "MEDIA_API_KEY": "",
-          "OPENRE_RECORDING": "off"
+          "OPENRE_RECORDING": "off",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "compare": [
           "/api/health",
@@ -2093,8 +2191,8 @@
         "_notes": "Only openre-api starts (command; the working directory and the non-secret Environment= come from openre-api.service). It never runs a transport, a coordinator or the event relay in any mode. OPENRE_DRILL=1 (OpenRe 5e86ea7 and later) also makes it read-only: writes, /play/ (which would pull from production's worker on loopback) and sign-in (which would redeem codes at Network) answer 503. The coordinator and the workers refuse to start. The event relay and Media calls are off. EVENTS_URL and OV_OAUTH_CLIENT_SECRET empty and MEDIA_URL on the closed port are the same switches for releases before 5e86ea7. Left on (read-only): the Network JWKS GET on loopback. Not compared: ingest_sessions and workers (they change whenever someone streams or a generation rolls over) and /api/ready (it reports live worker heartbeats)."
       },
       "protected": {
-        "kind": "sqlite-count",
-        "db": "/var/lib/openre/openre.db",
+        "kind": "postgresql-count",
+        "database": "ov_openre",
         "sql": "SELECT count(*) AS n FROM ingest_sessions WHERE state IN ('starting', 'live', 'ending')",
         "label": "ingest sessions"
       },

@@ -163,6 +163,14 @@ Each service that moves keeps its SQLite file read-only for the 7-day N-1 window
 | C-89 media | Media's SQLite file after the switch to PostgreSQL (2026-09-28 22:54 UTC, release `e3f2239`; import verified, counts and checksums as the rehearsal on a production copy: 3,173 media objects, 2,998 locations, 1,021 variants, 1,321 relationships, 792 vods, 324 clips, 891 pastes, 291 jobs, 789 outbox events, 29 tables with rows). The switch waited for recordings to be idle (switch-service.sh `019d853`). Also `media.pre-postgres-20260928T225438Z.db` | `/opt/openvibe.media/data/media.db` (0400) | Media | 7 days without a rollback: `ovhost archive push` both files, then delete | 2026-10-05 | `sudo ovhost rollback media` to `47b21bd` (reads the SQLite file; objects, jobs and views written since the switch would be lost, so export them first) |
 | C-89 openre | OpenRe.Stream's SQLite file after the switch to PostgreSQL (2026-09-28 23:32 UTC, release `405682c`; import verified: 1 stream definition, 1 key, 1 session and its 4 transitions, 10 worker rows, 2 outbox events; every OpenRe unit stopped for the import through `SWITCH_UNITS`; worker generation 6 started after). Also `openre.pre-postgres-20260928T233208Z.db` | `/var/lib/openre/openre.db` (0400) | OpenRe | 7 days without a rollback: `ovhost archive push` both files, then delete | 2026-10-05 | `sudo ovhost rollback openre` to `d9f4240` and `deploy.sh workers` (reads the SQLite file; definitions and keys created since the switch would be lost) |
 
+**Archive step unblocked (2026-09-28).** `ovhost archive push` refuses a path the inventory declares as a
+live SQLite database (`lib/archive.js`: it refuses a file that is any non-postgresql `databases[].path`).
+Until the switch, that rule covered these frozen `.db` files, so the "archive both files, then delete"
+step of C-89 could not run. The 19 services above now declare `engine: postgresql` with no `path`, so their
+sqlite entries no longer name a file and archive push accepts the frozen `.db` files. The archive-then-delete
+step of each C-89 row can proceed once its 7-day window closes; the removal condition and target of every
+row stand unchanged.
+
 ## Kept by design (not shims)
 
 These match the search terms but are permanent. They are listed so the next review does not re-open them.

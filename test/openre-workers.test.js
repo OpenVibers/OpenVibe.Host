@@ -15,7 +15,6 @@ const { normalise } = require('../lib/inventory');
 const EXAMPLE = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'host.example.json'), 'utf8'));
 const RELEASE = '655b98a10aaa';
 const OLD = '0123456789ab';
-const PROD_DB = '/var/lib/openre/openre.db';
 const WORKERS = [`openre-rtmp-ingest@${RELEASE}.service`, `openre-restream-worker@${RELEASE}.service`];
 
 /** The standard fake host plus OpenRe as on openvibe-ovh: release layout, two units, worker instances. */
@@ -37,7 +36,7 @@ async function openreHost({ workersRunning = true } = {}) {
         'EnvironmentFile=/etc/openvibe/openre.env',
         'Environment=NODE_ENV=production',
         'Environment=PORT=4500',
-        `Environment=OPENRE_DB_PATH=${PROD_DB}`,
+        `Environment=DATABASE_URL=postgresql://openre_app:${SECRET}@127.0.0.1:6432/ov_openre`,
         'Environment=PATH=/usr/local/bin:/usr/bin:/bin',
         'ExecStart=/usr/bin/env node server/index.js',
         '',
@@ -50,18 +49,23 @@ async function openreHost({ workersRunning = true } = {}) {
     host.addUnit(`openre-rtmp-ingest@${RELEASE}.service`, { mainPid: 3102, ...(workersRunning ? {} : { active: 'inactive', sub: 'dead' }) });
     host.addUnit(`openre-restream-worker@${RELEASE}.service`, { mainPid: 3103, ...(workersRunning ? {} : { active: 'inactive', sub: 'dead' }) });
     host.addUnit(`openre-rtmp-ingest@${OLD}.service`, { active: 'inactive', sub: 'dead', mainPid: 0 });
-    host.put(PROD_DB, 'sqlite-production', { owner: 'ubuntu', mode: 0o640 });
+    // openre is PostgreSQL: the production database and a healthy pgBackRest stanza so that
+    // `ovhost backup openre` (and the drill's restore of its .dump) can succeed.
+    host.pgDatabases.add('ov_openre');
+    host.pgBackups = [{ type: 'diff', timestamp: { stop: Math.floor(Date.parse('2026-09-22T11:00:00Z') / 1000) } }];
 
     const health = '{"status":"ok","service":"openre-api","version":"0.1.0","release":"dev"}';
     const robots = 'User-agent: *\nAllow: /$\n';
     host.http.set('http://127.0.0.1:4500/api/ready', () => ({ status: 200, body: { status: 'ready' } }));
     host.http.set('http://127.0.0.1:4500/api/health', () => ({ status: 200, body: health }));
     host.http.set('http://127.0.0.1:4500/robots.txt', () => ({ status: 200, body: robots }));
+    // The API's own status probe counts protected sessions over psql; the drill counts the same
+    // tables in the restored scratch database.
     const counts = { stream_definitions: 1, ingest_keys: 1, destinations: 0, migration_map: 0 };
-    host.sqliteHandler = (db, sql) => {
-        if (/integrity_check/.test(sql)) return [{ integrity_check: 'ok' }];
+    host.psqlHandler = (database, sql) => {
+        if (/pg_stat_archiver/i.test(sql)) return [{ n: String(host.pgArchiver.failed_count) }];
         const m = /FROM "([a-z_]+)"/.exec(sql);
-        return [{ n: m ? counts[m[1]] ?? 0 : 0 }];
+        return [{ n: String(m ? (counts[m[1]] || 0) : 0) }];
     };
     host.onSystemdRun = (spec) => {
         host.listeners.set(14500, [{ pid: spec.pid, process: 'node' }]);
@@ -93,7 +97,7 @@ runTests([
         assert.strictEqual(o.drill.env.OPENRE_DRILL, '1');
         for (const k of ['EVENTS_URL', 'OV_OAUTH_CLIENT_SECRET', 'MEDIA_API_KEY']) assert.strictEqual(o.drill.env[k], '', k);
         assert.strictEqual(o.drill.env.MEDIA_URL, 'http://127.0.0.1:9');
-        assert.deepStrictEqual(o.drill.databases, { openre: { env: 'OPENRE_DB_PATH', dir: false } });
+        assert.deepStrictEqual(o.drill.databases, { openre: { engine: 'postgresql', url: 'DATABASE_URL', directUrl: 'DATABASE_DIRECT_URL' } });
         // every other service keeps an empty list
         assert.deepStrictEqual(inv.services.live.workerUnits, []);
     }),
@@ -175,12 +179,18 @@ runTests([
         assert.deepStrictEqual(run.envFiles, ['/etc/openvibe/openre.env', `${rec.dir}/drill.env`]);
         for (const p of ['SocketBindAllow=tcp:14500', 'SocketBindDeny=any', 'IPAddressDeny=any', 'IPAddressAllow=localhost', 'Environment=NODE_ENV=production']) assert.ok(run.props.includes(p), p);
         assert.ok(run.props.includes('Environment=PATH=/usr/local/bin:/usr/bin:/bin'), 'other unit Environment= is passed on');
-        assert.ok(!run.props.some((p) => /OPENRE_DB_PATH|Environment=PORT=/.test(p)), 'the production database path and port from the unit never reach the drill instance');
+        assert.ok(!run.props.some((p) => /Environment=DATABASE_URL=|Environment=PORT=/.test(p)), 'the production connection string and port from the unit never reach the drill instance');
         const env = Object.fromEntries(host.drillEnv.trim().split('\n').filter((l) => !l.startsWith('#')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
-        assert.deepStrictEqual(env, {
+        const { DATABASE_URL, DATABASE_DIRECT_URL, ...envRest } = env;
+        assert.deepStrictEqual(envRest, {
             PORT: '14500', HOST: '127.0.0.1', OPENRE_DRILL: '1', EVENTS_URL: '', OV_OAUTH_CLIENT_SECRET: '', MEDIA_URL: 'http://127.0.0.1:9', MEDIA_API_KEY: '', OPENRE_RECORDING: 'off',
-            OPENRE_DB_PATH: `${rec.dir}/db/openre.db`,
+            VALKEY_URL: 'redis://127.0.0.1:9/0',
         });
+        // The instance is pointed at the restored scratch database over loopback, never at production.
+        const scratch = `ov_openre_drill_${path.basename(rec.dir).slice('openre-'.length)}`;
+        assert.match(DATABASE_URL, new RegExp(`^postgresql://${scratch}:[0-9a-f]+@127\\.0\\.0\\.1:5432/${scratch}$`));
+        assert.strictEqual(DATABASE_DIRECT_URL, DATABASE_URL);
+        assert.strictEqual(rec.databases[0].integrity, 'pg_restore --list ok');
 
         const calls = host.calls.slice(callsBefore);
         assert.deepStrictEqual(calls.filter((c) => c.cmd === 'kill').map((c) => c.args), [['SIGTERM', run.pid]], 'only the drill instance is signalled');
@@ -191,7 +201,7 @@ runTests([
             assert.ok(!calls.some((c) => c.args && c.args.includes(u) && c.args[0] !== 'show'), `${u} is only ever read`);
         }
         assert.ok(host.alivePids.has(3100) && host.alivePids.has(3101));
-        assert.strictEqual(host.read(PROD_DB), 'sqlite-production');
+        assert.ok(host.pgDatabases.has('ov_openre'), 'the production database is untouched');
         assert.ok(!(r.out + JSON.stringify(host.systemdRuns) + host.read('/var/lib/openvibe-host/drills/openre.jsonl')).includes(SECRET));
     }),
 ]);

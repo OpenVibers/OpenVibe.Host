@@ -46,6 +46,17 @@ groups:
         labels: { severity: page }
         annotations:
           summary: "No successful nightly backup for more than 30 hours (or no backup metrics at all)"
+      # A service whose databases are gone (the 2026-09 SQLite→PostgreSQL switch archived the .db files
+      # and dropped the path from the inventory) is reported `skipped` by backup --all. openvibe_backup_last_run_ok
+      # stays 1 (a skip is not a failure) and no other backup alert fires, so production can sit with no backups
+      # at all. 30 h is longer than the 24 h between runs, so ONE skipped run never reaches `for` and TWO
+      # consecutive ones always do.
+      - alert: OpenVibeBackupSkipped
+        expr: openvibe_backup_services{status="skipped"} > 0
+        for: 30h
+        labels: { severity: ticket }
+        annotations:
+          summary: "A service has been skipped by two nightly backups in a row ({{ with query \"openvibe_backup_services{status='skipped'}\" }}{{ . | first | value }}{{ end }} service(s)): its databases are gone, so it has no backups"
       # Production drift (OpenVibe.Network registry/deploy-drift.js, hourly against GitHub; WS-S task 7).
       # max_over_time: Network restarts drop the series for a minute, which reset `for` and made the alert
       # resolve and fire again every few hours (2026-09-28). Documentation-only drift is not counted.
@@ -149,12 +160,17 @@ groups:
         labels: { severity: page }
         annotations:
           summary: "WAL archiving to the pgBackRest repository is failing: point-in-time recovery is at risk"
+      # Cluster-wide pgBackRest staleness. openvibe_pgbackrest_last_backup_age_seconds is written by
+      # `ovhost backup --all` (the nightly verify pass reads the stanza and records the age of its newest
+      # backup), NOT by the pgbackrest-backup@ unit's own backup-metric.sh: that keeps writing
+      # openvibe_pgbackrest_last_success_timestamp_seconds, which stays. absent() covers "no backup --all
+      # run has written the age at all" — a host where the nightly verify never ran.
       - alert: DataBackupStale
-        expr: time() - max(openvibe_pgbackrest_last_success_timestamp_seconds) > 26 * 3600
+        expr: max(openvibe_pgbackrest_last_backup_age_seconds) > 30 * 3600 or absent(openvibe_pgbackrest_last_backup_age_seconds)
         for: 30m
         labels: { severity: ticket }
         annotations:
-          summary: "No successful pgBackRest backup for more than 26 hours"
+          summary: "No pgBackRest backup of the cluster has stopped within 30 hours (point-in-time recovery is at risk)"
       - alert: DataValkeyMemoryHigh
         expr: redis_memory_used_bytes / clamp_min(redis_memory_max_bytes, 1) > 0.9
         for: 15m

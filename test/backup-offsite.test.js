@@ -58,6 +58,19 @@ function dirsOf(host, dir) {
     return [...host.files.keys()].filter((k) => path.dirname(k) === dir).map((k) => path.basename(k)).sort();
 }
 
+/** backupHost plus a PostgreSQL-only service "trade" and a fresh pgBackRest differential. */
+function pgOffsiteHost({ dumpContent = null } = {}) {
+    const host = backupHost();
+    const doc = JSON.parse(host.read('/etc/openvibe/host.json'));
+    doc.services.trade = { repo: '/opt/openvibe.trade', units: [], databases: [{ name: 'trade', engine: 'postgresql', database: 'ov_trade' }] };
+    host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
+    host.inv = normalise(doc);
+    host.pgDatabases.add('ov_trade');
+    host.pgBackups = [{ type: 'diff', timestamp: { stop: Math.floor(host.exec.now() / 1000) - 3600 } }];
+    if (dumpContent) host.dumpContent = dumpContent;
+    return host;
+}
+
 function noSecrets(text, what) {
     for (const s of [S3_SECRET, SECRET, KEY_HEX]) assert.ok(!String(text).includes(s), `${what} leaked a secret value`);
 }
@@ -449,6 +462,29 @@ runTests([
         const none = await host.cli('restore-download', 'openre', 'latest');
         assert.strictEqual(none.code, 1);
         assert.match(none.out, /no off-host run of openre/);
+    }),
+
+    test('restore-download: a PostgreSQL .dump is verified with pg_restore --list; a corrupt one is refused', async () => {
+        const host = pgOffsiteHost();
+        const r = await host.cli('backup', '--all', '--offsite');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.ok([...host.s3.objects.keys()].some((k) => k.endsWith('/trade/trade.dump.ovbk')), 'the pg_dump archive was uploaded');
+
+        const d = await host.cli('restore-download', 'trade', 'latest');
+        assert.strictEqual(d.code, 0, d.out);
+        const dest = '/var/lib/openvibe-restore/trade-20260922-120000/trade.dump';
+        assert.ok(host.files.has(dest));
+        assert.match(d.out, /pg_restore --list ok/);
+        // --list only reads the file, so root checks the root-only copy itself, not as postgres.
+        assert.ok(host.calls.some((c) => c.cmd === 'pg_restore' && c.args.includes('--list') && c.args.includes(dest) && c.as === null));
+        assert.deepStrictEqual([host.files.get(dest).owner, host.files.get(dest).mode], ['root', 0o600]);
+
+        // A dump that is not a pg_dump archive: the manifest hashes match, so only pg_restore --list refuses it.
+        const bad = pgOffsiteHost({ dumpContent: () => 'this is not a pg_dump archive' });
+        await bad.cli('backup', '--all', '--offsite');
+        const refused = await bad.cli('restore-download', 'trade', 'latest');
+        assert.strictEqual(refused.code, 2, refused.out);
+        assert.match(refused.out, /pg_restore --list .* failed|text format dump/);
     }),
 
     // ── configuration ──────────────────────────────────────────────────────────

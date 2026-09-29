@@ -15,8 +15,31 @@ ADR-007 (`OpenVibe.Contracts/docs/adr/ADR-007-data-ownership.md`) decides:
   host, or sizes SQLite handles poorly.
 - Money paths use SERIALIZABLE transactions and row locks when they move.
 
-Every service below runs on SQLite (better-sqlite3), with one database per service. No repository has a
-PostgreSQL driver or config. **This page is the Wave 22 review of that state.**
+As reviewed on 2026-09-23 every service ran on SQLite (better-sqlite3), with one database per service.
+Since 2026-09-28 nineteen of them run on the host's **PostgreSQL cluster** (ADR-035), and five stay on
+SQLite: network, chat, tools, games and live. The per-service table below is the Wave 22 review of the
+SQLite state; where a service switched, its SQLite file is now frozen read-only for the 7-day rollback
+window (compatibility-register.md, C-89), and the live rows are in the cluster. **This page remains the
+Wave 22 review of that state.**
+
+## Where the data lives now
+
+- **PostgreSQL services** (tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes,
+  vip, ai, host, events, community, billing, media, openre) keep their rows in the cluster on the data
+  role (`roles/data/`, ADR-035): PostgreSQL 18 on loopback, one database per service named `ov_<name>`
+  (`ov_trade`, `ov_media`, …). The service reaches it through **PgBouncer** on `127.0.0.1:6432`, which
+  fronts the cluster for the app roles (and carries the app role's SCRAM password). Their durability is
+  **pgBackRest**, off-host: a full cluster backup weekly, a differential nightly and the WAL stream, which
+  the nightly `ovhost backup` verifies rather than copies ([backups.md](backups.md#postgresql-services)).
+- **What stays on the local filesystem** for those services is the rest of the data: object and media
+  files under `*_PATH` and the object stores (Media's B2/R2), blobs (`HOST_STORAGE_DIR`), uploads and
+  outputs, plus the frozen pre-switch SQLite file kept read-only for rollback. Those files are not in the
+  cluster and are backed up (or not) exactly as before.
+- **SQLite services** are unchanged: one file per service, copied by the online backup API as the service
+  user ([backups.md](backups.md)).
+
+`openvibe-shared/ready` is still what each service's `/ready` reports ([below](#per-service)); a switched
+service's `db` check reads the cluster as its `DATABASE_URL`/`DATABASE_DIRECT_URL` do.
 
 Sources:
 - Each repository's `server/config.js`, `.env.example` and `deploy/systemd/*.service`.
@@ -81,15 +104,23 @@ Sources:
      production path. Whether `OPENVIBELIVE_DB_PATH` is set is unknown: check `/etc/openvibe/network.env`.
    - **Chat reads Live's files** at `/opt/openvibe.live/data/sounds`. These are files, not a database
      (`deploy/systemd/openvibe-chat.service:43`).
-7. **Canonical money is still in Live.** Billing's `billing.db` is a shadow (Billing
-   `STATUS.json: "authoritative": false`) until the cutover in [cutover-runbook.md](cutover-runbook.md)
-   step B.
+7. **Canonical money is still in Live.** Billing's ledger (was `billing.db`, now the cluster database
+   `ov_billing` after the 2026-09-28 switch) is a shadow (Billing `STATUS.json: "authoritative": false`)
+   until the cutover in [cutover-runbook.md](cutover-runbook.md) step B.
 
 ## Per service
 
 "Drill" is the latest result in [restore-drills.md](restore-drills.md), all 2026-09-23. "Deployed" is from
 the operator notes unless cited. Where a repo's `STATUS.json` disagrees, the operator notes and the drill
 log win.
+
+**The rows record the 2026-09-23 SQLite state.** For a service that has since switched to PostgreSQL —
+tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, host, events,
+community, billing, media, openre (C-89) — the "Backing store" path below is now the **frozen pre-switch
+SQLite file** kept read-only for the 7-day rollback, and the live store is the cluster database
+`ov_<name>` reached through PgBouncer, as in [Where the data lives now](#where-the-data-lives-now). The
+five SQLite rows (network, chat, tools, games, live) are current. The handler citations are the ones
+reviewed on 2026-09-23.
 
 | Service | Backing store (production path; env, default) | Canonical? | ADR-007 status | Readiness checks (handler) | Store checked? | Backup / drill |
 |---|---|---|---|---|---|---|

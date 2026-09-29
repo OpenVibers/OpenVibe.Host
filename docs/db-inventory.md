@@ -1,6 +1,51 @@
-# Database files on the host (WS-S task 6, hazard H14)
+# Databases: the inventory model, and the files left on the host (WS-S task 6, hazard H14)
 
-Inventory of 2026-09-26: every SQLite file under /opt, /var/lib, /root, /home and /srv that no process had open. 42 open files (the live databases) are not listed. Paths, sizes and dates only; nothing was read.
+`host.example.json` declares each service's databases as a `databases[]` list. An item is a union of two
+**engines** ([lib/inventory.js](../lib/inventory.js) normalises them, [lib/dbengine.js](../lib/dbengine.js)
+holds the per-engine helpers):
+
+- **SQLite** — a file the service user's worker copies:
+  ```json
+  { "name": "live", "path": "/opt/openvibe.live/data/live.db" }
+  ```
+- **PostgreSQL** — a database in the host's cluster, named, with **no `path`**:
+  ```json
+  { "name": "trade", "engine": "postgresql", "database": "ov_trade" }
+  ```
+
+`engine` defaults to `sqlite`. A PostgreSQL `database` must match `/^ov_[a-z0-9_]+$/`; a PostgreSQL entry
+has no `path`, and a SQLite entry has no `database`. The data lives in the cluster, so ovhost never opens
+it by copy: pgBackRest backs the whole cluster up, the nightly run verifies that, and a per-service
+logical `.dump` feeds the drills ([backups.md](backups.md#postgresql-services)).
+
+**Which engine.** With `host.example.json`:
+
+| Engine | Services |
+|---|---|
+| PostgreSQL | tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, host, events, community, billing, media, openre (19) |
+| SQLite | network, chat, tools, games, live (5) |
+
+**The two engines appear in four more places in the inventory:**
+
+- `drill.databases`. A SQLite database keeps a string (the env var that points the service at the restored
+  file) or `{ "env": "DATA_DIR", "dir": true }` for a service that takes a data directory; a PostgreSQL
+  database is `{ "trade": { "url": "DATABASE_URL", "directUrl": "DATABASE_DIRECT_URL" } }`, and the drill
+  creates a scratch database and role and points both vars at it ([restore-drills.md](restore-drills.md)).
+- `drill.countsTolerance` — a whole number of rows, default `0`. Production keeps writing between the read
+  that makes the backup and the dump, so a busy table may differ by up to this many rows without failing
+  the drill.
+- `nginx.tenants.database` — the Stage B tenant database (the Host API is on PostgreSQL): a SQLite path
+  keeps its string form, and PostgreSQL is the object `{ "engine": "postgresql", "database": "ov_host" }`.
+- the `protected` probe kind `postgresql-count` — `{ "kind": "postgresql-count", "database": "ov_openre",
+  "sql": "SELECT count(*) …", "label": "…" }`: a read-only SELECT against a database in the cluster, run as
+  the postgres OS user. OpenRe's protected probe (its active ingest sessions) is one, on `ov_openre`. The
+  other kinds are `http-json-count`, `sqlite-count` and `sum` ([lib/probes.js](../lib/probes.js)).
+
+---
+
+The rest of this page is the 2026-09-26 sweep of SQLite **files**: every file under /opt, /var/lib, /root,
+/home and /srv that no process had open. 42 open files (the live databases) are not listed. Paths, sizes
+and dates only; nothing was read. A PostgreSQL service has no row here: its rows are in the cluster.
 
 `ovhost archive push <file>...` encrypts files with the backup key and copies them to `<BACKUP_S3_PREFIX>-archive/<host>/<stamp>/`, outside the backup runs so retention never prunes them; `ovhost archive list` and `ovhost archive restore <stamp> <path> --out <dir>` read them back. It never deletes a local file.
 

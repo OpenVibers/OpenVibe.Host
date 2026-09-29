@@ -10,6 +10,9 @@ const crypto = require('crypto');
 const { scenario, test, runTests, SECRET } = require('./helpers');
 const { main } = require('../lib/cli');
 const { mockS3 } = require('./s3-mock');
+const { refusal } = require('../lib/archive');
+const offsite = require('../lib/offsite');
+const { normalise } = require('../lib/inventory');
 
 const KEY_HEX = crypto.createHash('sha256').update('archive test key').digest('hex');
 const S3_SECRET = `${SECRET}-s3`;
@@ -78,7 +81,7 @@ runTests([
 
     test('refusals: live databases, open files, symlinks, outside roots, relative paths; nothing uploaded', async () => {
         const host = archiveHost();
-        const liveDb = Object.values(host.inv.services).flatMap((s) => s.databases.map((d) => d.path))[0];
+        const liveDb = Object.values(host.inv.services).flatMap((s) => s.databases.filter((d) => d.engine !== 'postgresql').map((d) => d.path))[0];
         assert.ok(liveDb, 'the scenario declares a database');
         host.put(liveDb, 'SQLite format 3\0 live', { owner: 'ubuntu' });
         await host.exec.symlink('/opt/backups/old/hobostreamer.db', '/opt/backups/old/link.db');
@@ -88,5 +91,27 @@ runTests([
             assert.match(r.out, why, file);
             assert.strictEqual(host.s3.objects.size, 0, `${file}: nothing is uploaded when any file is refused`);
         }
+    }),
+
+    test('a PostgreSQL entry has no path, so it neither blocks archiving the file it replaced nor makes unsafeOut throw', async () => {
+        const host = archiveHost();
+        const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
+        // Media moved to PostgreSQL (C-89): its databases[] entry names a database in the cluster.
+        raw.services.media.databases = [{ name: 'media', engine: 'postgresql', database: 'ov_media' }];
+        const inv = normalise(raw);
+        const frozen = '/opt/openvibe.media/data/media.db'; // Media's old SQLite file, frozen at the switch
+        host.put(frozen, 'SQLite format 3\0 frozen', { owner: 'ubuntu' });
+        assert.strictEqual(await refusal(host.exec, inv, frozen), null, 'the frozen SQLite file is archivable again');
+
+        // A database the inventory still declares as SQLite is refused, message unchanged.
+        const live = inv.services.live.databases[0];
+        assert.strictEqual(live.engine, 'sqlite');
+        host.put(live.path, 'SQLite format 3\0 live', { owner: 'ubuntu' });
+        assert.match(await refusal(host.exec, inv, live.path), /a database the inventory declares \(a live database\)/);
+
+        // unsafeOut only avoids database directories; a database in the cluster has none.
+        let out;
+        assert.doesNotThrow(() => { out = offsite.unsafeOut(inv, '/var/lib/openvibe-restore/media-2026'); });
+        assert.strictEqual(out, null);
     }),
 ]);

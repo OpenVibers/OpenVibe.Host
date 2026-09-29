@@ -1,9 +1,14 @@
 'use strict';
 /**
  * A fake host implementing the executor interface (lib/executor.js) in memory: a filesystem, git
- * repositories, systemd units, npm, nginx, ss, HTTP endpoints and SQLite. Nothing here touches the
- * real machine. Every run() call is recorded in `calls` so tests can assert what would have been
- * executed (and as whom).
+ * repositories, systemd units, npm, nginx, ss, HTTP endpoints, SQLite and PostgreSQL. Nothing here
+ * touches the real machine. Every run() call is recorded in `calls` so tests can assert what would
+ * have been executed (and as whom).
+ *
+ * PostgreSQL is modelled the way lib/dbengine.js uses it: `exec.psql(database, sql)` answers rows
+ * (queries only), and the cluster's own tools — pg_dump, pg_restore, createdb, dropdb, pgbackrest —
+ * go through run() as the postgres OS user, which is also how the role password reaches psql
+ * (on stdin, so it never appears in an argv this fake records).
  */
 const crypto = require('crypto');
 const path = require('path');
@@ -26,6 +31,26 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         npmRewritesLockfile: true,
         sqliteHandler: () => [{ n: 0 }],
         sqliteCalls: [],
+        // ── PostgreSQL ──
+        // The cluster's databases and roles, the archiver's failed WAL count, the stanza's backups
+        // and its status. A test drives them directly (host.pgDatabases.add('ov_trade')) or through
+        // the tools below, exactly as production would.
+        pgDatabases: new Set(),
+        pgRoles: new Map(), // role -> { password }
+        pgArchiver: { failed_count: 0 },
+        pgBackups: [], // [{ type, timestamp: { stop } }] (epoch seconds)
+        pgStanzaStatus: { code: 0, message: 'ok' },
+        pgbackrestCode: 0,
+        pgbackrestStderr: '',
+        psqlHandler: null, // (database, sql, as) -> rows | undefined (undefined: the engine defaults)
+        psqlCalls: [],
+        adminSql: [], // SQL sent to psql on stdin (role creation, where the password must not be argv)
+        dumps: [], // { database, dest, as }
+        restores: [], // { database, role, file, as }
+        createdDatabases: [], // { name, owner, as }
+        droppedDatabases: [], // { name, as }
+        statfsFree: 100 * 1024 ** 3,
+        statfsSize: 500 * 1024 ** 3,
         reads: [],
         onRestart: null, // (unit) -> void
         onSystemdRun: null, // (spec) -> undefined | { code, stderr } ; spec = { unit, uid, cwd, props, argv, pid }
@@ -406,6 +431,66 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
                 return r ? { stdout: '', stderr: '', ...r } : { code: 0, stdout: '', stderr: '' };
             }
             case 'fuser': return { code: (host.openFiles || new Set()).has(path.resolve(args[args.length - 1])) ? 0 : 1, stdout: '', stderr: '' };
+            // ── PostgreSQL tools (lib/dbengine.js runs each of these as the postgres OS user) ──
+            case 'psql': {
+                // Admin SQL on stdin (CREATE ROLE … LOGIN PASSWORD …, DROP ROLE …). Queries never come
+                // this way: they go through exec.psql(). The password stays out of argv, as in life.
+                const sql = String(opts.input || '');
+                host.adminSql.push(sql);
+                const create = /CREATE ROLE "([^"]+)" LOGIN PASSWORD '([^']*)'/.exec(sql);
+                if (create) host.pgRoles.set(create[1], { password: create[2] });
+                const drop = /DROP ROLE IF EXISTS "([^"]+)"/.exec(sql);
+                if (drop) host.pgRoles.delete(drop[1]);
+                if (host.onAdminSql) { const r = host.onAdminSql(sql, opts); if (r) return { stdout: '', stderr: '', ...r }; }
+                return { code: 0, stdout: '', stderr: '' };
+            }
+            case 'createdb': {
+                const name = args[args.length - 1];
+                const owner = (args.find((a) => a.startsWith('--owner=')) || '').slice(8) || null;
+                if (host.pgDatabases.has(name)) return { code: 1, stdout: '', stderr: `createdb: error: database creation failed: ERROR:  database "${name}" already exists` };
+                host.pgDatabases.add(name);
+                host.createdDatabases.push({ name, owner, as: opts.as || null });
+                return { code: 0, stdout: '', stderr: '' };
+            }
+            case 'dropdb': {
+                const name = args[args.length - 1];
+                host.pgDatabases.delete(name);
+                host.droppedDatabases.push({ name, as: opts.as || null });
+                return { code: 0, stdout: '', stderr: '' };
+            }
+            case 'pg_dump': {
+                const dest = args[args.indexOf('-f') + 1];
+                const database = args[args.indexOf('-d') + 1];
+                if (!host.pgDatabases.has(database)) return { code: 1, stdout: '', stderr: `pg_dump: error: connection to server failed: FATAL:  database "${database}" does not exist` };
+                const parent = files.get(path.dirname(path.resolve(dest)));
+                if ((opts.as || 'root') !== 'root' && parent && parent.owner !== (opts.as || 'root')) return { code: 1, stdout: '', stderr: `pg_dump: error: could not open output file "${dest}": Permission denied` };
+                host.dumps.push({ database, dest, as: opts.as || null });
+                put(dest, host.dumpContent ? host.dumpContent(database) : `pg_dump -Fc of ${database}`, { owner: opts.as || 'root', mode: 0o600 });
+                return { code: 0, stdout: '', stderr: '' };
+            }
+            case 'pg_restore': {
+                if (args.includes('--list')) {
+                    const e = get(args[args.length - 1]);
+                    if (!e || e.type !== 'file') return { code: 1, stdout: '', stderr: `pg_restore: error: could not open input file "${args[args.length - 1]}"` };
+                    // A text dump is what pg_restore refuses; the fake's archives all start with its marker.
+                    if (!String(e.content).startsWith('pg_dump -Fc')) return { code: 1, stdout: '', stderr: 'pg_restore: error: input file appears to be a text format dump. Please use psql.' };
+                    return { code: 0, stdout: ';\n; Archive created at 2026-09-28 03:30:00 UTC\n', stderr: '' };
+                }
+                const database = args[args.indexOf('-d') + 1];
+                const file = args[args.length - 1];
+                const role = (args.find((a) => a.startsWith('--role=')) || '').slice(7) || null;
+                if (!host.pgDatabases.has(database)) return { code: 1, stdout: '', stderr: `pg_restore: error: connection to server failed: database "${database}" does not exist` };
+                if (!get(file)) return { code: 1, stdout: '', stderr: `pg_restore: error: could not open input file "${file}"` };
+                if (role && !host.pgRoles.has(role)) return { code: 1, stdout: '', stderr: `pg_restore: error: role "${role}" does not exist` };
+                host.restores.push({ database, role, file, as: opts.as || null });
+                return { code: 0, stdout: '', stderr: '' };
+            }
+            case 'pgbackrest': {
+                if (!args.includes('info')) return { code: 1, stdout: '', stderr: `fake pgbackrest: ${args.join(' ')}` };
+                if (host.pgbackrestCode !== 0) return { code: host.pgbackrestCode, stdout: '', stderr: host.pgbackrestStderr || 'pgbackrest: error' };
+                const stanzas = host.pgbackrestStanzas ? host.pgbackrestStanzas() : [{ name: 'openvibe', status: host.pgStanzaStatus, backup: host.pgBackups }];
+                return { code: 0, stdout: `${JSON.stringify(stanzas)}\n`, stderr: '' };
+            }
             case 'systemd-run': return systemdRunCmd(args);
             case 'cp': {
                 const src = args[args.length - 2];
@@ -490,6 +575,24 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             const r = h({ method, headers, body });
             if (r && r.error) return { status: 0, error: r.error };
             return { status: r.status, body: typeof r.body === 'string' ? r.body : JSON.stringify(r.body || {}) };
+        },
+        /** Queries only, as the postgres OS user: the engine defaults answer `datname`/archiver asks. */
+        async psql(database, sql, { as = 'postgres' } = {}) {
+            host.psqlCalls.push({ database, sql, as });
+            calls.push({ cmd: 'psql', args: [database, sql], as, privileged: false, cwd: null });
+            if (host.psqlHandler) { const r = host.psqlHandler(database, sql, as); if (r !== undefined) return r; }
+            const left = /FROM (pg_database|pg_roles) WHERE left\((?:datname|rolname), length\('([^']*)'\)\)/.exec(sql);
+            if (left) return [...(left[1] === 'pg_database' ? host.pgDatabases : host.pgRoles.keys())].filter((n) => n.startsWith(left[2])).map((name) => ({ name }));
+            const named = /datname = '([^']*)'/.exec(sql);
+            if (/pg_database/i.test(sql) && named) return host.pgDatabases.has(named[1]) ? [{ present: '1' }] : [];
+            if (/pg_stat_archiver/i.test(sql)) return [{ n: String(host.pgArchiver.failed_count) }];
+            return [{ n: 0 }];
+        },
+        async statfs(p) {
+            // The real statfs() runs on an existing path only: a missing path is an ENOENT, not a
+            // free-space figure. Mirror that so a space check before the directory exists is caught.
+            if (!get(p)) { const err = new Error(`ENOENT: no such file or directory, statfs '${p}'`); err.code = 'ENOENT'; throw err; }
+            return { free: host.statfsFree, size: host.statfsSize };
         },
         async sqlite(db, sql, { as } = {}) {
             host.sqliteCalls.push({ op: 'query', db, sql, as });

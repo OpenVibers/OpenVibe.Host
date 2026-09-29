@@ -90,7 +90,8 @@ block (see `host.example.json`):
    Backups are root-only (directories 0700, files 0600, see [backups.md](backups.md)), so root makes
    the copy with `install -o <service user> -m 0600`, and the copy belongs to the service user.
    `PRAGMA integrity_check`, run as the service user, must return `ok` for each copy;
-   otherwise the drill fails before anything starts.
+   otherwise the drill fails before anything starts. A PostgreSQL service restores its `.dump` into a
+   scratch database instead — see [A PostgreSQL drill](#a-postgresql-drill).
 2. **Start.** A second instance starts from the production checkout through `systemd-run`, as the
    service user. It uses the production unit's `ExecStart` and `WorkingDirectory`, the production
    unit's non-secret `Environment=` values and the production env file. After that it loads
@@ -123,6 +124,58 @@ cleaned up.
 
 A drill compares the backup with production *now*. If writes landed after the backup, row counts and
 list endpoints differ, and the drill reports that honestly. Take the backup right before the drill.
+
+### A PostgreSQL drill
+
+Step 1 above is the SQLite path. A service whose `databases[]` entry is `engine: postgresql`
+([db-inventory.md](db-inventory.md)) restores a **logical dump** instead of a file copy:
+
+1. **Restore.** The drill takes the service's newest `<name>.dump` (`pg_dump -Fc`, from
+   `<stateDir>/backups/<service>.jsonl`, or the `--backup <dir>` directory) and creates a scratch
+   database `ov_<id>_drill_<stamp>` owned by a **freshly created login role** `ov_<id>_drill_<stamp>`,
+   whose password is generated with `crypto.randomBytes` and never printed. It then runs
+   `pg_restore --no-owner --no-privileges --role=<drill role>` into that database: `--no-owner` because the
+   archive names the production role, `--no-privileges` so none of the archive's GRANTs hands a production
+   role anything, `--role` so every object ends up owned by the scratch role the drilled instance connects
+   as. Before restoring, scratch databases and roles an earlier, killed drill of the same service left
+   behind (`ov_<id>_drill_*`) are dropped, and every drop uses `dropdb --force`.
+2. **Start.** `drill.env` overrides the three values the drilled release would otherwise take from
+   production:
+   - `DATABASE_URL` and `DATABASE_DIRECT_URL` — the scratch database on `127.0.0.1:5432`;
+   - `VALKEY_URL=redis://127.0.0.1:9/0` — a closed port.
+
+   The drill **refuses to start** if any of the three would keep its production value. They are not
+   optional, because the sandbox runs the release's real boot path:
+   - **`DATABASE_DIRECT_URL` un-overridden would migrate production.** The release runs its migrations
+     from the direct URL at boot, and a drill is deliberately pointed at a copy precisely so that boot
+     can run them there.
+   - **`VALKEY_URL` un-neutralised would write into the production keyspace.** The drill sandbox allows
+     loopback (services need Network's public keys there), so a Valkey URL left at production would let
+     the second instance write locks, caches and queues into production's keyspace.
+   - **`DATABASE_URL` un-overridden would serve production data.** The drilled instance would read and
+     write the live database instead of the restored copy, and every comparison would be vacuous.
+3. **Compare.** `counts` are read from production and from the scratch database over `psql` (the SQLite
+   drills compare files). `countsTolerance` in the drill block (default `0`) is the number of rows that
+   may differ: production keeps writing between the read that makes the backup and the read that counts
+   it, so a busy table is allowed to drift by that many rows instead of failing the drill.
+
+The connection is `127.0.0.1:5432`, the cluster itself, and deliberately **not PgBouncer's 6432**:
+PgBouncer pools the production app roles and databases, and the scratch database and its generated role
+exist only in the cluster, not in PgBouncer's configuration. Connecting directly to the port the
+`pg_restore` used is also what guarantees the instance reaches the scratch database and not a pool that
+happens to route back to production.
+
+Free space is checked before the restore: the drill refuses below **2x the dump size + 1 GB**, because
+`pg_restore` needs room for the restored tables on top of the archive and the database's own WAL and
+temporary files.
+
+The scratch database and its role are dropped in a `finally`, together with stopping the instance, on
+success and on failure. A PostgreSQL drill always cleans up after itself; `--keep` keeps the drill
+directory (the copy, `drill.env`, `drill.log`) but never the scratch database or role.
+
+For such a service the **Checks** column in the table above reports `pg_restore --list` (that the dump is
+a readable archive) rather than `pragma integrity_check`, and each count is read over `psql` from
+production and from the scratch database.
 
 ### Services
 
@@ -238,7 +291,9 @@ games as of 22 Sep) have entries built from their repositories' `deploy/` direct
   port.
 - `databases.<name>: { "env": "DATA_DIR", "dir": true }`, or `"dir": "{tmp}/<name>"`: the copy keeps
   its production file name inside that directory, and the env var, if one is given, points at the
-  directory.
+  directory. For a `postgresql` database the entry is instead `{ "url": "<NAME>", "directUrl":
+  "<NAME>" }`: the two env vars that point the drilled service at a database URL, which the drill sets
+  to the scratch database (see [A PostgreSQL drill](#a-postgresql-drill)).
 - `bind: [{ "from": "{tmp}/…", "to": "<path inside the checkout>" }]`: `BindPaths=` in the drill
   unit's own mount namespace. Use it for files a service opens relative to its checkout with no env
   override: the restored copy appears at the production path for the drill instance only. Tools yt,

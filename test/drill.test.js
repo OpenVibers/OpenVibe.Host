@@ -13,55 +13,55 @@ const { normalise } = require('../lib/inventory');
 const { compareBodies } = require('../lib/commands/drill');
 
 const DRILL_DIR = '/var/lib/openvibe-drills';
-const PROD_DB = '/var/lib/openvibe-community/community.db';
+const PROD_DB = '/var/lib/openvibe-tools/tools.db';
 const PASTES = '[{"id":"pst_1","title":"hello"},{"id":"pst_2","title":"world"}]';
 
-function communityEntry(drillOverrides = {}) {
+function toolsEntry(drillOverrides = {}) {
     return {
-        repo: '/opt/openvibe.community',
-        units: ['openvibe-community.service'],
-        envFile: '/etc/openvibe/community.env',
+        repo: '/opt/openvibe.tools',
+        units: ['openvibe-tools.service'],
+        envFile: '/etc/openvibe/tools.env',
         port: 4200,
         ready: { url: 'http://127.0.0.1:4200/api/ready', timeoutSeconds: 30 },
-        databases: [{ name: 'community', path: PROD_DB }],
+        databases: [{ name: 'tools', path: PROD_DB }],
         drill: {
             port: 14200,
-            databases: { community: 'COMMUNITY_DB_PATH' },
+            databases: { tools: 'TOOLS_DB_PATH' },
             env: { PORT: '{port}', HOST: '127.0.0.1', DISCORD_RELAY_ENABLED: '0', EVENTS_URL: '', UPLOAD_DIR: '{tmp}/data/uploads', GREETING: 'two words' },
             dirs: ['{tmp}/data'],
             compare: [{ path: '/api/pastes?limit=5' }, { path: '/api/v1/pulse?limit=5', ignore: ['generated_at'] }],
-            counts: [{ db: 'community', table: 'pastes' }],
+            counts: [{ db: 'tools', table: 'pastes' }],
             ...drillOverrides,
         },
     };
 }
 
 /**
- * The standard fake host plus Community in production, with one `ovhost backup community` taken.
+ * The standard fake host plus Tools in production, with one `ovhost backup tools` taken.
  * The drill instance's behaviour is controlled through `host.drill`.
  */
 async function drillScenario({ drill: drillOverrides, backup = true } = {}) {
     const host = scenario();
     const doc = JSON.parse(host.read('/etc/openvibe/host.json'));
-    doc.services.community = communityEntry(drillOverrides);
+    doc.services.tools = toolsEntry(drillOverrides);
     host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
 
-    const repo = host.createRepo('/opt/openvibe.community', { owner: 'ubuntu' });
-    const sha = repo.commit({ 'package.json': '{"name":"openvibe-community"}', 'server/index.js': 'community();' }, { message: 'initial' });
+    const repo = host.createRepo('/opt/openvibe.tools', { owner: 'ubuntu' });
+    const sha = repo.commit({ 'package.json': '{"name":"openvibe-tools"}', 'server/index.js': 'tools();' }, { message: 'initial' });
     repo.publish(sha);
     repo.checkout(sha);
-    host.addUnit('openvibe-community.service', { mainPid: 2222 });
+    host.addUnit('openvibe-tools.service', { mainPid: 2222 });
     host.alivePids.add(2222);
     host.listeners.set(4200, [{ pid: 2222, process: 'node' }]);
-    host.put('/etc/systemd/system/openvibe-community.service', [
+    host.put('/etc/systemd/system/openvibe-tools.service', [
         '[Service]',
         'User=ubuntu',
-        'WorkingDirectory=/opt/openvibe.community',
+        'WorkingDirectory=/opt/openvibe.tools',
         'ExecStart=/usr/bin/node server/index.js',
         `Environment=NODE_ENV=production "SESSION_SECRET=${SECRET}-unit"`,
         '',
     ].join('\n'));
-    host.put('/etc/openvibe/community.env', `OV_OAUTH_CLIENT_SECRET=${SECRET}\nBASE_URL=https://openvibe.community\n`, { mode: 0o600 });
+    host.put('/etc/openvibe/tools.env', `OV_OAUTH_CLIENT_SECRET=${SECRET}\nBASE_URL=https://openvibe.tools\n`, { mode: 0o600 });
     host.put(PROD_DB, 'sqlite-production', { owner: 'ubuntu', mode: 0o640 });
 
     host.http.set('http://127.0.0.1:4200/api/ready', () => ({ status: 200, body: { status: 'ready' } }));
@@ -101,7 +101,7 @@ async function drillScenario({ drill: drillOverrides, backup = true } = {}) {
     };
 
     if (backup) {
-        const b = await host.cli('backup', 'community', '--json');
+        const b = await host.cli('backup', 'tools', '--json');
         assert.strictEqual(b.code, 0, b.out);
         host.backupDir = JSON.parse(b.out).dir;
     }
@@ -201,31 +201,31 @@ function changedPaths(before, after) {
 }
 
 function lastLog(host) {
-    const text = host.read('/var/lib/openvibe-host/drills/community.jsonl');
+    const text = host.read('/var/lib/openvibe-host/drills/tools.jsonl');
     const lines = text.trim().split('\n');
     return JSON.parse(lines[lines.length - 1]);
 }
 
 const allowedWrite = (p, tmp) => p === DRILL_DIR || p === tmp || p.startsWith(`${tmp}/`)
-    || p === '/var/lib/openvibe-host/drills' || p === '/var/lib/openvibe-host/drills/community.jsonl'
-    || p === '/var/lib/openvibe-host/locks' || p === '/var/lib/openvibe-host/locks/community-drill.lock';
+    || p === '/var/lib/openvibe-host/drills' || p === '/var/lib/openvibe-host/drills/tools.jsonl'
+    || p === '/var/lib/openvibe-host/locks' || p === '/var/lib/openvibe-host/locks/tools-drill.lock';
 
 runTests([
     test('full flow: restore, integrity, sandboxed second instance, identical answers, stop by pid, cleanup, log row', async () => {
         const host = await drillScenario();
         const before = fsSnapshot(host);
         const callsBefore = host.calls.length;
-        const r = await host.cli('drill', 'community');
+        const r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 0, r.out);
         const rec = lastLog(host);
         assert.strictEqual(rec.result, 'passed');
         assert.strictEqual(rec.failure, null);
         assert.strictEqual(rec.backup, host.backupDir);
         const tmp = rec.dir;
-        assert.match(tmp, /^\/var\/lib\/openvibe-drills\/community-\d{8}-\d{6}$/);
-        assert.deepStrictEqual(rec.databases.map((d) => [d.name, d.integrity, d.copy]), [['community', 'ok', `${tmp}/db/community.db`]]);
+        assert.match(tmp, /^\/var\/lib\/openvibe-drills\/tools-\d{8}-\d{6}$/);
+        assert.deepStrictEqual(rec.databases.map((d) => [d.name, d.integrity, d.copy]), [['tools', 'ok', `${tmp}/db/tools.db`]]);
         assert.deepStrictEqual(rec.compare.map((c) => [c.path, c.match]), [['/api/pastes?limit=5', true], ['/api/v1/pulse?limit=5', true]]);
-        assert.deepStrictEqual(rec.counts, [{ db: 'community', table: 'pastes', production: 892, restored: 892, match: true }]);
+        assert.deepStrictEqual(rec.counts, [{ db: 'tools', table: 'pastes', production: 892, restored: 892, match: true }]);
         assert.strictEqual(rec.ready.ok, true);
         assert.strictEqual(rec.stop.ok, true);
         assert.strictEqual(rec.stop.signal, 'SIGTERM');
@@ -233,20 +233,20 @@ runTests([
         const calls = host.calls.slice(callsBefore);
         // The copy is made as the service user; integrity and counts run as the service user.
         // Backups are root-only: root copies, and the copy belongs to the service user, 0600.
-        const cp = calls.find((c) => c.cmd === 'install' && c.args.includes(`${tmp}/db/community.db`));
+        const cp = calls.find((c) => c.cmd === 'install' && c.args.includes(`${tmp}/db/tools.db`));
         assert.strictEqual(cp.privileged, true);
-        assert.deepStrictEqual(cp.args, ['-o', 'ubuntu', '-m', '0600', '-T', '--', `${host.backupDir}/community.db`, `${tmp}/db/community.db`]);
+        assert.deepStrictEqual(cp.args, ['-o', 'ubuntu', '-m', '0600', '-T', '--', `${host.backupDir}/tools.db`, `${tmp}/db/tools.db`]);
         const integrity = host.sqliteCalls.find((c) => /integrity_check/.test(c.sql));
-        assert.deepStrictEqual([integrity.db, integrity.as], [`${tmp}/db/community.db`, 'ubuntu']);
+        assert.deepStrictEqual([integrity.db, integrity.as], [`${tmp}/db/tools.db`, 'ubuntu']);
 
         // systemd-run: production ExecStart/WorkingDirectory, production env file then the override file,
         // sandbox properties, loopback-only networking, the service user.
         assert.strictEqual(host.systemdRuns.length, 1);
         const run = host.systemdRuns[0];
         assert.strictEqual(run.uid, 'ubuntu');
-        assert.strictEqual(run.cwd, '/opt/openvibe.community');
+        assert.strictEqual(run.cwd, '/opt/openvibe.tools');
         assert.deepStrictEqual(run.argv, ['/usr/bin/node', 'server/index.js']);
-        assert.deepStrictEqual(run.envFiles, ['/etc/openvibe/community.env', `${tmp}/drill.env`]);
+        assert.deepStrictEqual(run.envFiles, ['/etc/openvibe/tools.env', `${tmp}/drill.env`]);
         for (const p of ['ProtectSystem=strict', `ReadWritePaths=${tmp}`, 'PrivateTmp=yes', 'NoNewPrivileges=yes', 'IPAddressDeny=any', 'IPAddressAllow=localhost', 'SocketBindAllow=tcp:14200', 'SocketBindDeny=any', 'Environment=NODE_ENV=production']) {
             assert.ok(run.props.includes(p), `systemd-run -p ${p}`);
         }
@@ -259,7 +259,7 @@ runTests([
         assert.deepStrictEqual(kills.map((c) => c.args), [['SIGTERM', run.pid]]);
         assert.ok(!calls.some((c) => /pkill|killall/.test(c.cmd)));
         assert.ok(host.alivePids.has(2222), 'production still running');
-        assert.strictEqual(host.units.get('openvibe-community.service').restarts, 0);
+        assert.strictEqual(host.units.get('openvibe-tools.service').restarts, 0);
         assert.ok(!host.restarts().length, 'nothing restarted');
 
         // Only the drill directory (now removed), the lock (released) and the drill log changed.
@@ -267,33 +267,33 @@ runTests([
         const changed = changedPaths(before, after);
         for (const p of changed) assert.ok(allowedWrite(p, tmp), `unexpected write: ${p}`);
         assert.ok(!host.files.has(tmp), 'temp dir removed');
-        assert.ok(!host.files.has('/var/lib/openvibe-host/locks/community-drill.lock'), 'lock released');
+        assert.ok(!host.files.has('/var/lib/openvibe-host/locks/tools-drill.lock'), 'lock released');
 
         // Secrets: nothing ovhost printed, logged or passed on carries a value.
-        const everything = [r.out, host.read('/var/lib/openvibe-host/drills/community.jsonl'), JSON.stringify(host.calls), JSON.stringify(host.systemdRuns)].join('\n');
+        const everything = [r.out, host.read('/var/lib/openvibe-host/drills/tools.jsonl'), JSON.stringify(host.calls), JSON.stringify(host.systemdRuns)].join('\n');
         assert.ok(!everything.includes(SECRET), 'a secret value leaked');
-        assert.ok(!host.reads.includes('/etc/openvibe/community.env'), 'ovhost never reads the env file for a drill');
+        assert.ok(!host.reads.includes('/etc/openvibe/tools.env'), 'ovhost never reads the env file for a drill');
 
         // Markdown row ready for docs/restore-drills.md.
-        assert.match(r.out, /\| 2026-09-22 12:01 \| community \| `\/var\/backups\/openvibe\/community\/20260922-120000\/` \(`ovhost drill community`\) \| `pragma integrity_check` \(community\) = ok; drill instance `\/api\/ready` 200 after 0s; `\/api\/pastes\?limit=5`, `\/api\/v1\/pulse\?limit=5` identical to production \(JSON without volatile keys where declared\); pastes 892 = 892 \| passed \|/);
+        assert.match(r.out, /\| 2026-09-22 12:01 \| tools \| `\/var\/backups\/openvibe\/tools\/20260922-120000\/` \(`ovhost drill tools`\) \| `pragma integrity_check` \(tools\) = ok; drill instance `\/api\/ready` 200 after 0s; `\/api\/pastes\?limit=5`, `\/api\/v1\/pulse\?limit=5` identical to production \(JSON without volatile keys where declared\); pastes 892 = 892 \| passed \|/);
         assert.strictEqual(rec.markdown, r.out.split('\n').pop());
     }),
 
     test('--keep leaves the drill directory; the override file holds inventory values only', async () => {
         const host = await drillScenario();
         const before = fsSnapshot(host);
-        const r = await host.cli('drill', 'community', '--keep');
+        const r = await host.cli('drill', 'tools', '--keep');
         assert.strictEqual(r.code, 0, r.out);
         const rec = lastLog(host);
         assert.strictEqual(rec.kept, true);
         const tmp = rec.dir;
         assert.strictEqual(host.files.get(tmp).owner, 'ubuntu');
         assert.strictEqual(host.files.get(tmp).mode, 0o700);
-        assert.strictEqual(host.files.get(`${tmp}/db/community.db`).owner, 'ubuntu');
-        assert.strictEqual(host.read(`${tmp}/db/community.db`), host.read(`${host.backupDir}/community.db`));
+        assert.strictEqual(host.files.get(`${tmp}/db/tools.db`).owner, 'ubuntu');
+        assert.strictEqual(host.read(`${tmp}/db/tools.db`), host.read(`${host.backupDir}/tools.db`));
         assert.strictEqual(host.files.get(`${tmp}/data`).owner, 'ubuntu');
         const env = host.read(`${tmp}/drill.env`);
-        for (const line of ['PORT=14200', 'HOST=127.0.0.1', 'DISCORD_RELAY_ENABLED=0', 'EVENTS_URL=', `UPLOAD_DIR=${tmp}/data/uploads`, 'GREETING="two words"', `COMMUNITY_DB_PATH=${tmp}/db/community.db`]) {
+        for (const line of ['PORT=14200', 'HOST=127.0.0.1', 'DISCORD_RELAY_ENABLED=0', 'EVENTS_URL=', `UPLOAD_DIR=${tmp}/data/uploads`, 'GREETING="two words"', `TOOLS_DB_PATH=${tmp}/db/tools.db`]) {
             assert.ok(env.split('\n').includes(line), `drill.env has ${line}`);
         }
         assert.ok(!env.includes(SECRET));
@@ -305,7 +305,7 @@ runTests([
     test('integrity failure: nothing is started, the copy is removed, the log says failed', async () => {
         const host = await drillScenario();
         host.drill.integrity = [{ integrity_check: '*** in database main ***' }, { integrity_check: 'Page 5: btree page has a bad cell' }];
-        const r = await host.cli('drill', 'community');
+        const r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 2, r.out);
         const rec = lastLog(host);
         assert.strictEqual(rec.result, 'failed');
@@ -319,7 +319,7 @@ runTests([
     test('readiness timeout: the instance is stopped by its pid and the directory removed', async () => {
         const host = await drillScenario();
         host.drill.ready = () => ({ status: 503, body: { status: 'not_ready' } });
-        const r = await host.cli('drill', 'community');
+        const r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 2, r.out);
         const rec = lastLog(host);
         assert.strictEqual(rec.failure.stage, 'ready');
@@ -336,7 +336,7 @@ runTests([
         const host = await drillScenario();
         let probes = 0;
         host.drill.ready = () => { probes += 1; if (probes === 2) host.alivePids.delete(host.systemdRuns[0].pid); return { status: 503 }; };
-        const r = await host.cli('drill', 'community');
+        const r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 2, r.out);
         const rec = lastLog(host);
         assert.strictEqual(rec.failure.stage, 'ready');
@@ -350,7 +350,7 @@ runTests([
         host.drill.pastes = () => ({ status: 200, body: PASTES.replace('world', 'World') });
         host.drill.pulse = () => ({ status: 200, body: { items: [{ id: 2 }], generated_at: 'different, but ignored' } });
         host.drill.productionCount = 900;
-        const r = await host.cli('drill', 'community');
+        const r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 2, r.out);
         const rec = lastLog(host);
         assert.strictEqual(rec.failure.stage, 'compare');
@@ -360,7 +360,7 @@ runTests([
         assert.strictEqual(pulse.match, false);
         assert.match(pulse.detail, /\$\.items\[0\]\.id/);
         assert.ok(!/generated_at/.test(pulse.detail));
-        assert.deepStrictEqual(rec.counts[0], { db: 'community', table: 'pastes', production: 900, restored: 892, match: false });
+        assert.deepStrictEqual(rec.counts[0], { db: 'tools', table: 'pastes', production: 900, restored: 892, match: false });
         assert.match(rec.markdown, /`\/api\/pastes\?limit=5` differs \(bodies differ/);
         assert.match(rec.markdown, /pastes 900 ≠ 892 \| failed \|$/);
         // Still stopped and cleaned up.
@@ -371,14 +371,14 @@ runTests([
     test('acceptance: the restored instance alone answers each declared GET with its status and JSON keys (WS-S task 2)', async () => {
         const accept = [{ path: '/api/ready', keys: ['status'] }, { path: '/api/v1/pulse?limit=5', keys: ['items', 'generated_at'] }];
         let host = await drillScenario({ drill: { acceptance: accept } });
-        let r = await host.cli('drill', 'community');
+        let r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 0, r.out);
         let rec = lastLog(host);
         assert.deepStrictEqual(rec.acceptance, [{ path: '/api/ready', ok: true }, { path: '/api/v1/pulse?limit=5', ok: true }]);
         assert.match(rec.markdown, /acceptance `\/api\/ready`, `\/api\/v1\/pulse\?limit=5`/);
 
         host = await drillScenario({ drill: { acceptance: [{ path: '/api/v1/pulse?limit=5', keys: ['items', 'cursor'] }, { path: '/api/ready', status: 204 }] } });
-        r = await host.cli('drill', 'community');
+        r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 2, r.out);
         rec = lastLog(host);
         assert.strictEqual(rec.failure.stage, 'acceptance');
@@ -389,7 +389,7 @@ runTests([
 
     test('acceptance entries are validated in the inventory', async () => {
         const host = await drillScenario({ drill: { acceptance: [{ path: 'no-slash' }] }, backup: false });
-        const r = await host.cli('drill', 'community');
+        const r = await host.cli('drill', 'tools');
         assert.notStrictEqual(r.code, 0);
         assert.match(r.out, /acceptance\[0\]\.path must be a path/);
     }),
@@ -406,24 +406,24 @@ runTests([
         const host = await drillScenario();
         const before = fsSnapshot(host);
         host.drill.onStart = () => ({ code: 1, stderr: 'Failed to start transient service unit: Unit already exists.' });
-        const r = await host.cli('drill', 'community');
+        const r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 2, r.out);
         const rec = lastLog(host);
         assert.strictEqual(rec.failure.stage, 'start');
         assert.match(rec.failure.message, /systemd-run failed/);
         assert.ok(!host.files.has(rec.dir));
-        assert.ok(!host.files.has('/var/lib/openvibe-host/locks/community-drill.lock'));
+        assert.ok(!host.files.has('/var/lib/openvibe-host/locks/tools-drill.lock'));
         for (const p of changedPaths(before, fsSnapshot(host))) assert.ok(allowedWrite(p, rec.dir), `unexpected write: ${p}`);
         // A second drill can run straight after.
         host.drill.onStart = null;
         host.advance(1000);
-        assert.strictEqual((await host.cli('drill', 'community')).code, 0);
+        assert.strictEqual((await host.cli('drill', 'tools')).code, 0);
     }),
 
     test('an instance that ignores SIGTERM gets SIGKILL; one that survives SIGKILL keeps its directory and fails', async () => {
         let host = await drillScenario();
         host.drill.ignoreTerm = true;
-        let r = await host.cli('drill', 'community');
+        let r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 0, r.out);
         let rec = lastLog(host);
         assert.strictEqual(rec.stop.signal, 'SIGKILL');
@@ -432,7 +432,7 @@ runTests([
         host = await drillScenario();
         host.drill.ignoreTerm = true;
         host.drill.ignoreKill = true;
-        r = await host.cli('drill', 'community');
+        r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 2, r.out);
         rec = lastLog(host);
         assert.strictEqual(rec.failure.stage, 'stop');
@@ -445,7 +445,7 @@ runTests([
     test('refusals: not root, port in use, unsupported service, no drill block, no backup, missing database copy', async () => {
         let host = await drillScenario();
         host.exec.isRoot = async () => false;
-        let r = await host.cli('drill', 'community');
+        let r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 1);
         assert.match(r.out, /must run as root/);
         assert.strictEqual(host.systemdRuns.length, 0);
@@ -453,14 +453,14 @@ runTests([
         host = await drillScenario();
         host.listeners.set(14200, [{ pid: 777, process: 'python3' }]);
         const before = fsSnapshot(host);
-        r = await host.cli('drill', 'community');
+        r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 1);
         assert.match(r.out, /port 14200 is already in use \(python3 pid 777\)/);
         assert.strictEqual(host.systemdRuns.length, 0);
         assert.deepStrictEqual(changedPaths(before, fsSnapshot(host)), [], 'a refusal writes nothing');
 
         host = await drillScenario({ drill: { supported: false, reason: 'workers have no off switch' } });
-        r = await host.cli('drill', 'community');
+        r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 1);
         assert.match(r.out, /does not support restore drills: workers have no off switch/);
 
@@ -470,20 +470,20 @@ runTests([
         assert.match(r.out, /media has no drill block/);
 
         host = await drillScenario({ backup: false });
-        r = await host.cli('drill', 'community');
+        r = await host.cli('drill', 'tools');
         assert.strictEqual(r.code, 1);
-        assert.match(r.out, /no good ovhost backup recorded for community/);
+        assert.match(r.out, /no good ovhost backup recorded for tools/);
 
         host = await drillScenario({ backup: false });
         host.ensureDir('/srv/old-backup');
-        r = await host.cli('drill', 'community', '--backup', '/srv/old-backup');
+        r = await host.cli('drill', 'tools', '--backup', '/srv/old-backup');
         assert.strictEqual(r.code, 1);
-        assert.match(r.out, /has no copy of the community database/);
-        host.put('/srv/old-backup/community.db', 'older sqlite', { owner: 'ubuntu' });
-        r = await host.cli('drill', 'community', '--backup', '/srv/old-backup', '--json');
+        assert.match(r.out, /has no copy of the tools database/);
+        host.put('/srv/old-backup/tools.db', 'older sqlite', { owner: 'ubuntu' });
+        r = await host.cli('drill', 'tools', '--backup', '/srv/old-backup', '--json');
         assert.strictEqual(r.code, 0, r.out);
         assert.strictEqual(JSON.parse(r.out).backup, '/srv/old-backup');
-        r = await host.cli('drill', 'community', '--backup', 'relative/dir');
+        r = await host.cli('drill', 'tools', '--backup', 'relative/dir');
         assert.strictEqual(r.code, 1);
     }),
 
@@ -554,18 +554,18 @@ runTests([
 
     test('inventory: drill blocks are validated', () => {
         const base = { owner: 'ubuntu' };
-        const svc = (drill, extra = {}) => normalise({ services: { community: { ...base, ...communityEntry(), ...extra, drill: { ...communityEntry().drill, ...drill } } } });
+        const svc = (drill, extra = {}) => normalise({ services: { tools: { ...base, ...toolsEntry(), ...extra, drill: { ...toolsEntry().drill, ...drill } } } });
         assert.throws(() => svc({ port: 4200 }), /must differ from the service's own port/);
-        assert.throws(() => svc({ databases: { nope: 'X_DB' } }), /not one of community's databases/);
+        assert.throws(() => svc({ databases: { nope: 'X_DB' } }), /not one of tools's databases/);
         assert.throws(() => svc({ env: { HOST: '127.0.0.1' } }), /\{port\}/);
-        assert.throws(() => svc({ env: { PORT: '{port}', COMMUNITY_DB_PATH: '/x' } }), /already set by drill.databases/);
+        assert.throws(() => svc({ env: { PORT: '{port}', TOOLS_DB_PATH: '/x' } }), /already set by drill.databases/);
         assert.throws(() => svc({ env: { PORT: '{port}\nEVIL=1' } }), /one-line/);
-        assert.throws(() => svc({ dirs: ['/opt/openvibe.community/data'] }), /under \{tmp\}/);
-        assert.throws(() => svc({ counts: [{ db: 'community', table: 'x; drop table y' }] }), /table name/);
+        assert.throws(() => svc({ dirs: ['/opt/openvibe.tools/data'] }), /under \{tmp\}/);
+        assert.throws(() => svc({ counts: [{ db: 'tools', table: 'x; drop table y' }] }), /table name/);
         assert.throws(() => svc({ compare: [{ path: 'http://evil/' }] }), /path/);
         assert.throws(() => svc({ supported: false }), /reason is required/);
-        assert.throws(() => normalise({ services: { a: { ...base, repo: '/opt/a', port: 14200 }, community: { ...base, ...communityEntry() } } }), /14200 is a's port/);
-        assert.strictEqual(svc({}).services.community.drill.ready, '/api/ready');
+        assert.throws(() => normalise({ services: { a: { ...base, repo: '/opt/a', port: 14200 }, tools: { ...base, ...toolsEntry() } } }), /14200 is a's port/);
+        assert.strictEqual(svc({}).services.tools.drill.ready, '/api/ready');
     }),
 
     test('host.example.json: every service with a database has a drill block; unsupported ones give a reason', () => {
