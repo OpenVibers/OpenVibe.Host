@@ -38,7 +38,7 @@ const { createApi } = require('./http/api');
 const { createDashboard } = require('./http/dashboard');
 const { createHostReadiness } = require('./observability');
 const { createWorker } = require('./worker');
-const { renderPage, assetVersion } = require('./render/layout');
+const { renderPage, assetVersion, setRelease } = require('./render/layout');
 const pages = require('./render/pages');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
@@ -107,6 +107,7 @@ async function createApp(opts = {}) {
     app.set('trust proxy', config.trustProxy);
 
     const release = require('openvibe-shared/release').createRelease({ service: 'host', root: path.join(__dirname, '..') });
+    setRelease(release.release);
     const registry = sharedMetrics.createRegistry();
     const httpMetrics = sharedMetrics.httpMetrics(registry, { normalize: (req) => (req.hostTarget === 'site' ? 'tenant_site' : req.hostTarget === 'unknown' ? 'unknown_host' : null) });
     const proc = sharedMetrics.processMetrics(registry);

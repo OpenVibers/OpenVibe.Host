@@ -12,7 +12,7 @@
   "packages": [
     "openvibe-contracts v0.79.0",
     "openvibe-sdk v0.25.0",
-    "openvibe-shared v2.0.0"
+    "openvibe-shared v2.2.0"
   ],
   "capabilities": [
     "host.site.manage",

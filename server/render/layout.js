@@ -28,6 +28,11 @@ function assetVersion(rel) {
 }
 const asset = (rel) => `/${rel}?v=${assetVersion(rel)}`;
 
+// The deployed release (app.js sets it from openvibe-shared/release): openvibe-shared/boost swaps a page in place only
+// between pages of the same release, and does a normal load across a deploy.
+let RELEASE = 'dev';
+function setRelease(id) { if (id) RELEASE = String(id); }
+
 /** o: title, body (HTML), viewer, config, path, notice { kind, text } */
 function renderPage(o) {
     const viewer = o.viewer || { kind: 'anonymous' };
@@ -40,7 +45,7 @@ function renderPage(o) {
         history: { type: 'page', title: o.title || SITE_NAME },
         silentLogin: `${o.config.baseUrl}/auth/login?silent=1&next={url}`,
         sessionUrl: '/auth/me',
-        loginUrl: `/auth/login?next=${loginNext}`,
+        loginUrl: '/auth/login?next={path}',   // filled from the current page (boost moves between pages)
         logoutUrl: '/auth/logout?next={path}',   // Sign out in the shared navbar ends this site's session too
         notificationsRealtime: true,   // the bell hears new notifications over OpenVibe.Events (Shared 1.22.0)
     };
@@ -67,6 +72,8 @@ ${appIcon.headTags({ site: 'host' })}
 <script src="${ovServe.url('theme-loader.js')}" defer></script>
 <script src="${ovServe.url('navbar.js')}" defer></script>
 <script src="${ovServe.url('footer.js')}" defer></script>
+<meta name="ov-boost" content="host@${esc(RELEASE)}">
+<script src="${ovServe.url('boost.js')}" data-main="#main" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -90,4 +97,4 @@ document.addEventListener('DOMContentLoaded', function () {
 </html>`;
 }
 
-module.exports = { renderPage, esc, asset, assetVersion, SITE_NAME, NETWORK_URL };
+module.exports = { renderPage, esc, asset, assetVersion, setRelease, SITE_NAME, NETWORK_URL };
