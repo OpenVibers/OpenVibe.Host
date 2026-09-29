@@ -31,6 +31,7 @@ const { createProjects } = require('./domain/projects');
 const { createSites } = require('./domain/sites');
 const { createDeploys } = require('./domain/deploys');
 const { createDomains } = require('./domain/domains');
+const { createSiteConfig } = require('./domain/site-config');
 const { createSsoClient } = require('openvibe-sdk/sso');
 const { createViewerResolver } = require('./auth/viewer');
 const { createTenantServer } = require('./http/tenant');
@@ -108,6 +109,7 @@ async function createApp(opts = {}) {
     const sites = createSites({ store, config, access, projects, takedowns, indexnow: announce });
     const deploys = createDeploys({ store, config, access, projects, sites, blobs, outbox, takedowns, log, indexnow: announce });
     const domains = createDomains({ store, config, access, projects, sites, outbox, resolver: opts.resolver, log, indexnow: announce });
+    const siteConfig = createSiteConfig({ store });
     const auth = opts.auth || createSsoClient({
         site: 'host',
         baseUrl: config.baseUrl,
@@ -123,11 +125,11 @@ async function createApp(opts = {}) {
         ...(opts.fetchImpl ? { fetch: opts.fetchImpl } : {}),
     });
     const viewers = createViewerResolver({ auth, config, log });
-    const tenant = createTenantServer({ store, config, blobs, takedowns, log });
+    const tenant = createTenantServer({ store, config, blobs, takedowns, siteConfig, access, log });
     const uploadGate = createUploadGate(config.uploads.maxConcurrent);
     const worker = createWorker({ config, store, domains, blobs, outbox, log });
 
-    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, auth, viewers, tenant, worker, uploadGate, indexnow, log };
+    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, siteConfig, auth, viewers, tenant, worker, uploadGate, indexnow, log };
 
     const app = express();
     app.disable('x-powered-by');
@@ -197,7 +199,8 @@ async function createApp(opts = {}) {
     app.get('/api/ready', readiness.handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));
     // The dashboard host: only the public front page and the legal pages are crawlable. Tenant sites
-    // never reach this app's routes; their robots.txt and sitemap are whatever the tenant uploads.
+    // never reach this app's routes; http/tenant.js serves a deploy's own robots.txt/sitemap.xml, or a
+    // generated one when the deploy ships none.
     const legalPaths = require('openvibe-shared/legal').PATHS;
     app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', 'public, max-age=3600')
         .send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
@@ -223,6 +226,15 @@ async function createApp(opts = {}) {
 
     // ── API ─────────────────────────────────────────────────
     app.use('/api/v1', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }), createApi(ctx));
+
+    // ── Preview deploys (plan T12 J4) ───────────────────────
+    // A member views a site's live preview deploy at /preview/<deploy-id>/… — dashboard host only (the
+    // dispatch above sends every tenant host to tenant.handle, so this never answers on a public host),
+    // session-authenticated, membership-checked in tenant.preview, noindex and never cached.
+    app.use('/preview', rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), viewers.middleware('dashboard'), (req, res, next) => {
+        res.set('Cache-Control', 'private, no-store');
+        Promise.resolve(tenant.preview(req, res)).catch(next);
+    });
 
     // ── Dashboard ───────────────────────────────────────────
     app.use(rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), createDashboard(ctx));

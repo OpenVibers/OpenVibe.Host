@@ -12,6 +12,11 @@
  *   rollback  the same switch, to a named deploy or to the one that was active before.
  *   delete    only a deploy that is not active; its objects are removed when no other deploy of
  *             the project uses them.
+ *   preview   a deploy uploaded as a preview (source 'preview'): it becomes the site's ONE live
+ *             preview (host_sites.preview_deploy_id + preview_expires_at) instead of going active,
+ *             and is served only by the dashboard, to a member, at /preview/<deploy-id>/… (see
+ *             server/http/tenant.js). Any pointer switch clears it (so a deploy or rollback makes it
+ *             vanish), it expires on its own, and it is never announced to search engines.
  *
  * There is no build: Stage B serves the uploaded files as they are, and nothing is ever executed.
  */
@@ -21,6 +26,9 @@ const { buildManifest } = require('../artifacts/validate');
 const { principalOf, actorRef } = require('./access');
 
 const DAY = 24 * 3600 * 1000;
+// How long a preview stays served. Bounded so a draft cannot linger on the dashboard forever; the
+// uploader can always upload another one.
+const PREVIEW_TTL_MS = 60 * 60 * 1000;
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${n} B`);
 
 function createDeploys({ store, config = null, access, projects, sites, blobs, outbox, takedowns, log = console, indexnow = null }) {
@@ -45,6 +53,9 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
         logFor: db.prepare('SELECT level, message, created_at FROM host_deploy_logs WHERE deploy_id = ? ORDER BY id'),
         files: db.prepare('SELECT path, sha256, size, content_type FROM host_deploy_files WHERE deploy_id = ? ORDER BY path'),
         setPointer: db.prepare('UPDATE host_sites SET active_deploy_id = ?, updated_at = ? WHERE id = ? AND status = \'active\' AND active_deploy_id IS NOT DISTINCT FROM ?'),
+        setPreview: db.prepare('UPDATE host_sites SET preview_deploy_id = ?, preview_expires_at = ? WHERE id = ?'),
+        clearPreview: db.prepare('UPDATE host_sites SET preview_deploy_id = NULL, preview_expires_at = NULL WHERE id = ?'),
+        clearPreviewIf: db.prepare('UPDATE host_sites SET preview_deploy_id = NULL, preview_expires_at = NULL WHERE id = ? AND preview_deploy_id = ?'),
         activation: db.prepare('INSERT INTO host_activations (site_id, deploy_id, previous_deploy_id, kind, actor, created_at) VALUES (?, ?, ?, ?, ?, ?)'),
         activations: db.prepare('SELECT deploy_id, previous_deploy_id, kind, actor, created_at FROM host_activations WHERE site_id = ? ORDER BY id DESC LIMIT ?'),
         markDeleted: db.prepare("UPDATE host_deploys SET state = 'deleted', deleted_at = ? WHERE id = ?"),
@@ -128,10 +139,15 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
      * entries: [{ path, data }] already normalised by the reader. -> { deploy, log, activated }
      * Throws ApiError (with extra.deploy_id and extra.log) when the upload is refused.
      */
-    async function create(viewer, ctx, entries, { source, activate = false, notes = [], traceparent } = {}) {
+    async function create(viewer, ctx, entries, { source, activate = false, preview = false, notes = [], traceparent } = {}) {
         const { site, project, limits } = ctx;
+        // A preview is never activated: it is the site's live preview (its pointer), not its active
+        // deploy, and it is stored with source 'preview' so the two can never be confused.
+        const isPreview = preview === true;
+        const storedSource = isPreview ? 'preview' : source;
+        if (isPreview) activate = false;
         const fail = async (status, code, problems) => {
-            const r = await recordFailure(viewer, ctx, { source, code, problems, notes, traceparent });
+            const r = await recordFailure(viewer, ctx, { source: storedSource, code, problems, notes, traceparent });
             throw new ApiError(status, code, problems[0] ? problems[0].message : code, { deploy_id: r.deploy.id, log: r.log.map((l) => `${l.level}: ${l.message}`) });
         };
 
@@ -162,16 +178,20 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
             { level: 'info', message: 'no build step: Stage B serves the uploaded files as they are; nothing was executed' },
         ];
         let activated = null;
+        const previewExpiresAt = isPreview ? now + PREVIEW_TTL_MS : null;
         await store.tx(async () => {
-            await q.insert.run({ id, project_id: project.id, site_id: site.id, state: 'ready', source, manifest: built.manifestJson, manifest_sha256: built.manifestSha256, file_count: built.manifest.file_count, total_bytes: built.manifest.total_bytes, new_bytes: newBytes, failure_code: null, created_by: who, created_at: now });
+            await q.insert.run({ id, project_id: project.id, site_id: site.id, state: 'ready', source: storedSource, manifest: built.manifestJson, manifest_sha256: built.manifestSha256, file_count: built.manifest.file_count, total_bytes: built.manifest.total_bytes, new_bytes: newBytes, failure_code: null, created_by: who, created_at: now });
             for (const f of built.files) await q.insertFile.run(id, f.path, f.sha256, f.size, f.content_type);
             for (const f of fresh.values()) await q.insertBlob.run(project.id, f.sha256, f.size, now);
             await outbox.emit({
                 event_type: 'host.deploy.created', actor: actorRef(viewer), visibility: 'internal', priority: 'low',
                 subject: { type: 'deploy', id },
-                payload: { project_id: project.id, site_id: site.id, site: site.name, source, file_count: built.manifest.file_count, total_bytes: built.manifest.total_bytes, manifest_sha256: built.manifestSha256 },
+                payload: { project_id: project.id, site_id: site.id, site: site.name, source: storedSource, file_count: built.manifest.file_count, total_bytes: built.manifest.total_bytes, manifest_sha256: built.manifestSha256 },
             }, { traceparent });
-            if (activate) {
+            if (isPreview) {
+                await q.setPreview.run(id, previewExpiresAt, site.id);
+                lines.push({ level: 'info', message: `preview: served only at /preview/${id}/ to a project member until it expires; the public site still serves its active deploy` });
+            } else if (activate) {
                 activated = await switchPointer(viewer, site, await get(id), 'activate', { traceparent });
                 lines.push({ level: 'info', message: 'activated: the site now serves this deploy' });
             } else {
@@ -181,7 +201,7 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
         });
         outbox.kick();
         if (activated && activated.changed) announceSite(site, project);
-        return { deploy: await get(id), log: await q.logFor.all(id), activated };
+        return { deploy: await get(id), log: await q.logFor.all(id), activated, preview: isPreview ? { deploy_id: id, expires_at: previewExpiresAt } : null };
     }
 
     /** Inside a transaction. Compare-and-set on the pointer read in the same transaction. */
@@ -197,6 +217,8 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
         const r = await q.setPointer.run(deploy.id, now, site.id, current.active_deploy_id);
         if (r.changes !== 1) throw new ApiError(409, 'site.active_changed', 'the active deploy changed during the switch');
         await q.activation.run(site.id, deploy.id, current.active_deploy_id, kind, principalOf(viewer) || 'host', now);
+        // A real deploy or rollback supersedes any pending preview: it stops being served at once.
+        await q.clearPreview.run(site.id);
         await outbox.emit({
             event_type: 'host.deploy.activated', actor: actorRef(viewer), visibility: 'internal', priority: 'low',
             subject: { type: 'deploy', id: deploy.id },
@@ -264,6 +286,8 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
             if (active === deploy.id) throw new ApiError(409, 'deploy.active', 'this deploy is being served: activate another one first');
             await q.markDeleted.run(store.now(), deploy.id);
             await q.dropFiles.run(deploy.id);
+            // A deleted preview must stop being served even if it was the site's live one.
+            await q.clearPreviewIf.run(site.id, deploy.id);
             freed = await collectGarbage(project.id);
         });
         unlinkBlobs(project.id, freed);
@@ -279,4 +303,4 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
     };
 }
 
-module.exports = { createDeploys };
+module.exports = { createDeploys, PREVIEW_TTL_MS };

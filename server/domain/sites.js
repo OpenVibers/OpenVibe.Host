@@ -33,7 +33,7 @@ function createSites({ store, config, access, projects, takedowns, indexnow = nu
                             VALUES (?, ?, ?, NULL, 'active', ?, ?, ?)`),
         insertDefaultDomain: db.prepare(`INSERT INTO host_domains (id, project_id, site_id, hostname, kind, status, token, created_by, created_at, verified_at)
                                          VALUES (?, ?, ?, ?, 'default', 'verified', NULL, ?, ?, ?)`),
-        markDeleted: db.prepare("UPDATE host_sites SET status = 'deleted', active_deploy_id = NULL, deleted_at = ?, updated_at = ? WHERE id = ?"),
+        markDeleted: db.prepare("UPDATE host_sites SET status = 'deleted', active_deploy_id = NULL, preview_deploy_id = NULL, preview_expires_at = NULL, deleted_at = ?, updated_at = ? WHERE id = ?"),
     };
 
     const defaultHostname = (name) => `${name}.${config.sitesDomain}`;
@@ -98,6 +98,7 @@ function createSites({ store, config, access, projects, takedowns, indexnow = nu
         await db.prepare("UPDATE host_deploys SET state = 'deleted', deleted_at = ? WHERE site_id = ? AND state <> 'deleted'").run(now, site.id);
         await db.prepare('DELETE FROM host_deploy_files WHERE deploy_id IN (SELECT id FROM host_deploys WHERE site_id = ?)').run(site.id);
         await db.prepare('DELETE FROM host_domains WHERE site_id = ?').run(site.id);
+        await db.prepare('DELETE FROM host_site_config WHERE site_id = ?').run(site.id);
     }
 
     async function remove(viewer, id, { deploys }) {

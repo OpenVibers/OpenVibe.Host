@@ -1,0 +1,14 @@
+[Unit]
+Description=Twice-daily OpenVibe certificate renewal (04:30 and 16:30 UTC, up to 15 min later)
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/launch.md
+
+[Timer]
+OnCalendar=*-*-* 04,16:30:00 UTC
+RandomizedDelaySec=15min
+AccuracySec=1min
+# A run missed while the host was down happens at the next boot.
+Persistent=true
+Unit=openvibe-certs.service
+
+[Install]
+WantedBy=timers.target

@@ -18,7 +18,10 @@ form.inline { display: inline-flex; margin: 0; }
 fieldset { border: 1px solid var(--hs-line); border-radius: 8px; padding: .5rem .75rem; }
 label { display: flex; flex-direction: column; gap: .25rem; font-size: 14px; }
 label.confirm { flex-direction: row; align-items: center; }
-input, select { font: inherit; padding: .4rem .5rem; border-radius: 6px; border: 1px solid var(--hs-line); background: var(--hs-card); color: var(--hs-fg); }
+fieldset.choice { display: flex; flex-direction: column; gap: .35rem; }
+textarea { width: min(100%, 44rem); min-height: 6.5rem; font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.5; }
+strong.preview { color: var(--hs-warn); }
+input, select, textarea { font: inherit; padding: .4rem .5rem; border-radius: 6px; border: 1px solid var(--hs-line); background: var(--hs-card); color: var(--hs-fg); }
 button, .button { font: inherit; padding: .45rem .9rem; border-radius: 6px; border: 0; background: var(--hs-accent); color: #0a0f1c; cursor: pointer; text-decoration: none; display: inline-block; }
 button.link { background: none; color: var(--hs-accent); padding: 0; text-decoration: underline; }
 button.danger, .danger { background: var(--hs-bad); color: #0a0f1c; } button.link.danger { background: none; color: var(--hs-bad); }

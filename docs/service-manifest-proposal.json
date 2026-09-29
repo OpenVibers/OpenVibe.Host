@@ -16,7 +16,8 @@
   "capabilities": [
     "host.site.manage",
     "host.deploy.create",
-    "host.domain.manage"
+    "host.domain.manage",
+    "host.site.config"
   ],
   "eventsProduced": [
     "host.deploy.created",

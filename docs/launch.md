@@ -132,6 +132,18 @@ ls -l /etc/nginx/sites-enabled/ | grep openvibe.host   # openvibe.host.conf, ope
 `openvibe.host.conf` replaces the Sites placeholder vhost of the same name. The previous copy is in
 `$B`.
 
+**3b. Certificate renewal.** Additive, no downtime: the timer renews the wildcard lineage with
+`certbot renew` and issues a certificate for every verified custom domain that has none, then
+re-renders the tenant vhosts (the [unit](../deploy/systemd/openvibe-certs.service) runs as root;
+certbot stays outside the Host API). Run it once now to pick up anything already due:
+
+```bash
+sudo install -m 644 deploy/systemd/openvibe-certs.service deploy/systemd/openvibe-certs.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-certs.timer
+sudo systemctl start openvibe-certs.service
+sudo ovhost certs | grep -E 'openvibe\.host|fullchain'   # the wildcard and any new per-domain certificate
+```
+
 **4. Sites.** Pull the commit that removed `openvibe.host`, then deploy. `deploy.sh` installs only
 the vhosts still in the repository, so it never touches `openvibe.host.conf` again:
 
@@ -243,7 +255,7 @@ Each launch-rule item, checked against the code at this commit:
 | 5 | Capability and event registration against Contracts | `host.site.manage`, `host.deploy.create` and `host.domain.manage` and the `host` service manifest (with all four `host.*` events in `eventsProduced`) are released in `openvibe-contracts` **v0.24.0**, which Host pins, and are identical in **v0.30.1** (checked against the tag: every field matches `docs/capabilities-proposal/` as of `8575c91`). `npx openvibe-contracts-check --service host` passes, and CI runs it as a blocking step. Missing from the release: the four takedown routes in `host.site.manage.implementedBy` (this change; the exact addition is under *Contracts* above). No `host.*` payload schemas: optional, most services have none. | **met** (Contracts follow-up for takedown routes) |
 | 6a | Migration/seed strategy | Bootstrap, not migration: Host replaces no legacy data (roadmap §8 register). The schema is created idempotently at every boot (`server/db.js`, `CREATE … IF NOT EXISTS`); `host_takedowns` is additive and appears on the next restart. There is no seed: a new database is an empty, valid Host. The pointer and data survive a restart (`host-rollback`). A future non-additive change needs a migration ledger, which Host does not have yet. | **met** |
 | 6b | Security/threat review | [threat-review.md](threat-review.md): tenant isolation, uploads, custom domains, cookies, the PSL decision, quotas, abuse and takedown, Host's own surface. Seven gaps were fixed in `1e48cb2` and `0ff29d5`: takedowns, the upload concurrency cap, the CA-validation path refusal, the CDN cache cap, the realip templates, the disk floor with the owner project cap, and Clear-Site-Data. | **met** |
-| 6c | Sitemap/robots/feed behaviour | Dashboard host: `/robots.txt` allows `/` and the legal pages and names `/sitemap.xml`; the signed-out front page is `index, follow` with a canonical URL; everything behind sign-in is `noindex` and `private, no-store`. Tenant sites: their own uploaded `robots.txt`/`sitemap.xml`; sandbox projects get `X-Robots-Tag: noindex`. No feed: a hosting control plane publishes no stream of public items, and tenants publish their own feeds. | **met** |
+| 6c | Sitemap/robots/feed behaviour | Dashboard host: `/robots.txt` allows `/` and the legal pages and names `/sitemap.xml`; the signed-out front page is `index, follow` with a canonical URL; everything behind sign-in is `noindex` and `private, no-store`. Tenant sites: a deploy's own uploaded `robots.txt`/`sitemap.xml`, else a generated one (the manifest's HTML pages on the host the request came in on, so a verified custom domain gets its own; `host-sitemap`); sandbox projects get `Disallow: /` and `X-Robots-Tag: noindex`. No feed: a hosting control plane publishes no stream of public items, and tenants publish their own feeds. | **met** |
 | 7 | Acceptance tests | `npm test` (20 files). Stage B: `host-isolation`, `host-uploads`, `host-quota-auth`, `host-rollback`, `host-domains`, `host-secrets-dashboard`, `host-lifecycle`, `host-contracts-events`, `host-abuse`, `nginx-tenants`. The exit criterion "a hosted static project cannot read another tenant's objects" is `host-isolation` (path, Host header, CORS, oracles, delegation, dashboard) plus `host-abuse` (CA paths). | **met** in CI; the production isolation check is part of *Verify* |
 
 **Verdict: ready to launch** through the steps above, once the owner says go. Nothing in the code

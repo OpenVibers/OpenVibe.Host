@@ -19,7 +19,7 @@ const { readArchive, normaliseName, selectRoot, stripSharedTop, ArchiveError } =
 const { checkPath, PathError } = require('../artifacts/paths');
 
 const ARCHIVE_TYPES = new Set(['application/gzip', 'application/x-gzip', 'application/x-tar', 'application/octet-stream', 'application/x-compressed-tar', 'application/tar', 'application/tar+gzip']);
-const FIELD_NAMES = new Set(['activate', 'root', 'strip', 'csrf', 'expected_active']);
+const FIELD_NAMES = new Set(['activate', 'preview', 'mode', 'root', 'strip', 'csrf', 'expected_active']);
 const fmt = (n) => `${(n / 1048576).toFixed(1)} MiB`;
 
 class UploadError extends Error {

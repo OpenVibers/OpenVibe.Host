@@ -83,15 +83,20 @@ function domainBlock(d, instructions, csrf) {
     return `${body}</li>`;
 }
 
-function site({ site: s, project: p, role, deploys, activations, domains, csrf, url }) {
+function site({ site: s, project: p, role, deploys, activations, domains, siteConfig, csrf, url, now = Date.now() }) {
     const canMaintain = role === 'owner' || role === 'maintainer' || role === 'staff';
     const canDeploy = role !== 'staff';
+    // The site's one live preview (plan T12 J4): served to project members on this dashboard until it expires.
+    const previewId = s.preview_deploy_id && Number(s.preview_expires_at) > now ? s.preview_deploy_id : null;
+    const previewHref = (id) => `/preview/${encodeURIComponent(id)}/`;
     const rows = deploys.map((d) => {
         const active = d.id === s.active_deploy_id;
+        const previewing = d.id === previewId;
         const actions = [];
+        if (previewing && d.state === 'ready') actions.push(`<a href="${esc(previewHref(d.id))}" target="_blank" rel="noopener">Open preview</a>`);
         if (canDeploy && d.state === 'ready' && !active) actions.push(form(`/deploys/${d.id}/activate`, csrf, `<input type="hidden" name="expected_active" value="${esc(s.active_deploy_id || '')}"><button type="submit">Activate</button>`, { cls: 'inline' }));
         if (canMaintain && !active) actions.push(form(`/deploys/${d.id}/delete`, csrf, '<button type="submit" class="link danger">Delete</button>', { cls: 'inline' }));
-        return `<tr${active ? ' class="active"' : ''}><td><a href="/deploys/${esc(d.id)}"><code>${short(d.id)}</code></a>${active ? ' <strong>active</strong>' : ''}</td><td>${esc(d.state)}${d.failure_code ? ` (<code>${esc(d.failure_code)}</code>)` : ''}</td><td>${esc(d.file_count)}</td><td>${bytes(d.total_bytes)}</td><td>${when(d.created_at)}</td><td>${actions.join(' ')}</td></tr>`;
+        return `<tr${active ? ' class="active"' : ''}><td><a href="/deploys/${esc(d.id)}"><code>${short(d.id)}</code></a>${active ? ' <strong>active</strong>' : ''}${previewing ? ' <strong class="preview">preview</strong>' : ''}</td><td>${esc(d.state)}${d.failure_code ? ` (<code>${esc(d.failure_code)}</code>)` : ''}</td><td>${esc(d.file_count)}</td><td>${bytes(d.total_bytes)}</td><td>${when(d.created_at)}</td><td>${actions.join(' ')}</td></tr>`;
     }).join('');
     const history = activations.slice(0, 10).map((a) => `<li>${when(a.created_at)} ${esc(a.kind)} → <code>${short(a.deploy_id)}</code>${a.previous_deploy_id ? ` (was <code>${short(a.previous_deploy_id)}</code>)` : ''} by <code>${esc(a.actor)}</code></li>`).join('');
     return `<p class="crumbs"><a href="/">Projects</a> › <a href="/projects/${esc(p.id)}">${esc(p.name)}</a> ›</p>
@@ -102,15 +107,26 @@ ${canDeploy ? `<h2>Upload a deploy</h2>
 ${form(`/sites/${s.id}/deploys`, csrf, `<fieldset><legend>A folder</legend><input type="file" name="files" multiple webkitdirectory><input type="hidden" name="strip" value="folder"></fieldset>
 <fieldset><legend>…or an archive (.tar.gz / .tar)</legend><input type="file" name="archive" accept=".tar,.tgz,.gz,application/gzip,application/x-tar"></fieldset>
 <label>Deploy from subfolder (optional) <input name="root" placeholder="dist"></label>
-<label><input type="checkbox" name="activate" value="1" checked> Activate when it is ready</label>
+<fieldset class="choice"><legend>When it is ready</legend>
+<label class="confirm"><input type="radio" name="mode" value="activate" checked> Activate it</label>
+<label class="confirm"><input type="radio" name="mode" value="ready"> Keep it ready (activate later)</label>
+<label class="confirm"><input type="radio" name="mode" value="preview"> Preview only: a private address for members of this project, for one hour</label>
+</fieldset>
 <button type="submit">Upload</button>`, { enctype: 'multipart/form-data' })}` : ''}
 <h2>Deploys</h2>
+${previewId ? `<p class="notice">A preview of <code>${short(previewId)}</code> is open to members of this project at <a href="${esc(previewHref(previewId))}" target="_blank" rel="noopener">${esc(previewHref(previewId))}</a> until ${when(Number(s.preview_expires_at))}. It is never indexed, and activating or rolling back ends it.</p>` : ''}
 ${deploys.length ? `<table><thead><tr><th>Deploy</th><th>State</th><th>Files</th><th>Size</th><th>Uploaded</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<p>No deploys yet.</p>'}
 ${canDeploy && s.active_deploy_id ? form(`/sites/${s.id}/rollback`, csrf, `<input type="hidden" name="expected_active" value="${esc(s.active_deploy_id)}"><button type="submit">Roll back to the previous deploy</button>`) : ''}
 ${history ? `<h3>Activation history</h3><ul class="history">${history}</ul>` : ''}
 <h2>Domains</h2>
 <ul class="domains">${domains.map((d) => domainBlock(d.domain, d.instructions, csrf)).join('')}</ul>
 ${canMaintain && p.environment !== 'sandbox' ? form(`/sites/${s.id}/domains`, csrf, '<label>Custom domain <input name="hostname" required placeholder="www.example.org"></label><button type="submit">Add domain</button>') : ''}
+${canMaintain ? `<h2>Per-site configuration</h2>
+<p class="muted">Headers, redirects and an SPA fallback, applied to every response of this site. Platform headers (Content-Security-Policy, Strict-Transport-Security, Set-Cookie, X-Forwarded-*, caching) cannot be set here, and a redirect target must be a local path.</p>
+${form(`/sites/${s.id}/config`, csrf, `<label>Headers (one per line: <code>Name: value</code>)<textarea name="headers" rows="4" spellcheck="false" placeholder="X-Frame-Options: SAMEORIGIN">${esc(siteConfig.headersText)}</textarea></label>
+<label>Redirects (one per line: <code>from -&gt; to [status]</code>)<textarea name="redirects" rows="4" spellcheck="false" placeholder="/old -&gt; /new 301">${esc(siteConfig.redirectsText)}</textarea></label>
+<label class="confirm"><input type="checkbox" name="spa" value="1"${siteConfig.spa ? ' checked' : ''}> Serve index.html for extensionless paths (single-page app)</label>
+<button type="submit">Save configuration</button>`)}` : ''}
 ${canMaintain ? `<h2>Delete site</h2>${form(`/sites/${s.id}/delete`, csrf, '<button type="submit" class="danger">Delete this site</button>', { confirm: `${s.name} stops being served at once` })}` : ''}`;
 }
 

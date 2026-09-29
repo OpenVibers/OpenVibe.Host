@@ -121,6 +121,19 @@ const ORIGIN = 'https://openvibe.host';
         const bad = await t.api('POST', `/sites/${siteId}/deploys`, { session: alice, body: part('csrf', null, csrf) + part('files', 'x.php', '<?php') + `--${boundary}--\r\n`, headers: { origin: ORIGIN, 'content-type': `multipart/form-data; boundary=${boundary}` } });
         assert.strictEqual(bad.status, 303);
         assert.match(decodeURIComponent(bad.headers.location), /Upload refused/);
+        // "Preview only": the site keeps its active deploy; the site page links the member to the private preview.
+        assert.match(sitePage.text, /name="mode" value="preview"/);
+        const pv = await t.api('POST', `/sites/${siteId}/deploys`, { session: alice, body: part('csrf', null, csrf) + part('strip', null, 'folder') + part('mode', null, 'preview') + part('files', 'site/index.html', 'DASH PREVIEW') + `--${boundary}--\r\n`, headers: { origin: ORIGIN, 'content-type': `multipart/form-data; boundary=${boundary}` } });
+        assert.strictEqual(pv.status, 303, pv.text);
+        assert.match(decodeURIComponent(pv.headers.location), /Deployed as a preview/);
+        const pvId = pv.headers.location.match(/\/deploys\/(dpl_[0-9A-Z]+)/)[1];
+        assert.strictEqual((await t.get('dash-site.openvibe.host', '/')).text, 'DASH OK', 'a preview never goes live');
+        const withPreview = await t.api('GET', `/sites/${siteId}`, { session: alice });
+        assert.ok(withPreview.text.includes(`href="/preview/${pvId}/"`), 'the site page links the live preview');
+        assert.match(withPreview.text, /<strong class="preview">preview<\/strong>/);
+        const seen = await t.api('GET', `/preview/${pvId}/`, { session: alice });
+        assert.strictEqual(seen.status, 200, seen.text);
+        assert.strictEqual(seen.text, 'DASH PREVIEW');
     });
 
     await check('forms: domain instructions, rollback, and refusal of cross-origin posts even with a valid token', async () => {

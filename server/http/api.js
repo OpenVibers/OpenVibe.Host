@@ -8,6 +8,7 @@
  *   projects   GET/POST /projects · GET/DELETE /projects/:id · GET/PUT /projects/:id/quota
  *              PUT/DELETE /projects/:id/members/:principal                        host.site.manage
  *   sites      GET/POST /projects/:id/sites · GET/DELETE /sites/:id                host.site.manage
+ *              GET/PUT/DELETE /sites/:id/config (headers, redirects, SPA fallback)  host.site.config
  *   deploys    GET/POST /sites/:id/deploys · GET /deploys/:id · GET /deploys/:id/log
  *              POST /deploys/:id/activate · POST /sites/:id/rollback              host.deploy.create
  *              DELETE /deploys/:id                                                host.site.manage
@@ -25,7 +26,7 @@ const out = require('./serialize');
 const truthy = (v) => v === true || v === 1 || ['1', 'true', 'yes', 'on'].includes(String(v || '').toLowerCase());
 
 function createApi(ctx) {
-    const { config, projects, sites, deploys, domains, viewers, takedowns } = ctx;
+    const { config, projects, sites, deploys, domains, siteConfig, viewers, takedowns } = ctx;
     const router = express.Router();
 
     // CORS for first-party browser origins presenting a Bearer token (never credentials/cookies).
@@ -158,10 +159,12 @@ function createApi(ctx) {
                 const r = await deploys.recordFailure(req.viewer, pre, { source: err.source || (multipart ? 'files' : 'archive'), code: err.code, problems: [{ code: err.code, message: err.message }], traceparent: tp(req) });
                 return contracts.http.sendProblem(res, err.status, err.code, { detail: err.message, ctx: req.ov, extra: { deploy_id: r.deploy.id, log: r.log.map((l) => `${l.level}: ${l.message}`) } });
             }
-            const activate = truthy(up.fields.activate != null ? up.fields.activate : req.query.activate);
-            const r = await deploys.create(req.viewer, pre, up.entries, { source: up.source, activate, notes: up.notes, traceparent: tp(req) });
+            const preview = truthy(up.fields.preview != null ? up.fields.preview : req.query.preview);
+            // A preview is never the site's active deploy; it is served only at /preview/<id>/ later.
+            const activate = !preview && truthy(up.fields.activate != null ? up.fields.activate : req.query.activate);
+            const r = await deploys.create(req.viewer, pre, up.entries, { source: up.source, activate, preview, notes: up.notes, traceparent: tp(req) });
             const site = await sites.get(pre.site.id);
-            res.status(201).json({ deploy: out.deploy(r.deploy, { active: site.active_deploy_id === r.deploy.id, log: r.log }), activated: Boolean(r.activated && r.activated.changed), url: siteUrl(sites.defaultHostname(site.name)) });
+            res.status(201).json({ deploy: out.deploy(r.deploy, { active: site.active_deploy_id === r.deploy.id, log: r.log }), activated: Boolean(r.activated && r.activated.changed), preview: r.preview, url: siteUrl(sites.defaultHostname(site.name)) });
         } catch (err) {
             // Refused before the body was read (404, 429, 503): close instead of draining a large upload.
             if (!req.complete) res.set('Connection', 'close');
@@ -206,6 +209,21 @@ function createApi(ctx) {
         return { domain: out.domain(d, domains.instructions(d, site)) };
     }));
     router.delete('/domains/:id', guard('host.domain.manage'), run(async (req) => await domains.remove(req.viewer, req.params.id)));
+
+    // ── Per-site configuration: headers, redirects, SPA fallback (host.site.config) ──
+    // Applied by http/tenant.js before the platform's headers; reserved headers are refused on write.
+    router.get('/sites/:id/config', guard('host.site.config'), run(async (req) => {
+        const { site } = await sites.load(req.viewer, req.params.id, 'read');
+        return { config: await siteConfig.getForSite(site.id) };
+    }));
+    router.put('/sites/:id/config', guard('host.site.config'), jsonBody, run(async (req) => {
+        const { site } = await sites.load(req.viewer, req.params.id, 'maintain');
+        return { config: await siteConfig.set(req.viewer, site, req.body || {}) };
+    }));
+    router.delete('/sites/:id/config', guard('host.site.config'), run(async (req) => {
+        const { site } = await sites.load(req.viewer, req.params.id, 'maintain');
+        return { config: await siteConfig.remove(site) };
+    }));
 
     router.use((req, res) => contracts.http.sendProblem(res, 404, 'route.not_found', { detail: `no route ${req.method} ${req.baseUrl}${req.path}`, ctx: req.ov }));
     return router;

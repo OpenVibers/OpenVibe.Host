@@ -52,6 +52,8 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         statfsFree: 100 * 1024 ** 3,
         statfsSize: 500 * 1024 ** 3,
         reads: [],
+        certbot: null, // (args, opts) -> { code, stdout, stderr } | Error ; default: nothing to do
+        certbotCalls: [], // { args, as, privileged }
         onRestart: null, // (unit) -> void
         onSystemdRun: null, // (spec) -> undefined | { code, stderr } ; spec = { unit, uid, cwd, props, argv, pid }
         onKill: null, // (pid, signal) -> false to ignore the signal
@@ -429,6 +431,12 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             case 'node': {
                 const r = host.onNode ? host.onNode(args, opts) : undefined;
                 return r ? { stdout: '', stderr: '', ...r } : { code: 0, stdout: '', stderr: '' };
+            }
+            case 'certbot': {
+                host.certbotCalls.push({ args, as: opts.as || null, privileged: !!opts.privileged });
+                const r = host.certbot ? host.certbot(args, opts) : undefined;
+                if (r instanceof Error) return { code: 1, stdout: '', stderr: r.message };
+                return { code: 0, stdout: 'Certificate not yet due for renewal; no action taken.', stderr: '', ...(r || {}) };
             }
             case 'fuser': return { code: (host.openFiles || new Set()).has(path.resolve(args[args.length - 1])) ? 0 : 1, stdout: '', stderr: '' };
             // ── PostgreSQL tools (lib/dbengine.js runs each of these as the postgres OS user) ──

@@ -15,7 +15,7 @@ const { readUpload, UploadError } = require('./upload');
 const { ApiError, privateNoStore } = require('./errors');
 
 function createDashboard(ctx) {
-    const { config, projects, sites, deploys, domains, viewers, access, log = console } = ctx;
+    const { config, projects, sites, deploys, domains, siteConfig, viewers, access, log = console } = ctx;
     const router = express.Router();
     const urlencoded = express.urlencoded({ extended: false, limit: '16kb' });
 
@@ -86,10 +86,12 @@ function createDashboard(ctx) {
     router.get('/sites/:id', view(async (req, res) => {
         if (req.viewer.kind !== 'user') throw new ApiError(401, 'auth.required', 'sign in first');
         const { site, project, role } = await sites.load(req.viewer, req.params.id, 'read');
+        const cfg = await siteConfig.getForSite(site.id);
         page(req, res, 200, site.name, pages.site({
-            site, project, role, url: siteUrl(site), csrf: csrfToken(config, req.viewer),
+            site, project, role, url: siteUrl(site), csrf: csrfToken(config, req.viewer), now: ctx.store.now(),
             deploys: await deploys.list(site.id, 50), activations: await deploys.activationsOf(site.id, 10),
             domains: (await domains.listForSite(site.id)).map((d) => ({ domain: d, instructions: domains.instructions(d, site) })),
+            siteConfig: { ...cfg, headersText: siteConfig.headersToText(cfg.headers), redirectsText: siteConfig.redirectsToText(cfg.redirects) },
         }), takedownNotice(await ctx.takedowns.ofSite(site)) || notice(req));
     }));
 
@@ -130,6 +132,13 @@ function createDashboard(ctx) {
         if (req.body.confirm !== 'yes') throw new ApiError(422, 'form.confirm', 'tick the confirmation box to delete');
         await projects.remove(req.viewer, project, { sites });
         return back('/', 'Project deleted.');
+    }));
+    router.post('/sites/:id/config', action(async (req) => {
+        const { site } = await sites.load(req.viewer, req.params.id, 'maintain');
+        const headers = siteConfig.parseHeadersText(req.body.headers);
+        const redirects = siteConfig.parseRedirectsText(req.body.redirects);
+        await siteConfig.set(req.viewer, site, { headers, redirects, spa: req.body.spa === '1' });
+        return back(`/sites/${site.id}`, 'Site configuration saved.');
     }));
     router.post('/sites/:id/domains', action(async (req) => {
         const { domain } = await domains.add(req.viewer, req.params.id, { hostname: req.body.hostname });
@@ -186,8 +195,12 @@ function createDashboard(ctx) {
             }
             if (!checkCsrf(config, req.viewer, up.fields.csrf)) throw new ApiError(403, 'form.invalid', 'this form expired; reload the page and try again');
             try {
-                const r = await deploys.create(req.viewer, pre, up.entries, { source: up.source, activate: up.fields.activate === '1', notes: up.notes, traceparent: req.ov && req.ov.traceparent });
-                return res.redirect(303, back(`/deploys/${r.deploy.id}`, r.activated && r.activated.changed ? 'Deployed and activated.' : 'Deployed. Activate it from the site page.'));
+                // The form's choice: activate it, keep it ready, or make it the site's private preview.
+                const mode = ['activate', 'ready', 'preview'].includes(up.fields.mode) ? up.fields.mode : (up.fields.activate === '1' ? 'activate' : 'ready');
+                const r = await deploys.create(req.viewer, pre, up.entries, { source: up.source, activate: mode === 'activate', preview: mode === 'preview', notes: up.notes, traceparent: req.ov && req.ov.traceparent });
+                const done = r.preview ? 'Deployed as a preview: open it from the site page. Only members of this project can see it.'
+                    : r.activated && r.activated.changed ? 'Deployed and activated.' : 'Deployed. Activate it from the site page.';
+                return res.redirect(303, back(`/deploys/${r.deploy.id}`, done));
             } catch (err) {
                 if (err instanceof ApiError && err.extra && err.extra.deploy_id) return res.redirect(303, back(`/deploys/${err.extra.deploy_id}`, `Upload refused: ${err.message}`, 'error'));
                 throw err;

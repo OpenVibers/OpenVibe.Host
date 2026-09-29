@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenVibe certificate lifecycle: renew the wildcard lineage and issue certificates for verified custom domains, then re-render the tenant vhosts
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/launch.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root: certbot writes /etc/letsencrypt and ovhost re-renders and reloads nginx; neither runs as the
+# Host service user. Host itself never reads a key file (only stat()s fullchain.pem).
+User=root
+ExecStart=/usr/local/bin/ovhost certs renew --install
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
+UMask=0077
+# /usr and /boot read-only; /etc stays writable (certbot and the nginx install write there).
+ProtectSystem=full
+PrivateTmp=true
+NoNewPrivileges=true
