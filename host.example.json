@@ -1002,9 +1002,16 @@
           "HOST_WORKER": "off",
           "EVENTS_URL": "",
           "OV_OAUTH_CLIENT_SECRET": "",
+          "INDEXNOW_KEY": "",
           "HOST_STORAGE_DIR": "{tmp}/objects",
           "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
+        "requires": [
+          {
+            "file": "server/config.js",
+            "contains": "INDEXNOW_KEY"
+          }
+        ],
         "dirs": [
           "{tmp}/objects"
         ],

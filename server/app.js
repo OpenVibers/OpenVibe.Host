@@ -19,6 +19,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const contracts = require('openvibe-contracts');
 const sharedMetrics = require('openvibe-shared/metrics');
+const { createIndexNow } = require('openvibe-shared/indexnow');
 
 const configLib = require('./config');
 const { openStore } = require('./db');
@@ -73,13 +74,40 @@ async function createApp(opts = {}) {
     const blobs = createBlobStore(opts.storageDir || config.storageDir);
     require('./http/errors').setLogger(log);
 
+    // IndexNow (openvibe-shared/indexnow): created once at boot from INDEXNOW_KEY. Unset → off, nothing
+    // mounted, nothing sent; tests and drills never set it. The key file is served on every host (it is
+    // mounted below, before the tenant dispatch), and one module per public host keeps a tenant site's
+    // URL on its own host, which the protocol (and the module) requires. Tests inject a single object
+    // through opts.indexnow (a spy) and every ping goes through it.
+    const indexnow = opts.indexnow !== undefined ? opts.indexnow : createIndexNow({
+        host: config.baseUrl, key: config.indexnow.key, ...(opts.fetchImpl ? { fetch: opts.fetchImpl } : {}), log,
+    });
+    const indexnowHosts = new Map();
+    function indexnowFor(hostname) {
+        if (!indexnowHosts.has(hostname)) indexnowHosts.set(hostname, createIndexNow({
+            host: hostname, key: config.indexnow.key, ...(opts.fetchImpl ? { fetch: opts.fetchImpl } : {}), log,
+        }));
+        return indexnowHosts.get(hostname);
+    }
+    /**
+     * Queue a page that appeared, changed or left the index: one absolute URL per path on `hostname`,
+     * sent as a debounced batch. With an injected module (tests) it is used for every host. Never throws.
+     */
+    function announce(hostname, paths) {
+        if (!indexnow.enabled || !hostname) return;
+        const u = new URL(config.baseUrl);
+        const origin = `${u.protocol}//${hostname}${u.port ? `:${u.port}` : ''}`;
+        const target = opts.indexnow !== undefined ? indexnow : indexnowFor(hostname);
+        target.pingSoon(paths.map((p) => new URL(p, origin).href));
+    }
+
     const outbox = createHostOutbox({ db: store.db, config, fetchImpl: opts.fetchImpl, now: store.now, log });
     const access = createAccess({ store });
     const takedowns = createTakedowns({ store });
-    const projects = createProjects({ store, config, access, blobs, takedowns, log });
-    const sites = createSites({ store, config, access, projects, takedowns });
-    const deploys = createDeploys({ store, config, access, projects, sites, blobs, outbox, takedowns, log });
-    const domains = createDomains({ store, config, access, projects, sites, outbox, resolver: opts.resolver, log });
+    const projects = createProjects({ store, config, access, blobs, takedowns, log, indexnow: announce });
+    const sites = createSites({ store, config, access, projects, takedowns, indexnow: announce });
+    const deploys = createDeploys({ store, config, access, projects, sites, blobs, outbox, takedowns, log, indexnow: announce });
+    const domains = createDomains({ store, config, access, projects, sites, outbox, resolver: opts.resolver, log, indexnow: announce });
     const auth = opts.auth || createSsoClient({
         site: 'host',
         baseUrl: config.baseUrl,
@@ -99,7 +127,7 @@ async function createApp(opts = {}) {
     const uploadGate = createUploadGate(config.uploads.maxConcurrent);
     const worker = createWorker({ config, store, domains, blobs, outbox, log });
 
-    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, auth, viewers, tenant, worker, uploadGate, log };
+    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, auth, viewers, tenant, worker, uploadGate, indexnow, log };
 
     const app = express();
     app.disable('x-powered-by');
@@ -126,6 +154,11 @@ async function createApp(opts = {}) {
     app.locals.ctx = ctx;
 
     app.use(httpMetrics.middleware);
+
+    // GET /<key>.txt — the IndexNow key file (openvibe-shared/indexnow). Served before the host dispatch
+    // so it answers on the dashboard host and on every tenant host (an engine fetches it from the host a
+    // ping names). Mounted only with a key; it answers that one path and falls through for everything else.
+    if (indexnow.enabled) app.use(indexnow.keyFile);
 
     // ── Host dispatch: tenant sites never reach anything below ──
     // resolve/handle read the database (ADR-035: async), so a rejection here must reach the error

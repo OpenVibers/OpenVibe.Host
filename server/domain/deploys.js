@@ -23,8 +23,14 @@ const { principalOf, actorRef } = require('./access');
 const DAY = 24 * 3600 * 1000;
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${n} B`);
 
-function createDeploys({ store, config = null, access, projects, sites, blobs, outbox, takedowns, log = console }) {
+function createDeploys({ store, config = null, access, projects, sites, blobs, outbox, takedowns, log = console, indexnow = null }) {
     const { db } = store;
+    // IndexNow: a site's public page appeared, changed or left the index (never a sandbox site, whose
+    // responses carry X-Robots-Tag noindex). `indexnow(hostname, paths)` queues one debounced batch.
+    const announce = typeof indexnow === 'function' ? indexnow : () => {};
+    const announceSite = (site, project, paths = ['/', '/sitemap.xml']) => {
+        if (!project || project.environment !== 'sandbox') announce(sites.defaultHostname(site.name), paths);
+    };
     const q = {
         byId: db.prepare('SELECT * FROM host_deploys WHERE id = ?'),
         forSite: db.prepare("SELECT * FROM host_deploys WHERE site_id = ? AND state <> 'deleted' ORDER BY created_at DESC, seq DESC LIMIT ?"),
@@ -174,6 +180,7 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
             await writeLog(id, lines, now);
         });
         outbox.kick();
+        if (activated && activated.changed) announceSite(site, project);
         return { deploy: await get(id), log: await q.logFor.all(id), activated };
     }
 
@@ -199,16 +206,17 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
     }
 
     async function activate(viewer, id, { expectedActive, traceparent } = {}) {
-        const { deploy, site } = await load(viewer, id, 'deploy');
+        const { deploy, site, project } = await load(viewer, id, 'deploy');
         await takedowns.assertOpen(site);
         const out = await store.tx(async () => await switchPointer(viewer, site, deploy, 'activate', { expectedActive, traceparent }));
         outbox.kick();
+        if (out.changed) announceSite(site, project);
         return out;
     }
 
     /** To `deployId`, or else to the most recent previously active deploy that still exists. */
     async function rollback(viewer, siteId, { deployId, expectedActive, traceparent } = {}) {
-        const { site } = await sites.load(viewer, siteId, 'deploy');
+        const { site, project } = await sites.load(viewer, siteId, 'deploy');
         await takedowns.assertOpen(site);
         const out = await store.tx(async () => {
             const current = (await db.prepare('SELECT active_deploy_id FROM host_sites WHERE id = ?').get(site.id)).active_deploy_id;
@@ -230,6 +238,7 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
             return await switchPointer(viewer, site, target, 'rollback', { expectedActive, traceparent });
         });
         outbox.kick();
+        if (out.changed) announceSite(site, project);
         return out;
     }
 

@@ -45,7 +45,9 @@ function load(env = process.env) {
         trustProxy: env.TRUST_PROXY != null ? Number(env.TRUST_PROXY) : 1,   // nginx (realip) → Node
 
         // PostgreSQL (ADR-035): DATABASE_URL serves (PgBouncer), DATABASE_DIRECT_URL migrates (owner role).
-        db: { url: env.DATABASE_URL || '', directUrl: env.DATABASE_DIRECT_URL || '' },
+        // HOST_PGLITE_DIR: where the development-only embedded database lives (default data/pglite); tests
+        // point it at a temp directory so a spawned server gets a database of its own.
+        db: { url: env.DATABASE_URL || '', directUrl: env.DATABASE_DIRECT_URL || '', pgliteDir: env.HOST_PGLITE_DIR || '' },
         valkey: { url: env.VALKEY_URL || '', prefix: env.VALKEY_PREFIX || 'ov:host:' },
         // The SQLite file of releases before the switch: read once by scripts/migrate-to-postgres.js.
         dbPath: env.HOST_DB_PATH || './data/host.db',
@@ -64,6 +66,12 @@ function load(env = process.env) {
         cookies: { secure: env.COOKIE_SECURE ? env.COOKIE_SECURE === 'true' : isProduction },
         // Signs the dashboard form tokens (CSRF). Unset: a random per-process key.
         formSecret: env.HOST_FORM_SECRET || '',
+
+        // IndexNow (openvibe-shared/indexnow): a key makes search engines recrawl a tenant site the
+        // moment its active deploy appears, changes or goes away (the key file is served at
+        // /<key>.txt on every host). Unset → off: no key file, nothing sent. Tests and drills never
+        // set it (the drill sets INDEXNOW_KEY empty in host.example.json).
+        indexnow: { key: String(env.INDEXNOW_KEY || '').trim() },
 
         // OpenVibe.Events: the outbox relay runs only when EVENTS_URL and the client secret are set.
         events: {

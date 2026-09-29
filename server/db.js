@@ -36,10 +36,13 @@ const CHARTER_TABLES = ['host_projects', 'host_project_members', 'host_quotas', 
  */
 async function openDb(config, { log = console, registry } = {}) {
     if (!config.db.url) {
+        // HOST_PGLITE_DIR lets a test (or a second local process) point the embedded database somewhere
+        // of its own; production never takes this path.
+        const pgliteDir = config.db.pgliteDir || DEV_PGLITE;
         if (config.isProduction) throw new Error('DATABASE_URL is not set: production serves from PostgreSQL (OpenVibe.Host roles/data add-service.sh host)');
-        log.warn(`[Host] DATABASE_URL unset: embedded PGlite database in ${DEV_PGLITE} (development only, one process)`);
-        fs.mkdirSync(DEV_PGLITE, { recursive: true });
-        const db = createDb({ pglite: DEV_PGLITE, service: 'host', registry, log });
+        log.warn(`[Host] DATABASE_URL unset: embedded PGlite database in ${pgliteDir} (development only, one process)`);
+        fs.mkdirSync(pgliteDir, { recursive: true });
+        const db = createDb({ pglite: pgliteDir, service: 'host', registry, log });
         await db.migrate({ dir: MIGRATIONS, log });
         return db;
     }

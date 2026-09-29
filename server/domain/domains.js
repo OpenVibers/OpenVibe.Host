@@ -51,8 +51,10 @@ function defaultResolver(servers) {
     return { resolveTxt: (name) => r.resolveTxt(name) };
 }
 
-function createDomains({ store, config, access, projects, sites, outbox, resolver = null, log = console }) {
+function createDomains({ store, config, access, projects, sites, outbox, resolver = null, log = console, indexnow = null }) {
     const { db } = store;
+    // IndexNow: a verified custom domain starts serving the site; tell the engines its page is up.
+    const announce = typeof indexnow === 'function' ? indexnow : () => {};
     const dnsResolver = resolver || defaultResolver(config.domains.dnsServers);
     const reserved = firstPartyDomains(config);
     const q = {
@@ -165,6 +167,7 @@ function createDomains({ store, config, access, projects, sites, outbox, resolve
             throw err;
         }
         outbox.kick();
+        announce(domain.hostname, ['/', '/sitemap.xml']);
         return await q.byId.get(domain.id);
     }
 

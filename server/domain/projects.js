@@ -18,8 +18,9 @@ const PRINCIPAL_RE = /^(usr_[0-9A-HJKMNP-TV-Z]{26}|app:app_[0-9A-HJKMNP-TV-Z]{26
 const QUOTA_FIELDS = { storage_bytes: 'storageBytes', deploys_per_day: 'deploysPerDay', max_files: 'maxFiles', max_file_bytes: 'maxFileBytes', sites: 'sites', custom_domains: 'customDomains' };
 const DAY = 24 * 3600 * 1000;
 
-function createProjects({ store, config, access, blobs, takedowns, log = console }) {
+function createProjects({ store, config, access, blobs, takedowns, log = console, indexnow = null }) {
     const { db } = store;
+    const announce = typeof indexnow === 'function' ? indexnow : () => {};
     const q = {
         byId: db.prepare('SELECT * FROM host_projects WHERE id = ?'),
         forPrincipal: db.prepare(`SELECT p.*, m.role FROM host_projects p JOIN host_project_members m ON m.project_id = p.id
@@ -149,8 +150,9 @@ function createProjects({ store, config, access, blobs, takedowns, log = console
         await access.authorize(project, viewer, 'own');
         await takedowns.assertDeletable(viewer, { projectId: project.id });
         const now = store.now();
+        const doomed = await sites.listForProject(project.id);
         await store.tx(async () => {
-            for (const s of await sites.listForProject(project.id)) await sites.markDeleted(s, now);
+            for (const s of doomed) await sites.markDeleted(s, now);
             await db.prepare("UPDATE host_deploys SET state = 'deleted', deleted_at = ? WHERE project_id = ? AND state <> 'deleted'").run(now, project.id);
             await db.prepare("DELETE FROM host_deploy_files WHERE deploy_id IN (SELECT id FROM host_deploys WHERE project_id = ?)").run(project.id);
             await db.prepare('DELETE FROM host_blobs WHERE project_id = ?').run(project.id);
@@ -158,6 +160,8 @@ function createProjects({ store, config, access, blobs, takedowns, log = console
             await q.markDeleted.run(now, now, project.id);
         });
         try { blobs.removeProject(project.id); } catch (err) { log.warn('[Host] could not remove project objects:', err.message); }
+        // IndexNow: every site of the project left the index (never a sandbox project, which is noindex).
+        if (project.environment !== 'sandbox') for (const s of doomed) announce(`${s.name}.${config.sitesDomain}`, ['/', '/sitemap.xml']);
         return { deleted: true };
     }
 

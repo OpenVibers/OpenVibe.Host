@@ -21,7 +21,7 @@ const RESERVED = new Set([
 ]);
 const HOLD_MS = 30 * 24 * 3600 * 1000;
 
-function createSites({ store, config, access, projects, takedowns }) {
+function createSites({ store, config, access, projects, takedowns, indexnow = null }) {
     const { db } = store;
     const reserved = new Set([...RESERVED, ...config.sites.extraReservedNames]);
     const q = {
@@ -37,6 +37,11 @@ function createSites({ store, config, access, projects, takedowns }) {
     };
 
     const defaultHostname = (name) => `${name}.${config.sitesDomain}`;
+    // IndexNow: the site's public pages left the index (never a sandbox site, which is noindex).
+    const announce = typeof indexnow === 'function' ? indexnow : () => {};
+    const announceSite = (site, project) => {
+        if (!project || project.environment !== 'sandbox') announce(defaultHostname(site.name), ['/', '/sitemap.xml']);
+    };
 
     async function get(id) {
         return isId('site', id) ? await q.byId.get(id) || null : null;
@@ -105,6 +110,7 @@ function createSites({ store, config, access, projects, takedowns }) {
             freed = await deploys.collectGarbage(project.id);
         });
         deploys.unlinkBlobs(project.id, freed);
+        announceSite(site, project);
         return { deleted: true };
     }
 
