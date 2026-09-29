@@ -114,12 +114,19 @@ async function createApp(opts = {}) {
     app.use(httpMetrics.middleware);
 
     // ── Host dispatch: tenant sites never reach anything below ──
+    // resolve/handle read the database (ADR-035: async), so a rejection here must reach the error
+    // handler below: Express 4 does not catch a rejected async handler, which would hang the request.
     app.use(async (req, res, next) => {
-        const target = await tenant.resolve(req.headers.host);
-        req.hostTarget = target.kind;
-        if (target.kind === 'dashboard') return next();
-        if (target.kind === 'site') return await tenant.handle(req, res, target.site);
-        return tenant.unknownHost(req, res);
+        try {
+            const target = await tenant.resolve(req.headers.host);
+            req.hostTarget = target.kind;
+            if (target.kind === 'dashboard') return next();
+            if (target.kind === 'site') return await tenant.handle(req, res, target.site);
+            return tenant.unknownHost(req, res);
+        } catch (err) {
+            req.hostTarget = req.hostTarget || 'unknown';
+            return next(err);
+        }
     });
 
     app.use(contracts.http.middleware());
