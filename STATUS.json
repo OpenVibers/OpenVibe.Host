@@ -8,11 +8,11 @@
   "port": 4910,
   "domain": "openvibe.host",
   "tenantDomain": "*.openvibe.host",
-  "contracts": "openvibe-contracts v0.76.0",
+  "contracts": "openvibe-contracts v0.79.0",
   "packages": [
-    "openvibe-contracts v0.76.0",
-    "openvibe-sdk v0.20.3",
-    "openvibe-shared v1.27.0"
+    "openvibe-contracts v0.79.0",
+    "openvibe-sdk v0.25.0",
+    "openvibe-shared v2.0.0"
   ],
   "capabilities": [
     "host.site.manage",

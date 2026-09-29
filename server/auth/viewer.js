@@ -6,8 +6,8 @@
  *   { kind: 'anonymous' }
  *   { kind: 'user', subject: 'usr_…', staff, user }
  *       API: a Network user JWT in `Authorization: Bearer` (cookies are ignored on /api/v1).
- *       Dashboard: the __Host- session cookie (never the navbar's ov_token, which a tenant
- *       subdomain could plant). staff = the contracts staff map's staff.site.configure (ADR-022):
+ *       Dashboard: the ov_token session cookie (openvibe-sdk/sso; the shared navbar reads the same cookie).
+ *       staff = the contracts staff map's staff.site.configure (ADR-022):
  *       quotas, takedowns, and maintaining or deleting any project (never deploying to it).
  *   { kind: 'service', service: 'svc:codes' | 'app:app_…', claims, subject, env }
  *       A Network client-credentials token for audience openvibe.host. A first-party service
@@ -19,12 +19,19 @@
  * never downgraded to anonymous.
  */
 const contracts = require('openvibe-contracts');
-const { sessionToken, bearerToken, claimsToUser, decodeJwtPayload } = require('./sso');
+const { claimsToUser, decodeJwtPayload, parseCookies, COOKIES } = require('openvibe-sdk/sso');
+const { verifyServiceToken } = require('openvibe-sdk/auth');
 const { checkCapability } = require('./capabilities');
 
-const { ids, serviceAuth, http, staff: staffMap } = contracts;
+const { ids, http, staff: staffMap } = contracts;
 const PRINCIPAL_SUB = /^(svc|app|mod):/;
 const AUDIENCE = 'openvibe.host';
+
+/** API callers: only the Authorization header (cookies are never read on /api/v1). */
+const bearerToken = (req) => {
+    const h = String(req.headers.authorization || '');
+    return h.startsWith('Bearer ') ? h.slice(7).trim() || null : null;
+};
 
 class ViewerError extends Error {
     constructor(status, code, detail) { super(detail); this.status = status; this.code = code; }
@@ -32,15 +39,25 @@ class ViewerError extends Error {
 
 const ANONYMOUS = Object.freeze({ kind: 'anonymous', subject: null, staff: false });
 
-function createViewerResolver({ auth, config }) {
+function createViewerResolver({ auth, config, log = console }) {
     async function fromServiceToken(req, token) {
-        const publicKey = await auth.ensureKey();
-        if (!publicKey) throw new ViewerError(503, 'identity.unavailable', 'the Network signing key is not loaded yet');
+        // The SDK supplies the key (the shared JWKS client, through a Network outage); every token rule is the
+        // service's own pinned openvibe-contracts serviceAuth.verifyServiceToken.
         // acceptSandbox: Host takes sandbox tokens itself and confines them to sandbox projects
         // (projects.js/access.js answer 403 environment.sandbox_token elsewhere); openvibe-contracts
         // >= 0.26.0 refuses them before that unless the receiver opts in.
-        const r = serviceAuth.verifyServiceToken(token, { publicKey, issuer: config.networkUrl, audience: AUDIENCE, acceptSandbox: true });
-        if (!r.ok) throw new ViewerError(401, r.code, r.reason);
+        const r = await verifyServiceToken(token, {
+            jwks: `${config.networkInternalUrl}/api/.well-known/jwks`,
+            issuer: config.networkUrl,
+            audience: AUDIENCE,
+            contracts,
+            acceptSandbox: true,
+            log,
+        });
+        if (!r.ok) {
+            if (r.code === 'token.unavailable') throw new ViewerError(503, 'identity.unavailable', 'the Network signing key is not loaded yet');
+            throw new ViewerError(401, r.code, r.reason);
+        }
         const sub = r.claims.sub;
         if (sub.startsWith('mod:')) throw new ViewerError(403, 'principal.not_allowed', 'mods cannot manage hosted sites');
         const subjectHeader = req.get('x-ov-subject');
@@ -78,7 +95,7 @@ function createViewerResolver({ auth, config }) {
     }
 
     async function resolveDashboard(req) {
-        const token = sessionToken(req, config);
+        const token = parseCookies(req)[COOKIES.access] || null;
         if (!token) return ANONYMOUS;
         return (await fromUserToken(token)) || ANONYMOUS;
     }

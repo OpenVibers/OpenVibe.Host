@@ -81,11 +81,16 @@ const ORIGIN = 'https://openvibe.host';
         for (const p of ['/terms', '/privacy', '/dmca']) assert.strictEqual((await t.api('GET', p)).status, 200, p);
     });
 
-    await check('a planted ov_token cookie (e.g. set by a tenant subdomain) is not a session', async () => {
-        const r = await t.api('GET', '/', { headers: { cookie: `ov_token=${t.network.userToken(alice)}` } });
+    await check('the dashboard session is the verified ov_token cookie; a forged ov_token is not a session', async () => {
+        // openvibe-sdk/sso keeps the session in the ov_token cookie (the shared navbar reads the same one).
+        const forged = 'not.a.jwt';
+        const r = await t.api('GET', '/', { headers: { cookie: `ov_token=${forged}` } });
         assert.match(r.text, /Sign in with OpenVibe/);
-        const me = await t.api('GET', '/auth/me', { headers: { cookie: `ov_token=${t.network.userToken(alice)}` } });
+        const me = await t.api('GET', '/auth/me', { headers: { cookie: `ov_token=${forged}` } });
         assert.strictEqual(me.status, 401);
+        // /api/v1 never reads a cookie: only a Bearer token authenticates.
+        const api = await t.api('GET', '/api/v1/projects', { headers: { cookie: `ov_token=${t.network.userToken(alice)}` } });
+        assert.strictEqual(api.status, 401);
     });
 
     let projectId, siteId;

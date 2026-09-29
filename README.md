@@ -49,10 +49,10 @@ Stage A adds a few safety rules of its own:
 
 ## Depends on
 
-- OpenVibe.Contracts (`openvibe-contracts` v0.76.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
+- OpenVibe.Contracts (`openvibe-contracts` v0.79.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
-- OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.20.3 transactional outbox (openvibe-sdk/limits for the per-actor limits).
-- `openvibe-shared` v1.27.0 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
+- OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.25.0 transactional outbox (openvibe-sdk/limits for the per-actor limits).
+- `openvibe-shared` v2.0.0 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
 - OpenVibe.Media: not yet. The roadmap stores artifacts "through Media where practical"; Stage B keeps them on local disk for now (see [Not done yet](#not-done-yet-stage-b)).
 
 ## Capabilities
@@ -309,7 +309,7 @@ Activation is one PostgreSQL transaction: a compare-and-set on the site's `activ
 
 ### Events
 
-Through the `openvibe-sdk` v0.20.3 transactional outbox (`event_outbox`), inside the transaction that makes the change:
+Through the `openvibe-sdk` v0.25.0 transactional outbox (`event_outbox`), inside the transaction that makes the change:
 
 | Event | When | Payload |
 |---|---|---|
@@ -324,7 +324,7 @@ These tenant events have subject `deploy` and visibility `internal`; `host.deplo
 
 ### Dashboard
 
-Server-rendered pages with the shared chrome (`openvibe-shared` v1.27.0: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
+Server-rendered pages with the shared chrome (`openvibe-shared` v2.0.0: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
 
 ### Observability
 
@@ -335,7 +335,7 @@ Server-rendered pages with the shared chrome (`openvibe-shared` v1.27.0: navbar 
 - OpenVibe.Network OAuth client **`host`**, redirect `https://openvibe.host/auth/callback`, scope `profile theme`. The same client is the service principal `svc:host`.
 - Grant `[host, events.event.publish, openvibe.events]`.
 - Callers of Host get `[<client>, host.site.manage | host.deploy.create | host.domain.manage, openvibe.host]` as needed. None exist yet (Codes, the expected first caller, is not built).
-- Released in `openvibe-contracts` v0.76.0 (CI contract check blocking); v0.32.0 adds the takedown routes to `host.site.manage.implementedBy`.
+- Released in `openvibe-contracts` v0.79.0 (CI contract check blocking); v0.32.0 adds the takedown routes to `host.site.manage.implementedBy`.
 
 ### Deploying Stage B (for the operator)
 

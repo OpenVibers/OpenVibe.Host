@@ -54,7 +54,7 @@ async function startNetwork() {
         return { subject: ids.newId('user'), username, display_name: extra.display_name || username, role: extra.role || 'user' };
     }
     function userToken(u) {
-        return jwt.sign({ sub: String(Math.floor(Math.random() * 1e6)), subject_id: u.subject, username: u.username, display_name: u.display_name, role: u.role || 'user' }, privatePem, { algorithm: 'RS256', issuer, expiresIn: '1h' });
+        return jwt.sign({ sub: String(Math.floor(Math.random() * 1e6)), subject_id: u.subject, username: u.username, display_name: u.display_name, role: u.role || 'user' }, privatePem, { algorithm: 'RS256', issuer, audience: ['openvibe.network', 'openvibe.host'], expiresIn: '1h' });
     }
     /** A FedCM ID assertion as Network's /fedcm/assertion signs it (same key and issuer, aud = the RP origin). */
     function fedcmAssertion(u, origin, nonce = 'n0nce') {

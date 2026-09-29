@@ -3,7 +3,7 @@
 // newline characters from a URL and read a backslash as "/", so "/<TAB>/evil.com" is "//evil.com" to them;
 // until 2026-09-26 it got through here.
 const assert = require('assert');
-const { sanitizeNext } = require('../server/auth/sso');
+const { sanitizeNext } = require('openvibe-sdk/sso');
 
 const config = { baseUrl: 'https://site.openvibe.test', networkUrl: 'https://openvibe.network' };
 const home = (v) => {

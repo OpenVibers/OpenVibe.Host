@@ -30,7 +30,7 @@ const { createProjects } = require('./domain/projects');
 const { createSites } = require('./domain/sites');
 const { createDeploys } = require('./domain/deploys');
 const { createDomains } = require('./domain/domains');
-const { createAuthClient, createAuthRoutes } = require('./auth/sso');
+const { createSsoClient } = require('openvibe-sdk/sso');
 const { createViewerResolver } = require('./auth/viewer');
 const { createTenantServer } = require('./http/tenant');
 const { createUploadGate } = require('./http/upload');
@@ -62,7 +62,7 @@ const DASHBOARD_CSP = {
 const DASHBOARD_CSP_HEADER = Object.entries(DASHBOARD_CSP).map(([k, v]) => `${k} ${v.join(' ')}`).join('; ');
 
 /**
- * opts: config, store | dbPath, now (clock), fetchImpl, auth (a createAuthClient-like object),
+ * opts: config, store | dbPath, now (clock), fetchImpl, auth (an openvibe-sdk/sso client),
  *       resolver ({ resolveTxt }), log
  */
 async function createApp(opts = {}) {
@@ -80,8 +80,21 @@ async function createApp(opts = {}) {
     const sites = createSites({ store, config, access, projects, takedowns });
     const deploys = createDeploys({ store, config, access, projects, sites, blobs, outbox, takedowns, log });
     const domains = createDomains({ store, config, access, projects, sites, outbox, resolver: opts.resolver, log });
-    const auth = opts.auth || createAuthClient(config);
-    const viewers = createViewerResolver({ auth, config });
+    const auth = opts.auth || createSsoClient({
+        site: 'host',
+        baseUrl: config.baseUrl,
+        clientId: config.oauth.clientId,
+        clientSecret: config.oauth.clientSecret,
+        redirectUri: config.oauth.redirectUri,
+        scope: config.oauth.scope,
+        networkUrl: config.networkUrl,
+        networkInternalUrl: config.networkInternalUrl,
+        issuer: config.networkUrl,
+        secureCookies: config.cookies.secure,
+        log,
+        ...(opts.fetchImpl ? { fetch: opts.fetchImpl } : {}),
+    });
+    const viewers = createViewerResolver({ auth, config, log });
     const tenant = createTenantServer({ store, config, blobs, takedowns, log });
     const uploadGate = createUploadGate(config.uploads.maxConcurrent);
     const worker = createWorker({ config, store, domains, blobs, outbox, log });
@@ -146,7 +159,7 @@ async function createApp(opts = {}) {
     release.mount(app, { registry: registry });
     // GET /limits.json: the developer limits enforced here, from config (WS-N task 7; Codes renders them).
     require('./limits').mountLimits(app, config);
-    const readiness = createHostReadiness({ store, blobs, auth, outbox, release: release.release, minFreeBytes: () => config.uploads.minFreeBytes, valkey: ctx.valkey });
+    const readiness = createHostReadiness({ store, blobs, outbox, jwksUrl: `${config.networkInternalUrl}/api/.well-known/jwks`, release: release.release, minFreeBytes: () => config.uploads.minFreeBytes, valkey: ctx.valkey });
     app.get('/api/ready', readiness.handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));
     // The dashboard host: only the public front page and the legal pages are crawlable. Tenant sites
@@ -159,7 +172,7 @@ async function createApp(opts = {}) {
 
     // ── Sign-in (OAuth2 client of OpenVibe.Network) ─────────
     app.use('/auth/', rateLimit({ windowMs: 15 * 60_000, max: 60, standardHeaders: true, legacyHeaders: false }));
-    app.use('/auth', createAuthRoutes(config, auth));
+    app.use('/auth', auth.router(express));
     { const legal = require('openvibe-shared/legal'); app.get(legal.PATHS, legal.handler({ id: 'host', service: 'host', host: 'openvibe.host', name: 'OpenVibe.Host', profile: 'ugc' })); }
 
     // ── Static assets (content-hashed ?v= → immutable) ──────

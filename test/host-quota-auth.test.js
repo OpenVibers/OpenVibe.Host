@@ -194,7 +194,7 @@ const DAY = 24 * 3600 * 1000;
         assert.strictEqual(list.status, 401, list.text);
         const del = await t.api('DELETE', `/api/v1/projects/${project.id}`, { as: assertion });
         assert.strictEqual(del.status, 401, del.text);
-        const dash = await t.request({ method: 'GET', host: 'openvibe.host', path: '/', headers: { cookie: `ov_host_session=${assertion}` } });
+        const dash = await t.request({ method: 'GET', host: 'openvibe.host', path: '/', headers: { cookie: `ov_token=${assertion}` } });
         assert.ok(!/Your projects/.test(dash.text), 'the dashboard does not accept it as a session either');
     });
 

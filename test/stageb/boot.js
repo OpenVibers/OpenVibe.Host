@@ -65,7 +65,6 @@ async function boot(opts = {}) {
     async function start() {
         const config = configLib.load(env);
         built = await createApp({ config, store: createStore(testdb.db, { now: clock.now }), now: clock.now, log: quiet, resolver, fetchImpl: opts.fetchImpl });
-        await built.ctx.auth.ensureKey();
         server = await new Promise((resolve) => { const s = http.createServer(built.app); s.listen(0, '127.0.0.1', () => resolve(s)); });
         t.port = server.address().port;
         t.app = built.app;
@@ -85,7 +84,7 @@ async function boot(opts = {}) {
             if (o.host !== undefined) headers.host = o.host;
             if (o.as && typeof o.as === 'object') headers.authorization = `Bearer ${network.userToken(o.as)}`;
             if (typeof o.as === 'string') headers.authorization = `Bearer ${o.as}`;
-            if (o.session) headers.cookie = [headers.cookie, `ov_host_session=${network.userToken(o.session)}`].filter(Boolean).join('; ');
+            if (o.session) headers.cookie = [headers.cookie, `ov_token=${network.userToken(o.session)}`].filter(Boolean).join('; ');
             let body = o.body;
             if (o.json !== undefined) { body = JSON.stringify(o.json); headers['content-type'] = 'application/json'; }
             if (o.form) { body = new URLSearchParams(o.form).toString(); headers['content-type'] = 'application/x-www-form-urlencoded'; }

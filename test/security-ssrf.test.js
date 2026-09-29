@@ -63,10 +63,7 @@ const { boot, check, done } = require('./stageb/boot');
         assert.deepStrictEqual(odd, [], 'a connection went to a tenant-named host');
     });
 
-    await check('ratchet: every file in server/ that makes an outbound request itself is reviewed', () => {
-        const REVIEWED = {
-            'server/auth/sso.js': 'Network JWKS, OAuth token and revoke (configured)',
-        };
+    await check('ratchet: no file in server/ makes an outbound request of its own (they go through openvibe-sdk)', () => {
         const root = path.join(__dirname, '..');
         const found = [];
         const walk = (dir) => {
@@ -80,8 +77,7 @@ const { boot, check, done } = require('./stageb/boot');
             }
         };
         walk(path.join(root, 'server'));
-        assert.ok(found.length >= 1, `the scan finds the known site (${found.join(', ')})`);
-        assert.deepStrictEqual(found.filter((f) => !REVIEWED[f]).sort(), [], 'a new outbound request site: a tenant-chosen host goes through openvibe-shared/egress; then add the file here with where it goes');
+        assert.deepStrictEqual(found.sort(), [], 'a new outbound request site: a tenant-chosen host goes through openvibe-shared/egress; then add the file here with where it goes');
     });
 
     await t.close();

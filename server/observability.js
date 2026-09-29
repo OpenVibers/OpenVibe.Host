@@ -10,9 +10,10 @@
  *   domain_checks   optional  no custom domain is stuck: pending checks are running
  */
 const { createReadiness } = require('openvibe-shared/ready');
+const { jwksClient } = require('openvibe-sdk/auth');
 const { CHARTER_TABLES } = require('./db');
 
-function createHostReadiness({ store, blobs, auth, outbox, release = null, minFreeBytes = () => 0, valkey = null }) {
+function createHostReadiness({ store, blobs, outbox, jwksUrl = null, release = null, minFreeBytes = () => 0, valkey = null }) {
     const { db } = store;
     return createReadiness({
         service: 'host',
@@ -43,8 +44,10 @@ function createHostReadiness({ store, blobs, auth, outbox, release = null, minFr
             {
                 name: 'network_jwks', required: false,
                 check: () => {
-                    if (auth.client.publicKey) return true;
-                    auth.ensureKey().catch(() => {});
+                    if (!jwksUrl) return { skipped: 'no Network JWKS URL configured' };
+                    const client = jwksClient(jwksUrl);
+                    if (client.status().ready) return true;
+                    client.refresh().catch(() => {});
                     return 'Network signing key not loaded yet: sign-in and service calls are unavailable';
                 },
             },
