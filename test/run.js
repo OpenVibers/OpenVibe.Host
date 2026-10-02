@@ -12,4 +12,6 @@
  * ○ and not counted as passed (openvibe-shared/test-runner).
  */
 'use strict';
-require('openvibe-shared/test-runner').main({ dir: __dirname, timeoutMs: 60000, pad: 32, parallel: 1 });
+// 180 s per file: d41-proof.test.js runs scripts/d41-proof.sh with a node stub per systemctl/ovhost call
+// (hundreds of process starts, ~13 s of CPU), which takes 60–120 s of wall time on a loaded machine.
+require('openvibe-shared/test-runner').main({ dir: __dirname, timeoutMs: 180000, pad: 32, parallel: 1 });
