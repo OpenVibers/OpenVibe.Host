@@ -8,8 +8,9 @@
  * object sweep).
  */
 const { createApp } = require('./app');
+const { gracefulStop } = require('openvibe-sdk/service');
 
-(async () => {
+async function main() {
 const { app, ctx } = await createApp();
 const { config } = ctx;
 
@@ -22,17 +23,27 @@ server.requestTimeout = 10 * 60_000;   // large uploads on slow links
 ctx.outbox.start();
 ctx.worker.start();
 
-function shutdown(signal) {
-    console.log(`[Host] ${signal}: closing`);
-    ctx.worker.stop();
-    server.close(async () => {
-        try { await ctx.outbox.stop(); } catch { /* best effort */ }
-        try { ctx.stopMetrics(); } catch { /* best effort */ }
-        try { await ctx.store.close(); } catch { /* already closed */ }
-        process.exit(0);
-    });
-    setTimeout(() => process.exit(0), 5000).unref();
+// Signals belong to the kit: the worker stops taking new work, requests in flight drain for at most
+// 4000 ms (a shorter drain than the 10 min upload timeout cuts an upload exactly as the old 5 s
+// exit-0 timer did; Host's manifest declares lifecycle.shutdown.deadlineSeconds 5), then the outbox,
+// metrics and database close, each best effort, and the process exits 0.
+const { stop } = gracefulStop({
+    name: 'Host',
+    server,
+    stop: [() => ctx.worker.stop()],
+    close: [
+        () => ctx.outbox.stop(),
+        () => ctx.stopMetrics(),
+        () => ctx.store.close(),
+    ],
+    drainMs: 4000,
+    deadlineMs: 5000,
+    deadlineExitCode: 0,
+});
+return { app, server, shutdown: stop };
 }
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
-})().catch((err) => { console.error('[Host] failed to start:', err); process.exit(1); });
+
+if (require.main === module) {
+    main().catch((err) => { console.error('[Host] failed to start:', err); process.exit(1); });
+}
+module.exports = { main };
