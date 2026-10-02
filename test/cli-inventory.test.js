@@ -34,6 +34,10 @@ runTests([
         assert.strictEqual(inv.services.live.codeDir, '/opt/openvibe.live/current');
         assert.strictEqual(inv.services.live.release.git, '/opt/openvibe.live/repo');
         assert.strictEqual(inv.services.openre.release.git, '/opt/openre.stream/repo');
+        assert.deepStrictEqual(inv.services.sites.nginx.skipVhosts, ['openvibe.bot.conf']);
+        assert.deepStrictEqual([inv.services.bot.nginx.vhost, inv.services.bot.nginx.repoVhost, inv.services.bot.nginx.installOnDeploy], ['openvibe.bot.conf', 'deploy/nginx/openvibe.bot.conf', true]);
+        assert.strictEqual(inv.services.bot.installUnits, true);
+        assert.strictEqual(inv.services.bot.enableUnits, true);
         const text = JSON.stringify(raw);
         assert.ok(!/(sk_|ghp_|BEGIN [A-Z ]*PRIVATE KEY|password\s*[:=]\s*\S)/i.test(text), 'no secret values in the example');
     }),
@@ -63,6 +67,7 @@ runTests([
         const base = { owner: 'ubuntu' };
         assert.throws(() => normalise({ services: { x: { ...base, repo: 'opt/x' } } }), /absolute path/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', nginx: { vhost: '../../etc/passwd' } } } }), /file name/);
+        assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', nginx: { skipVhosts: ['../../etc/passwd'] } } } }), /vhost file names/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', ready: { url: 'http://evil.example/ready' } } } }), /loopback/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', protected: { kind: 'sqlite-count', db: '/d.db', sql: 'DELETE FROM vods' } } } }), /SELECT/);
         assert.throws(() => normalise({ services: { 'X Y': { ...base, repo: '/opt/x' } } }), /service id/);

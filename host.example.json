@@ -930,7 +930,10 @@
       ],
       "nginx": {
         "repoVhosts": "deploy/nginx/*.conf",
-        "installOnDeploy": true
+        "installOnDeploy": true,
+        "skipVhosts": [
+          "openvibe.bot.conf"
+        ]
       },
       "announce": {
         "releaseFiles": "dist/*/release.json"
@@ -2110,8 +2113,10 @@
       }
     },
     "bot": {
-      "_note": "Not deployed yet; unit, env file, port and database from OpenVibe.Bot's deploy/ directory.",
+      "_note": "Not deployed yet. Bot owns openvibe.bot.conf: deploy bot installs its proxy vhost after Sites skips that filename. Before the first deploy, provision bot.env, the database and the existing TLS certificate; use ovhost deploy bot --restart if the checkout is already current so it installs and enables the service unit. Keep Sites on its ovhost deploy path (its legacy fallback still installs every vhost).",
       "repo": "/opt/openvibe.bot",
+      "installUnits": true,
+      "enableUnits": true,
       "units": [
         "openvibe-bot.service"
       ],
@@ -2123,6 +2128,11 @@
         "required": "from-example"
       },
       "port": 4630,
+      "nginx": {
+        "vhost": "openvibe.bot.conf",
+        "repoVhost": "deploy/nginx/openvibe.bot.conf",
+        "installOnDeploy": true
+      },
       "ready": {
         "url": "http://127.0.0.1:4630/api/ready",
         "timeoutSeconds": 30
