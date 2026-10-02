@@ -9,13 +9,13 @@ const assert = require('assert');
 const { scenario, test, runTests } = require('./helpers');
 
 runTests([
-    test('logs runs journalctl for every unit of the service, default tail 100', async () => {
+    test('logs runs journalctl for every unit of the service, default tail 200', async () => {
         const host = scenario();
         host.journalctl = (args) => ({ stdout: `journal of ${args.filter((a) => a.endsWith('.service')).join(' ')}\n` });
         const r = await host.cli('logs', 'tools');
         assert.strictEqual(r.code, 0, r.out);
         assert.deepStrictEqual(host.journalctlCalls, [{
-            args: ['-u', 'openvibe-tools.service', '-u', 'openvibe-tools-maps.service', '-n', '100', '--no-pager'],
+            args: ['-u', 'openvibe-tools.service', '-u', 'openvibe-tools-maps.service', '-n', '200', '--no-pager', '-o', 'short-iso'],
             as: null,
             privileged: true,
         }]);
@@ -26,11 +26,15 @@ runTests([
         const host = scenario();
         let r = await host.cli('logs', 'live', '--tail', '5');
         assert.strictEqual(r.code, 0, r.out);
-        assert.deepStrictEqual(host.journalctlCalls[0].args, ['-u', 'openvibe-live.service', '-n', '5', '--no-pager']);
+        assert.deepStrictEqual(host.journalctlCalls[0].args, ['-u', 'openvibe-live.service', '-n', '5', '--no-pager', '-o', 'short-iso']);
         host.journalctlCalls.length = 0;
         r = await host.cli('logs', 'live', '--tail=42');
         assert.strictEqual(r.code, 0, r.out);
-        assert.deepStrictEqual(host.journalctlCalls[0].args, ['-u', 'openvibe-live.service', '-n', '42', '--no-pager']);
+        assert.deepStrictEqual(host.journalctlCalls[0].args, ['-u', 'openvibe-live.service', '-n', '42', '--no-pager', '-o', 'short-iso']);
+        host.journalctlCalls.length = 0;
+        r = await host.cli('logs', 'live', '--tail', '2000'); // the maximum
+        assert.strictEqual(r.code, 0, r.out);
+        assert.deepStrictEqual(host.journalctlCalls[0].args, ['-u', 'openvibe-live.service', '-n', '2000', '--no-pager', '-o', 'short-iso']);
     }),
 
     test('logs prints journal output verbatim, newest last', async () => {
@@ -51,16 +55,13 @@ runTests([
         assert.deepStrictEqual(j, { service: 'live', units: ['openvibe-live.service'], tail: 3, code: 0, lines: ['one', 'two'] });
     }),
 
-    test('logs validates --tail: whole number from 1, journalctl never runs', async () => {
+    test('logs validates --tail: whole number from 1 to 2000, journalctl never runs', async () => {
         const host = scenario();
-        for (const bad of ['0', '-1', 'abc', '1.5', '']) {
+        for (const bad of ['0', '-1', 'abc', '1.5', '', '2001']) {
             const r = await host.cli('logs', 'live', '--tail', bad);
             assert.strictEqual(r.code, 1, `${bad}: ${r.out}`);
-            assert.match(r.out, /--tail must be a whole number from 1 to 100000/);
+            assert.match(r.out, /--tail must be a whole number from 1 to 2000/);
         }
-        const r = await host.cli('logs', 'live', '--tail', '100001');
-        assert.strictEqual(r.code, 1, r.out);
-        assert.match(r.out, /--tail must be a whole number from 1 to 100000/);
         assert.deepStrictEqual(host.journalctlCalls, []);
     }),
 
