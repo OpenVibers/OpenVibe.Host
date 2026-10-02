@@ -123,7 +123,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
     // ── git ──
     function newSha(seed) { seq += 1; return crypto.createHash('sha1').update(`${seq}:${seed}`).digest('hex'); }
     host.createRepo = (repoPath, { owner = 'ubuntu', branch = 'main', remote = 'origin', worktree = true } = {}) => {
-        const repo = { path: repoPath, owner, branch, remote, commits: new Map(), head: null, remoteRefs: {}, worktrees: new Set() };
+        const repo = { path: repoPath, owner, branch, remote, commits: new Map(), head: null, remoteRefs: {}, worktrees: new Set(), skipWorktree: new Set(), indexRemoved: new Set() };
         repos.set(repoPath, repo);
         ensureDir(repoPath, owner);
         files.get(path.resolve(repoPath)).owner = owner;
@@ -147,7 +147,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
     };
     /** `git worktree add --detach <dir> <sha>`: a checkout sharing the clone's commits. */
     function addWorktree(parent, dir, sha, owner) {
-        const wt = { path: dir, owner, branch: 'HEAD', remote: parent.remote, commits: parent.commits, head: null, remoteRefs: parent.remoteRefs, worktreeOf: parent.path };
+        const wt = { path: dir, owner, branch: 'HEAD', remote: parent.remote, commits: parent.commits, head: null, remoteRefs: parent.remoteRefs, worktreeOf: parent.path, skipWorktree: new Set(), indexRemoved: new Set() };
         wt.checkout = (s2) => {
             const old = wt.head ? wt.commits.get(wt.head).files : {};
             const next = wt.commits.get(s2).files;
@@ -210,8 +210,22 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         }
         case 'status': {
             const head = repo.commits.get(repo.head).files;
-            const dirty = Object.entries(head).filter(([f, c]) => host.read(path.join(repo.path, f)) !== c).map(([f]) => ` M ${f}`);
+            const dirty = Object.entries(head)
+                .filter(([f, c]) => !repo.skipWorktree.has(f) && !repo.indexRemoved.has(f) && host.read(path.join(repo.path, f)) !== c)
+                .map(([f]) => ` M ${f}`);
             return ok(dirty.length ? `${dirty.join('\n')}\n` : '');
+        }
+        case 'ls-files': {
+            // `-v`: the skip-worktree bit is the uppercase 'S' tag (others are lowercase).
+            const head = repo.commits.get(repo.head).files;
+            const lines = Object.keys(head).filter((f) => !repo.indexRemoved.has(f)).map((f) => `${repo.skipWorktree.has(f) ? 'S' : 'H'} ${f}`);
+            return ok(lines.length ? `${lines.join('\n')}\n` : '');
+        }
+        case 'update-index': {
+            const skip = rest.includes('--skip-worktree') ? true : rest.includes('--no-skip-worktree') ? false : null;
+            if (skip == null) return fail('fake git: update-index supports --skip-worktree/--no-skip-worktree');
+            for (const f of rest.slice(rest.indexOf('--') + 1)) { if (skip) repo.skipWorktree.add(f); else repo.skipWorktree.delete(f); }
+            return ok();
         }
         case 'fetch': return ok();
         case 'diff': {
@@ -232,10 +246,28 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             const c = repo.commits.get(resolveRef(repo, ref));
             return c && file in c.files ? ok(c.files[file]) : fail(`fatal: path '${file}' does not exist`);
         }
+        case 'rm': {
+            // `git rm --cached -q -r -- <path>`: the index only, the working tree is untouched.
+            if (!rest.includes('--cached')) return fail('fake git: rm without --cached would remove the working tree');
+            for (const f of rest.slice(rest.indexOf('--') + 1)) { repo.indexRemoved.add(f); repo.skipWorktree.delete(f); }
+            return ok();
+        }
         case 'merge': {
             const sha = resolveRef(repo, rest[rest.length - 1]);
             if (!isAncestor(repo, repo.head, sha)) return fail('fatal: Not possible to fast-forward, aborting.');
+            // A local change to a path the incoming tree DELETES blocks the merge — the real git
+            // behavior behind the tracked node_modules symlink npm replaced with a directory — unless
+            // the path has left the index (`git rm --cached`). skip-worktree does not help.
+            const headFiles = repo.commits.get(repo.head).files;
+            const nextFiles = repo.commits.get(sha).files;
+            for (const f of Object.keys(headFiles)) {
+                if (f in nextFiles || repo.indexRemoved.has(f)) continue;
+                if (host.read(path.join(repo.path, f)) === headFiles[f]) continue;
+                return fail(`error: Your local changes to the following files would be overwritten by merge:\n\t${f}\nPlease commit your changes or stash them before you merge.`);
+            }
             repo.checkout(sha);
+            repo.indexRemoved.clear();
+            repo.skipWorktree.clear();
             return ok();
         }
         case 'reset': repo.checkout(resolveRef(repo, rest[rest.length - 1])); return ok();
