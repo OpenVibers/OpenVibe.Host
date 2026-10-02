@@ -19,6 +19,7 @@ const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 const contracts = require('openvibe-contracts');
 const sharedMetrics = require('openvibe-shared/metrics');
+const cache = require('openvibe-shared/cache-policy');
 const { createIndexNow } = require('openvibe-shared/indexnow');
 
 const configLib = require('./config');
@@ -202,9 +203,9 @@ async function createApp(opts = {}) {
     // never reach this app's routes; http/tenant.js serves a deploy's own robots.txt/sitemap.xml, or a
     // generated one when the deploy ships none.
     const legalPaths = require('openvibe-shared/legal').PATHS;
-    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', 'public, max-age=3600')
+    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 }))
         .send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
-    app.get('/sitemap.xml', (_req, res) => res.type('application/xml').set('Cache-Control', 'public, max-age=3600')
+    app.get('/sitemap.xml', (_req, res) => res.type('application/xml').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 }))
         .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${['/', ...legalPaths].map((p) => `  <url><loc>${config.baseUrl}${p}</loc></url>`).join('\n')}\n</urlset>\n`));
 
     // ── Sign-in (OAuth2 client of OpenVibe.Network) ─────────
@@ -220,7 +221,7 @@ async function createApp(opts = {}) {
         setHeaders(res, filePath) {
             const rel = path.relative(PUBLIC_DIR, filePath).split(path.sep).join('/');
             const v = res.req && res.req.query && res.req.query.v;
-            res.setHeader('Cache-Control', v && v === assetVersion(rel) ? 'public, max-age=31536000, immutable' : 'public, max-age=300');
+            res.setHeader('Cache-Control', cache.assetHeaders(rel, { hashed: !!v && v === assetVersion(rel) }));
         },
     }));
 
@@ -232,14 +233,14 @@ async function createApp(opts = {}) {
     // dispatch above sends every tenant host to tenant.handle, so this never answers on a public host),
     // session-authenticated, membership-checked in tenant.preview, noindex and never cached.
     app.use('/preview', rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), viewers.middleware('dashboard'), (req, res, next) => {
-        res.set('Cache-Control', 'private, no-store');
+        res.set('Cache-Control', cache.htmlHeaders({ private: true }));
         Promise.resolve(tenant.preview(req, res)).catch(next);
     });
 
     // ── Dashboard ───────────────────────────────────────────
     app.use(rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), createDashboard(ctx));
     app.use((req, res) => {
-        res.set('Cache-Control', 'private, no-store');
+        res.set('Cache-Control', cache.htmlHeaders({ private: true }));
         if (req.path.startsWith('/api/')) return contracts.http.sendProblem(res, 404, 'route.not_found', { detail: 'Not found', ctx: req.ov });
         res.status(404).type('html').send(renderPage({ title: 'Not found', body: pages.errorPage({ status: 404, message: 'There is no page at this address.' }), viewer: req.viewer, config, path: req.originalUrl }));
     });
@@ -248,7 +249,7 @@ async function createApp(opts = {}) {
     app.use((err, req, res, _next) => {
         log.error('[Host]', err && err.stack ? err.stack : err);
         if (res.headersSent) return;
-        res.set('Cache-Control', 'private, no-store');
+        res.set('Cache-Control', cache.htmlHeaders({ private: true }));
         if (req.path.startsWith('/api/')) return contracts.http.sendProblem(res, 500, 'internal.error', { detail: 'Internal error', ctx: req.ov });
         res.status(500).type('text/plain').send('Something went wrong on our side. Try again in a moment.');
     });
