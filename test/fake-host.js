@@ -435,6 +435,13 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             case 'systemctl': return systemctlCmd(args);
             case 'nginx': return { stdout: '', ...host.nginxTest() };
             case 'rm': rmTree(args[args.length - 1]); return { code: 0, stdout: '', stderr: '' };
+            case 'cat': {
+                // Reads as opts.as: another user's file needs the world-read bit.
+                const e = get(args[args.length - 1]);
+                if (!e || e.type !== 'file') return { code: 1, stdout: '', stderr: 'cat: No such file or directory' };
+                if (opts.as && opts.as !== 'root' && e.owner !== opts.as && !(e.mode & 0o004)) return { code: 1, stdout: '', stderr: 'cat: Permission denied' };
+                return { code: 0, stdout: String(e.content), stderr: '' };
+            }
             case 'install': {
                 const src = args[args.length - 2];
                 const dest = args[args.length - 1];

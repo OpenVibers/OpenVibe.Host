@@ -150,4 +150,45 @@ runTests([
         assert.doesNotMatch(result.out, new RegExp(SECRET));
         assert.ok(JSON.parse(host.read('/etc/openvibe/host.json')).services.bot);
     }),
+    test('a symlinked .env.example is refused and its target never reaches the env file', async () => {
+        const { host, cli } = setup();
+        host.put('/etc/openvibe/network.env', `OV_SECRET=${SECRET}\n`, { mode: 0o600 });
+        const run = host.exec.run;
+        host.exec.run = async (cmd, args, opts) => {
+            const r = await run(cmd, args, opts);
+            if (cmd === 'git' && args[0] === 'clone') {
+                await host.exec.removeFile('/opt/openvibe.bot/.env.example');
+                await host.exec.symlink('/etc/openvibe/network.env', '/opt/openvibe.bot/.env.example');
+            }
+            return r;
+        };
+        const result = await cli('service', 'add', 'bot');
+        assert.strictEqual(result.code, 2, result.out);
+        assert.match(result.out, /must be a regular file/);
+        assert.strictEqual(host.read('/etc/openvibe/bot.env'), null);
+        assert.doesNotMatch(result.out, new RegExp(SECRET));
+    }),
+    test('reads .env.example as the checkout owner', async () => {
+        const { host, cli } = setup();
+        const result = await cli('service', 'add', 'bot');
+        assert.strictEqual(result.code, 0, result.out);
+        assert.ok(host.calls.some((c) => c.cmd === 'cat' && c.args.at(-1) === '/opt/openvibe.bot/.env.example' && c.as === 'ubuntu'));
+        assert.ok(!host.reads.includes('/opt/openvibe.bot/.env.example'));
+    }),
+    test('a held inventory lock refuses the add and leaves the inventory alone; success releases it', async () => {
+        const { host, cli } = setup();
+        const lockFile = '/var/lib/openvibe-host/locks/_inventory.lock';
+        host.put(lockFile, JSON.stringify({ pid: 4242, at: 'earlier' }));
+        host.alivePids.add(4242);
+        const before = host.read('/etc/openvibe/host.json');
+        const held = await cli('service', 'add', 'bot');
+        assert.strictEqual(held.code, 1, held.out);
+        assert.match(held.out, /another ovhost operation on _inventory is running/);
+        assert.strictEqual(host.read('/etc/openvibe/host.json'), before);
+        assert.ok(!host.calls.some((c) => c.cmd === 'git' && c.args[0] === 'clone'));
+        host.alivePids.delete(4242);
+        const ok = await cli('service', 'add', 'bot');
+        assert.strictEqual(ok.code, 0, ok.out);
+        assert.strictEqual(host.read(lockFile), null);
+    }),
 ]);
