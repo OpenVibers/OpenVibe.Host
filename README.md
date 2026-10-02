@@ -36,7 +36,7 @@ Stage A adds a few safety rules of its own:
 - Stage A: the host inventory (services, units, env names, ports, probes, drain policy), environment validation, release install and rollback for git-checkout services, readiness and drain orchestration, the release log, certificate inventory, nginx vhost rendering and transactional install, config snapshots, scheduled backups (online SQLite copies, pgBackRest verification and logical PostgreSQL dumps) with retention and encrypted off-host copies, restore drills.
 - Stage B: tenant projects (keyed by project id), static sites, immutable content-addressed deploy artifacts, activation and rollback, default and custom domains (DNS TXT verification), per-project quotas, upload/validation logs, the tenant vhosts (`ovhost nginx tenants`).
 - Later (Stage C): sandbox profiles, budgets, secret references, outbound policy.
-- Host roles, provisioned from code so any machine can take them: the **data role** (`roles/data/`, ADR-035): PostgreSQL 18, PgBouncer, pgBackRest, Valkey and their exporters, plus `add-service.sh` giving each service its database, roles and Valkey user.
+- Host roles, provisioned from code so any machine can take them: the **data role** (`roles/data/`, ADR-035): PostgreSQL 18, PgBouncer, pgBackRest, Valkey and their exporters, plus `add-service.sh` giving each service its database, roles and Valkey user. `ovhost data provision <svc>` and `ovhost data switch <svc> [--sqlite <file>]` run `add-service.sh` and `switch-service.sh` from the installed CLI, redacting every URL and password: [docs/data-provisioning.md](docs/data-provisioning.md).
 
 ## Does not own
 
@@ -120,6 +120,8 @@ ovhost deploy <service> [--wait-idle] [--force] [--restart] [--to <sha>] [--inst
 ovhost rollback <service> [--to <sha|release id>] [--wait-idle] [--force] [--no-announce]
 ovhost capabilities [<service>]          key=value lines the deploy wrappers probe (deploy-api, strategy, managed)
 ovhost self-update [--dry-run]           update the CLI install (/usr/local/lib/openvibe-host) itself: fetch origin main, --ff-only merge, npm ci
+ovhost data provision <service> [--dry-run]   run roles/data/add-service.sh from the install: PostgreSQL database, roles and Valkey user (names only)
+ovhost data switch <service> [--sqlite <file>] [--dry-run]   run roles/data/switch-service.sh: stop, back up, import, deploy (docs/data-provisioning.md)
 ovhost --version
 ovhost announce <service> [--release <id>] [--commit <sha>] [--origin <url>] [--force] [--dry-run]   release notification
 ovhost releases <service> [--limit <n>]
