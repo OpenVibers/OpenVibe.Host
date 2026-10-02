@@ -95,6 +95,49 @@ runTests([
         assert.strictEqual(host.read('/etc/openvibe/host.json'), before);
         assert.strictEqual(host.read('/opt/openvibe.bot/keep.txt'), 'keep');
     }),
+    test('a wiki-like service without a public URL adds successfully and omits BASE_URL', async () => {
+        const { host, cli, provision } = setup();
+        const example = JSON.parse(host.read('/opt/ovhost-install/host.example.json'));
+        example.services.wiki = {
+            repo: '/opt/openvibe.wiki', owner: 'ubuntu', units: [],
+            envFile: '/etc/openvibe/wiki.env', env: { required: 'from-example' }, port: 4800,
+            lifecycle: lifecycleDoc(),
+        };
+        host.put('/opt/ovhost-install/host.example.json', JSON.stringify(example));
+        host.remoteRepos.set('https://github.com/OpenVibers/OpenVibe.Wiki.git', {
+            '.env.example': 'NODE_ENV=development\nHOST=0.0.0.0\nPORT=3000\nSITE_TITLE=Wiki\n',
+        });
+        const result = await cli('service', 'add', 'wiki', '--json');
+        assert.strictEqual(result.code, 0, result.out);
+        assert.deepStrictEqual(JSON.parse(result.out).envNames, ['NODE_ENV', 'HOST', 'PORT']);
+        assert.doesNotMatch(host.read('/etc/openvibe/wiki.env'), /^BASE_URL=/m);
+        assert.ok(JSON.parse(host.read('/etc/openvibe/host.json')).services.wiki);
+        assert.deepStrictEqual(provision, []);
+    }),
+    test('an unresolved optional BASE_URL remains empty and is listed for setup', async () => {
+        const { host, cli } = setup();
+        const example = JSON.parse(host.read('/opt/ovhost-install/host.example.json'));
+        delete example.services.bot.nginx;
+        host.put('/opt/ovhost-install/host.example.json', JSON.stringify(example));
+        host.remoteRepos.set(URL, { '.env.example': 'NODE_ENV=development\nBASE_URL=\n' });
+        const result = await cli('service', 'add', 'bot', '--json');
+        assert.strictEqual(result.code, 0, result.out);
+        assert.ok(JSON.parse(result.out).unset.includes('BASE_URL'));
+        assert.match(host.read('/etc/openvibe/bot.env'), /^BASE_URL=$/m);
+    }),
+    test('an explicitly required URL without an inventory origin is refused before changes', async () => {
+        const { host, cli } = setup();
+        const example = JSON.parse(host.read('/opt/ovhost-install/host.example.json'));
+        delete example.services.bot.nginx;
+        example.services.bot.env.required = ['BASE_URL'];
+        host.put('/opt/ovhost-install/host.example.json', JSON.stringify(example));
+        const before = host.read('/etc/openvibe/host.json');
+        const result = await cli('service', 'add', 'bot');
+        assert.strictEqual(result.code, 1);
+        assert.match(result.out, /requires BASE_URL/);
+        assert.strictEqual(host.read('/etc/openvibe/host.json'), before);
+        assert.strictEqual(host.read('/opt/openvibe.bot/.env.example'), null);
+    }),
     test('reports an incomplete setup and its backup when provisioning fails', async () => {
         const { host, cli } = setup();
         const run = host.exec.run;
