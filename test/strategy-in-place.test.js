@@ -22,6 +22,20 @@ function withEvents(host) {
     return host;
 }
 
+/** The running commit tracks node_modules as a symlink; npm on the host replaced it with a real
+ *  directory; the incoming release deletes node_modules. Returns the setup so a test can add the
+ *  skip-worktree bit before deploying. */
+function nodeModulesReplaced() {
+    const host = toolsHost();
+    const link = host.repo.commit({ node_modules: 'shared/node_modules' }, { message: 'track the node_modules symlink' });
+    host.repo.checkout(link);
+    host.exec.removeFile('/opt/openvibe.tools/node_modules');
+    host.put('/opt/openvibe.tools/node_modules/express/package.json', JSON.stringify({ name: 'express' }), { owner: 'ubuntu' });
+    const to = host.repo.commit({ node_modules: null }, { parent: link, message: 'stop tracking node_modules' });
+    host.repo.publish(to);
+    return { host, link, to };
+}
+
 runTests([
     // ── multi-app (Tools) ──
     test('tools: per-app installs skip apps/_shared, preflight runs in each app, every unit restarts, the gateway serves the new sha', async () => {
@@ -78,6 +92,54 @@ runTests([
         assert.strictEqual(host.calls[rm].as, 'ubuntu');
         assert.strictEqual(host.read('/opt/openvibe.tools/apps/maps/package-lock.json'), '{"v":1}');
         assert.deepStrictEqual((await lastRecord(host, 'tools')).removedUntracked, ['apps/maps/package-lock.json']);
+    }),
+
+    // ── a tracked path the release stops tracking (npm replaced the node_modules symlink) ──
+
+    test('tools: a tracked node_modules symlink npm replaced with a directory is dropped from the index before the merge; the directory stays', async () => {
+        const { host, to } = nodeModulesReplaced();
+        const plan = await host.cli('plan', 'tools');
+        assert.match(plan.out, /tracked changes\s+none/, plan.out);
+        assert.match(plan.out, /untracked +node_modules is untracked before the merge \(the release stops tracking it\)/);
+        const r = await host.cli('deploy', 'tools');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.strictEqual(host.repo.head, to);
+        const git = (s) => host.calls.findIndex((c) => c.cmd === 'git' && c.args.includes(s));
+        const idx = host.calls.findIndex((c) => c.cmd === 'git' && c.args.includes('update-index'));
+        const rm = host.calls.findIndex((c) => c.cmd === 'git' && c.args.includes('rm') && c.args.includes('--cached'));
+        const merge = git('merge');
+        assert.ok(idx >= 0 && rm >= 0 && idx < merge && rm < merge, 'skip-worktree cleared and the path removed from the index before the merge');
+        assert.strictEqual(host.calls[idx].as, 'ubuntu');
+        assert.strictEqual(host.calls[rm].as, 'ubuntu');
+        assert.ok(host.read('/opt/openvibe.tools/node_modules/express/package.json'), 'node_modules is never deleted from disk');
+        assert.deepStrictEqual((await lastRecord(host, 'tools')).droppedFromIndex, ['node_modules']);
+    }),
+
+    test('tools: the same with skip-worktree set — git status hides it, the merge still refuses unless it leaves the index', async () => {
+        const { host, to } = nodeModulesReplaced();
+        // No --force: the real merge fails on the local typechange even under skip-worktree, so the
+        // deploy only succeeds because the path leaves the index first.
+        await host.exec.run('git', ['-C', '/opt/openvibe.tools', 'update-index', '--skip-worktree', '--', 'node_modules'], { as: 'ubuntu' });
+        const plan = await host.cli('plan', 'tools');
+        assert.match(plan.out, /untracked +node_modules is untracked before the merge/);
+        const r = await host.cli('deploy', 'tools');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.strictEqual(host.repo.head, to);
+        assert.ok(host.read('/opt/openvibe.tools/node_modules/express/package.json'));
+        assert.deepStrictEqual((await lastRecord(host, 'tools')).droppedFromIndex, ['node_modules']);
+    }),
+
+    test('tools: a dirty tracked file the release still tracks is still refused, nothing dropped from the index', async () => {
+        const host = toolsHost();
+        host.put('/opt/openvibe.tools/apps/img/server/index.js', 'locally-edited();', { owner: 'ubuntu' });
+        host.push({ 'apps/img/server/index.js': 'img2();' }, 'img change');
+        const plan = await host.cli('plan', 'tools');
+        assert.match(plan.out, /tracked changes\s+apps\/img\/server\/index\.js — deploy will refuse/);
+        assert.doesNotMatch(plan.out, /untracked +apps/);
+        const r = await host.cli('deploy', 'tools');
+        assert.strictEqual(r.code, 2, r.out);
+        assert.match(r.out, /tracked local changes \(apps\/img\/server\/index\.js\)/);
+        assert.ok(!host.calls.some((c) => c.cmd === 'git' && (c.args.includes('rm') || c.args.includes('update-index'))), 'the index is untouched');
     }),
 
     test('tools: a preflight that fails (the jobs runtime does not load) aborts before any restart and restores the checkout', async () => {
