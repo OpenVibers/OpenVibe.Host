@@ -110,6 +110,7 @@ Production deploys, rollbacks, backups and drills now run through `ovhost`, and 
 
 ```
 ovhost status [<service>...]            unit state, sha, readiness, protected sessions
+ovhost logs <service> [--tail <n>]      the service's units' journal, newest last (default 200, max 2000)
 ovhost validate <service> [--manifest <file>]  env NAMES, unit files, port, vhost + nginx -t, deps, lifecycle
 ovhost env-names <service>              names declared in the checkout's .env.example
 ovhost show [<service>...]              the inventory as ovhost reads it (repo, owner, units, socket, workers, probes)
