@@ -113,6 +113,7 @@ ovhost status [<service>...]            unit state, sha, readiness, protected se
 ovhost logs <service> [--tail <n>]      the service's units' journal, newest last (default 200, max 2000)
 ovhost validate <service> [--manifest <file>]  env NAMES, unit files, port, vhost + nginx -t, deps, lifecycle
 ovhost env-names <service>              names declared in the checkout's .env.example
+ovhost env-names <service> --set        names the service gets (env file + unit Environment=), never values
 ovhost show [<service>...]              the inventory as ovhost reads it (repo, owner, units, socket, workers, probes)
 ovhost plan <service> [--to <sha>] [--no-fetch] [--restart]
 ovhost deploy <service> [--wait-idle] [--force] [--restart] [--to <sha>] [--install-units] [--ready-timeout <s>] [--browser-check] [--no-announce] [--prepare-only]

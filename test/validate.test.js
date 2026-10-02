@@ -133,6 +133,21 @@ runTests([
         assert.deepStrictEqual(envfile.unitEnvironmentNames('Environment=A=1 "B=two words"\nEnvironment=C=3\n'), ['A', 'B', 'C']);
     }),
 
+    test('env-names --set lists the names the service gets — env file and unit Environment= — never a value', async () => {
+        const host = scenario();
+        host.put('/etc/openvibe/live.env', `JWT_SECRET=${SECRET}\nBASE_URL=\nPAYPAL_CLIENT_SECRET=""\n`, { mode: 0o600 });
+        host.put('/etc/systemd/system/openvibe-live.service', host.repo('live').commits.get(host.repo('live').head).files['deploy/systemd/openvibe-live.service'].replace('\n', '\nEnvironment=NODE_ENV=production\n'));
+        const t = await host.cli('env-names', 'live', '--set');
+        assert.strictEqual(t.code, 0, t.out);
+        assert.match(t.out, /live\.env: 2 name\(s\) set\nJWT_SECRET\nNODE_ENV\nempty: BASE_URL, PAYPAL_CLIENT_SECRET/);
+        const j = JSON.parse((await host.cli('env-names', 'live', '--set', '--json')).out);
+        assert.deepStrictEqual([j.set, j.empty, j.fromUnits, j.found], [['JWT_SECRET', 'NODE_ENV'], ['BASE_URL', 'PAYPAL_CLIENT_SECRET'], ['NODE_ENV'], true]);
+        noSecrets(t.out + JSON.stringify(j));
+        host.files.delete('/etc/openvibe/live.env');
+        const gone = await host.cli('env-names', 'live', '--set');
+        assert.strictEqual(gone.code, 1); assert.match(gone.out, /live\.env not found: 1 name\(s\) set/);
+    }),
+
     test('env-names lists .env.example names', async () => {
         const host = scenario();
         const r = await host.cli('env-names', 'live');
