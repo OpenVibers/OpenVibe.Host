@@ -179,6 +179,19 @@ runTests([
         assert.ok(!host.calls.some((c) => c.cmd === 'npm' || c.cmd === 'nginx'));
     }),
 
+    test('sites: a vhost assigned to another service is never installed over its proxy', async () => {
+        const host = sitesHost();
+        const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
+        raw.services.sites.nginx = { repoVhosts: 'deploy/nginx/*.conf', installOnDeploy: true, skipVhosts: ['openvibe.bot.conf'] };
+        host.put('/etc/openvibe/host.json', JSON.stringify(raw), { mode: 0o640 });
+        host.put('/etc/nginx/sites-available/openvibe.bot.conf', 'server { proxy_pass http://127.0.0.1:4630; }');
+        host.push({ 'deploy/nginx/openvibe.bot.conf': 'server { root /opt/openvibe.sites/dist/openvibe.bot; }' }, 'bot placeholder');
+        const r = await host.cli('deploy', 'sites');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.strictEqual(host.read('/etc/nginx/sites-available/openvibe.bot.conf'), 'server { proxy_pass http://127.0.0.1:4630; }');
+        assert.ok(host.read('/etc/nginx/sites-available/openvibe.news.conf'), 'other Sites vhosts still install');
+    }),
+
     test('sites: nginx -t failing never reloads nginx: the previous vhosts, checkout and build come back (exit 2)', async () => {
         const host = sitesHost();
         assert.strictEqual((await host.cli('deploy', 'sites', '--restart')).code, 0);
@@ -315,6 +328,21 @@ runTests([
         assert.ok(host.calls.some((c) => c.cmd === 'systemctl' && c.args[0] === 'daemon-reload'));
         assert.deepStrictEqual((await lastRecord(host, 'network')).unitsInstalled, ['openvibe-network.service']);
         assert.strictEqual((await lastRecord(host, 'network')).strategy, 'git-checkout');
+    }),
+
+    test('unit bootstrap enables an installed service before its first restart', async () => {
+        const host = networkHost();
+        const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
+        raw.services.network.enableUnits = true;
+        raw.services.network.nginx = { vhost: 'openvibe.bot.conf', repoVhost: 'deploy/nginx/openvibe.bot.conf', installOnDeploy: true };
+        host.put('/etc/openvibe/host.json', JSON.stringify(raw), { mode: 0o640 });
+        host.push({ 'deploy/systemd/openvibe-network.service': '[Service]\nExecStart=node server/index.js\nTimeoutStopSec=20\n', 'deploy/nginx/openvibe.bot.conf': 'server { proxy_pass http://127.0.0.1:4630; }', 'server/index.js': 'net2();' }, 'unit and vhost');
+        const r = await host.cli('deploy', 'network');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.strictEqual(host.read('/etc/nginx/sites-available/openvibe.bot.conf'), 'server { proxy_pass http://127.0.0.1:4630; }');
+        const actions = host.calls.filter((c) => c.cmd === 'systemctl').map((c) => c.args[0]);
+        assert.ok(actions.indexOf('daemon-reload') < actions.indexOf('enable'), actions.join(', '));
+        assert.ok(actions.indexOf('enable') < actions.indexOf('restart'), actions.join(', '));
     }),
 
     // ── what the wrappers probe ──

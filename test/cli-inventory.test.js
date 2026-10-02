@@ -17,7 +17,7 @@ runTests([
     test('host.example.json is a valid inventory for every service on the host', () => {
         const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'host.example.json'), 'utf8'));
         const inv = normalise(raw);
-        assert.deepStrictEqual(Object.keys(inv.services), ['network', 'live', 'media', 'tools', 'community', 'events', 'games', 'sites', 'host', 'billing', 'chat', 'search', 'sources', 'wiki', 'blog', 'tips', 'vip', 'news', 'reviews', 'deals', 'coupons', 'trade', 'codes', 'ai', 'openre']);
+        assert.deepStrictEqual(Object.keys(inv.services), ['network', 'live', 'media', 'tools', 'community', 'events', 'games', 'sites', 'host', 'billing', 'chat', 'search', 'sources', 'wiki', 'blog', 'tips', 'vip', 'news', 'reviews', 'deals', 'coupons', 'trade', 'codes', 'ai', 'bot', 'openre']);
         assert.strictEqual(inv.services.live.socketUnit, 'openvibe-live.socket');
         assert.ok(!inv.services.live.units.includes('openvibe-live.socket'));
         assert.strictEqual(inv.services.live.protected.url, 'http://127.0.0.1:3000/api/streams');
@@ -34,6 +34,10 @@ runTests([
         assert.strictEqual(inv.services.live.codeDir, '/opt/openvibe.live/current');
         assert.strictEqual(inv.services.live.release.git, '/opt/openvibe.live/repo');
         assert.strictEqual(inv.services.openre.release.git, '/opt/openre.stream/repo');
+        assert.deepStrictEqual(inv.services.sites.nginx.skipVhosts, ['openvibe.bot.conf']);
+        assert.deepStrictEqual([inv.services.bot.nginx.vhost, inv.services.bot.nginx.repoVhost, inv.services.bot.nginx.installOnDeploy], ['openvibe.bot.conf', 'deploy/nginx/openvibe.bot.conf', true]);
+        assert.strictEqual(inv.services.bot.installUnits, true);
+        assert.strictEqual(inv.services.bot.enableUnits, true);
         const text = JSON.stringify(raw);
         assert.ok(!/(sk_|ghp_|BEGIN [A-Z ]*PRIVATE KEY|password\s*[:=]\s*\S)/i.test(text), 'no secret values in the example');
     }),
@@ -63,6 +67,7 @@ runTests([
         const base = { owner: 'ubuntu' };
         assert.throws(() => normalise({ services: { x: { ...base, repo: 'opt/x' } } }), /absolute path/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', nginx: { vhost: '../../etc/passwd' } } } }), /file name/);
+        assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', nginx: { skipVhosts: ['../../etc/passwd'] } } } }), /vhost file names/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', ready: { url: 'http://evil.example/ready' } } } }), /loopback/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', protected: { kind: 'sqlite-count', db: '/d.db', sql: 'DELETE FROM vods' } } } }), /SELECT/);
         assert.throws(() => normalise({ services: { 'X Y': { ...base, repo: '/opt/x' } } }), /service id/);

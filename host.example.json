@@ -1,6 +1,6 @@
 {
   "_about": "Example ovhost inventory for the single OpenVibe host (openvibe-oregon). Copy to /etc/openvibe/host.json (root:root, 0640) and correct anything that differs on the machine; the real file is never committed. Paths, units, ports and env file locations come from OpenVibe.Network docs/roadmap-baseline/data/services.json and prod-snapshot.json (22 Sep 2026) and each repository's deploy/ directory. env.required lists NAMES only.",
-  "_databases": "Databases (lib/inventory.js): each services.<id>.databases[] item is one of two engines. SQLite (the default) is a file the service user's worker copies: { \"name\": \"live\", \"path\": \"/opt/openvibe.live/data/live.db\" }. PostgreSQL is a database in the cluster: { \"name\": \"trade\", \"engine\": \"postgresql\", \"database\": \"ov_trade\" } \u2014 the name must match ov_[a-z0-9_]+, and there is no path (ovhost reaches it as the postgres OS user over peer auth, and pgBackRest, not ovhost, copies it). tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, host, events, community, billing, media, openre and games are PostgreSQL; network, chat, tools and live are still SQLite. A drill block follows the engine: a PostgreSQL database maps to { \"url\": \"DATABASE_URL\", \"directUrl\": \"DATABASE_DIRECT_URL\" } and the drill creates a scratch database and role to restore into.",
+  "_databases": "Databases (lib/inventory.js): each services.<id>.databases[] item is one of two engines. SQLite (the default) is a file the service user's worker copies: { \"name\": \"live\", \"path\": \"/opt/openvibe.live/data/live.db\" }. PostgreSQL is a database in the cluster: { \"name\": \"trade\", \"engine\": \"postgresql\", \"database\": \"ov_trade\" } \u2014 the name must match ov_[a-z0-9_]+, and there is no path (ovhost reaches it as the postgres OS user over peer auth, and pgBackRest, not ovhost, copies it). tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, bot, host, events, community, billing, media, openre and games are PostgreSQL; network, chat, tools and live are still SQLite. A drill block follows the engine: a PostgreSQL database maps to { \"url\": \"DATABASE_URL\", \"directUrl\": \"DATABASE_DIRECT_URL\" } and the drill creates a scratch database and role to restore into.",
   "host": "openvibe-oregon",
   "stateDir": "/var/lib/openvibe-host",
   "backupDir": "/var/backups/openvibe",
@@ -930,7 +930,10 @@
       ],
       "nginx": {
         "repoVhosts": "deploy/nginx/*.conf",
-        "installOnDeploy": true
+        "installOnDeploy": true,
+        "skipVhosts": [
+          "openvibe.bot.conf"
+        ]
       },
       "announce": {
         "releaseFiles": "dist/*/release.json"
@@ -2105,6 +2108,71 @@
           {
             "db": "ai",
             "table": "citations"
+          }
+        ]
+      }
+    },
+    "bot": {
+      "_note": "Not deployed yet. Bot owns openvibe.bot.conf: deploy bot installs its proxy vhost after Sites skips that filename. Before the first deploy, provision bot.env, the database and the existing TLS certificate; use ovhost deploy bot --restart if the checkout is already current so it installs and enables the service unit. Keep Sites on its ovhost deploy path (its legacy fallback still installs every vhost).",
+      "repo": "/opt/openvibe.bot",
+      "installUnits": true,
+      "enableUnits": true,
+      "units": [
+        "openvibe-bot.service"
+      ],
+      "unitSources": {
+        "openvibe-bot.service": "deploy/systemd/openvibe-bot.service"
+      },
+      "envFile": "/etc/openvibe/bot.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 4630,
+      "nginx": {
+        "vhost": "openvibe.bot.conf",
+        "repoVhost": "deploy/nginx/openvibe.bot.conf",
+        "installOnDeploy": true
+      },
+      "ready": {
+        "url": "http://127.0.0.1:4630/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "bot",
+          "engine": "postgresql",
+          "database": "ov_bot"
+        }
+      ],
+      "drill": {
+        "port": 14630,
+        "databases": {
+          "bot": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "EVENTS_URL": "",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
+        },
+        "compare": [],
+        "counts": [
+          {
+            "db": "bot",
+            "table": "robots"
+          },
+          {
+            "db": "bot",
+            "table": "devices"
           }
         ]
       }
