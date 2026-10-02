@@ -22,7 +22,7 @@ logical `.dump` feeds the drills ([backups.md](backups.md#postgresql-services)).
 
 | Engine | Services |
 |---|---|
-| PostgreSQL | tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, host, events, community, billing, media, openre (19) |
+| PostgreSQL | tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, bot, host, events, community, billing, media, openre (20) |
 | SQLite | network, chat, tools, games, live (5) |
 
 **The two engines appear in four more places in the inventory:**
