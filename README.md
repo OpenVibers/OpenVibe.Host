@@ -119,6 +119,7 @@ ovhost plan <service> [--to <sha>] [--no-fetch] [--restart]
 ovhost deploy <service> [--wait-idle] [--force] [--restart] [--to <sha>] [--install-units] [--ready-timeout <s>] [--browser-check] [--no-announce] [--prepare-only]
 ovhost rollback <service> [--to <sha|release id>] [--wait-idle] [--force] [--no-announce]
 ovhost capabilities [<service>]          key=value lines the deploy wrappers probe (deploy-api, strategy, managed)
+ovhost self-update [--dry-run]           update the CLI install (/usr/local/lib/openvibe-host) itself: fetch origin main, --ff-only merge, npm ci
 ovhost --version
 ovhost announce <service> [--release <id>] [--commit <sha>] [--origin <url>] [--force] [--dry-run]   release notification
 ovhost releases <service> [--limit <n>]
@@ -134,7 +135,7 @@ ovhost restore-download <service> <run|latest> [--out <dir>] [--from-host <name>
 ovhost drill <service> [--backup <dir>] [--keep]     restore drill (root only)
 ```
 
-Every command accepts `--json` and `--inventory <file>`. `drill` exits `0` passed, `1` refused (not root, port in use, no backup, unsupported), `2` failed. Other exit codes: `0` ok · `1` usage/precondition (including a held lock) · `2` validation failed, nothing restarted · `3` not ready, rolled back and serving · `4` rollback failed, **manual intervention** · `5` protected sessions active (refused, or `--wait-idle` gave up) · `6` frozen (`ovhost freeze`; `--force` goes through, rollbacks are never frozen).
+Every command accepts `--json` and `--inventory <file>`. `drill` exits `0` passed, `1` refused (not root, port in use, no backup, unsupported), `2` failed. `self-update` exits `0` updated (or already up to date, or `--dry-run`), `1` refused (not root, dirty tree, not on `main`, diverged), `2` the checkout moved but `npm ci` failed. Other exit codes: `0` ok · `1` usage/precondition (including a held lock) · `2` validation failed, nothing restarted · `3` not ready, rolled back and serving · `4` rollback failed, **manual intervention** · `5` protected sessions active (refused, or `--wait-idle` gave up) · `6` frozen (`ovhost freeze`; `--force` goes through, rollbacks are never frozen).
 
 **Deploy strategies** (roadmap WS-N task 11). The inventory entry's `strategy` picks how a service deploys: `git-checkout` (the default: an in-place checkout, every service above), `multi-app` (Tools), `static-build` (Sites), `pnpm-build` (Games) or `release-layout` (Live, OpenRe: `releases/<id>` behind a `current` symlink, prepared while the old release serves, `--prepare-only` to stop after preparing). Each strategy carries the rules of the script it replaces: preflight checks, build output restored from git, untracked lockfiles, `unitsMatch`, `/release.json` naming the new sha, the socket rule. [docs/deploy-strategies.md](docs/deploy-strategies.md) has the engines, every inventory field, the rule-by-rule mapping from each script, what was not ported and why, the production cutover checklist and the proposed inventory diff.
 
@@ -235,6 +236,7 @@ This was done on 2026-09-23 (the CLI and inventory are installed); the steps sta
 4. **Run as root:** `sudo ovhost …`. `ovhost` drops to `ubuntu` for git/npm/SQLite (`runuser`) and needs root for `systemctl`, `nginx -t`, reading `/etc/openvibe/*.env` (names only) and writing vhosts. For least privilege, give operator accounts a sudoers rule for `/usr/local/bin/ovhost` alone instead of a general `ALL`. Do **not** grant it to the `ubuntu` service user if that account has no sudo today.
 5. **First run:** `sudo ovhost status`, then `sudo ovhost validate <each service>`, then `sudo ovhost plan live`, all read-only apart from `git fetch`. Adopt `deploy` one service at a time, starting with one that has no protected sessions.
 6. **Scheduled backups:** see [docs/backups.md](docs/backups.md#installing-on-the-host-operator) (bucket, key, `/etc/openvibe/backup.env`, `openvibe-backup.timer`).
+7. **Updating the CLI itself:** a deploy of this repository replaces `/opt/openvibe.host` (the Stage B service), not the root-owned install at `/usr/local/lib/openvibe-host`, so after a merge to `main` run `sudo ovhost self-update`. It finds its own install directory from its real path (`/usr/local/bin/ovhost` → `/usr/local/lib/openvibe-host/bin/ovhost`), fetches `origin main`, refuses a dirty tree, a branch other than `main` or a divergence, merges `--ff-only` and runs `npm ci --omit=dev --no-audit --no-fund` there; `--dry-run` prints the plan first. It restarts nothing — the next `ovhost` invocation runs the new code. Without it the installed CLI silently runs behind `main` (on 2026-10-02 it was 16 commits behind: no `env-names --set`, no `logs`, no Bot vhost).
 
 ## Stage B: tenant static hosting
 
