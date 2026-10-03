@@ -339,14 +339,14 @@ runTests([
         assert.ok(rm >= 0 && rm < merge, 'removed before the merge'); assert.strictEqual(host.calls[rm].as, 'ubuntu');
         assert.strictEqual(host.read('/opt/openvibe.sites/deploy/nginx/openvibe.work.conf'), '# work v1');
         assert.deepStrictEqual((await lastRecord(host, 'sites')).removedUntracked, ['deploy/nginx/openvibe.work.conf']);
-        // Different bytes are someone's file: never removed, the merge refuses as before.
+        // Different bytes outside the build output and the repo vhost glob are someone's file: never removed, the merge refuses as before.
         const h2 = sitesHost();
-        h2.put('/opt/openvibe.sites/deploy/nginx/local.conf', '# a hand edit', { owner: 'ubuntu' });
-        h2.push({ 'deploy/nginx/local.conf': '# from the repository' }, 'track local.conf');
+        h2.put('/opt/openvibe.sites/deploy/nginx/README.md', '# a hand edit', { owner: 'ubuntu' });
+        h2.push({ 'deploy/nginx/README.md': '# from the repository' }, 'track README.md');
         const r2 = await h2.cli('deploy', 'sites');
-        assert.notStrictEqual(r2.code, 0, r2.out); assert.match(r2.out, /deploy\/nginx\/local\.conf \/ Please move or remove them before you merge/);
-        assert.strictEqual(h2.read('/opt/openvibe.sites/deploy/nginx/local.conf'), '# a hand edit');
-        assert.ok(!h2.calls.some((c) => c.cmd === 'rm' && c.args.includes('/opt/openvibe.sites/deploy/nginx/local.conf')));
+        assert.notStrictEqual(r2.code, 0, r2.out); assert.match(r2.out, /deploy\/nginx\/README\.md \/ Please move or remove them before you merge/);
+        assert.strictEqual(h2.read('/opt/openvibe.sites/deploy/nginx/README.md'), '# a hand edit');
+        assert.ok(!h2.calls.some((c) => c.cmd === 'rm' && c.args.includes('/opt/openvibe.sites/deploy/nginx/README.md')));
     }),
 
     test('sites: nothing new does nothing', async () => {
