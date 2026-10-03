@@ -20,7 +20,7 @@ Status column says which risks are **fixed**, **mitigated**, **accepted** (with 
 |---|---|
 | Other tenants' files, deploy history, logs and domains | `host_*` tables in `/var/lib/openvibe-host-api/host.db`; objects in `<HOST_STORAGE_DIR>/projects/<prj_…>/<aa>/<sha256>` |
 | OpenVibe sessions (Network SSO tokens, other products' cookies) | browsers; Network |
-| The dashboard session and form tokens | `__Host-ov_host_session` cookie; `HOST_FORM_SECRET` |
+| The dashboard session and form tokens | `__Host-ov_host_session` cookie (`server/auth/sso.js:59-115`); `HOST_FORM_SECRET` |
 | Host's own credentials (`OV_OAUTH_CLIENT_SECRET`, `HOST_FORM_SECRET`) | `/etc/openvibe/host.env` (0600) |
 | Certificate private keys, DNS provider credentials | `/etc/letsencrypt`, `/root/.secrets` (root only; never read by Host) |
 | The host itself: disk, memory and CPU shared with Live, Media, Chat and every database | the one production machine |
@@ -94,7 +94,8 @@ Tenant pages on `<site>.openvibe.host` are *same-site* with the dashboard on `op
   `host-isolation` "the API ignores cookies");
 - every dashboard POST needs the dashboard's own `Origin` (or `Referer`) **and** an HMAC form token
   (`server/auth/forms.js:21-35`);
-- the dashboard trusts only `__Host-` cookies (`server/auth/sso.js:33`).
+- the dashboard session is only Host's own `__Host-ov_host_session` cookie (`server/auth/viewer.js:99-103`
+  reads it through `server/auth/sso.js:39-41`); the SDK's `ov_token` is display-only for the shared navbar.
 
 **Platform cookies never reach tenants.** Status: fixed by design.
 
@@ -168,10 +169,10 @@ escape a directory: there is no directory.
 
 | Threat | Handling | Status |
 |---|---|---|
-| A tenant page reads the dashboard session | the session is `__Host-ov_host_session`: HttpOnly, Secure, host-only; tenant origins are different hosts; nginx strips `Cookie` from tenant requests | fixed |
-| **Cookie tossing** (a tenant sets `Domain=openvibe.host` cookies to fix a session or fake a sign-in) | the server trusts only `__Host-` cookies, which a subdomain cannot set (`sso.js:33`); a planted `ov_token` is ignored (`host-secrets-dashboard` "a planted ov_token cookie … is not a session") | fixed |
-| **Login CSRF / forged dashboard actions from a same-site tenant page** | state cookie `__Host-` + OAuth `state`; every POST needs the dashboard `Origin` and the HMAC form token (`forms.js`); tested with same-site tenant origins | fixed |
-| **Logout CSRF** (`GET /auth/logout` from a tenant page signs the visitor out of the dashboard) | nuisance only | accepted |
+| A tenant page reads the dashboard session | the session is `__Host-ov_host_session`: HttpOnly, Secure, `Path=/`, no `Domain`, SameSite=Lax (`server/auth/sso.js:34-37,61`); tenant origins are different hosts; nginx strips `Cookie` from tenant requests | fixed |
+| **Cookie tossing** (a tenant sets `Domain=openvibe.host` cookies to fix a session or fake a sign-in) | `ov_token` (openvibe-sdk/sso) is host-only but not HttpOnly, and a tenant page can plant its owner's own valid one with `Domain=openvibe.host; Path=/<longer path>`, which the browser sends first. The dashboard therefore reads only `__Host-ov_host_session` (`server/auth/viewer.js:99-103`), which a subdomain cannot set. Host writes it whenever the SDK writes `ov_token` after a sign-in or refresh, and clears it whenever the SDK clears `ov_token` (`server/auth/sso.js:85-99`). Inside `/auth` the SDK sees the trusted session as `ov_token` (`sso.js:65-69`), so `/auth/me` and the silent sign-in check ignore a planted one too. A planted `ov_refresh` (`Path=/auth/refresh`) renews only a session that already holds the same subject and never creates one: anything else answers 401 and sets no cookie (`sso.js:91,100-103`). Tests: `host-secrets-dashboard` "cookie tossing: a planted, validly signed ov_token …" (alone and next to a real session; forms land in the victim's own account) and "refresh renews the session of the same account only …" | fixed |
+| **Login CSRF / forged dashboard actions from a same-site tenant page** | `/auth/login` stores the OAuth `state` in `__Host-ov_host_flow` and `/auth/callback` requires it to match (`server/auth/sso.js:71-82`), so a planted `ov_oauth_state`/`ov_oauth_verifier` cannot finish the attacker's own sign-in in the victim's browser (`host-secrets-dashboard` "sign-in issues the HttpOnly session cookie …"); every POST needs the dashboard `Origin` and the HMAC form token (`forms.js`); tested with same-site tenant origins | fixed |
+| **Logout CSRF** (`GET /auth/logout` from a tenant page signs the visitor out of the dashboard); likewise a planted *invalid* `ov_refresh` makes the next refresh fail and clear the session | nuisance only | accepted |
 | **Cookie bomb** (a tenant sets many large `Domain=openvibe.host` cookies, so the visitor's browser sends oversized headers and nginx answers 400 for `openvibe.host` and every tenant site until the cookies expire or are cleared) | only the Public Suffix List stops a subdomain from setting parent-domain cookies (§5) | **accepted** for alpha; see §5 |
 | `ov_token` (the Network access JWT) is JS-readable on `openvibe.host` for the shared navbar | host-only cookie: tenants cannot read it. A dashboard XSS could, and the dashboard CSP allows inline scripts (for the shared chrome). Tenant-controlled values (project names, file paths, log lines, host names) go through `esc()` in `server/render/pages.js`; ids are server-generated and site names match `[a-z0-9-]`. | mitigated; revisit when the shared chrome no longer needs inline script |
 | Clickjacking the dashboard | `frame-ancestors 'none'`, `X-Frame-Options: DENY` (`server/app.js:47-60`) | fixed |

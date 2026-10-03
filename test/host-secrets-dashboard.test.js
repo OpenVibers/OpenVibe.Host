@@ -8,6 +8,7 @@ const assert = require('assert');
 const { boot, check, done, SECRET } = require('./stageb/boot');
 const { tarball } = require('./stageb/tar');
 const { csrfToken } = require('../server/auth/forms');
+const { cookieNames } = require('../server/auth/sso');
 
 const ORIGIN = 'https://openvibe.host';
 
@@ -81,8 +82,8 @@ const ORIGIN = 'https://openvibe.host';
         for (const p of ['/terms', '/privacy', '/dmca']) assert.strictEqual((await t.api('GET', p)).status, 200, p);
     });
 
-    await check('the dashboard session is the verified ov_token cookie; a forged ov_token is not a session', async () => {
-        // openvibe-sdk/sso keeps the session in the ov_token cookie (the shared navbar reads the same one).
+    await check('the dashboard session is Host\'s own cookie; a forged ov_token is not a session', async () => {
+        // openvibe-sdk/sso keeps its session in ov_token (the shared navbar reads it); Host trusts only its own cookie.
         const forged = 'not.a.jwt';
         const r = await t.api('GET', '/', { headers: { cookie: `ov_token=${forged}` } });
         assert.match(r.text, /Sign in with OpenVibe/);
@@ -91,6 +92,101 @@ const ORIGIN = 'https://openvibe.host';
         // /api/v1 never reads a cookie: only a Bearer token authenticates.
         const api = await t.api('GET', '/api/v1/projects', { headers: { cookie: `ov_token=${t.network.userToken(alice)}` } });
         assert.strictEqual(api.status, 401);
+    });
+
+    const SESSION = cookieNames(t.config).session;   // ov_host_session here (COOKIE_SECURE=false); __Host- in production
+    const mallory = t.user('mallory');
+    const malloryProjects = async () => (await t.api('GET', '/api/v1/projects', { as: mallory })).json().projects.length;
+    const setCookies = (r) => [].concat(r.headers['set-cookie'] || []);
+    const cookieValue = (r, name) => { const c = setCookies(r).find((x) => x.startsWith(`${name}=`)); return c === undefined ? undefined : decodeURIComponent(c.slice(name.length + 1).split(';')[0]); };
+
+    await check('cookie tossing: a planted, validly signed ov_token of another user is not a session, alone or next to a real one', async () => {
+        // A tenant page on <site>.openvibe.host can set ov_token=<its owner's token>; Domain=openvibe.host; Path=/<longer path>:
+        // the browser sends it first. It verifies, and it is still ignored.
+        const planted = `ov_token=${t.network.userToken(mallory)}`;
+        const alone = await t.api('GET', '/', { headers: { cookie: planted } });
+        assert.match(alone.text, /Sign in with OpenVibe/);
+        assert.strictEqual((await t.api('GET', '/auth/me', { headers: { cookie: planted } })).status, 401);
+        const csrf = csrfToken({ formSecret: 'test-form-secret' }, { subject: mallory.subject });
+        const post = await t.api('POST', '/projects', { form: { csrf, name: 'Tossed', environment: 'production' }, headers: { cookie: planted, origin: ORIGIN } });
+        assert.ok(!/\/projects\/prj_/.test(post.headers.location || ''), post.text);
+        assert.strictEqual(await malloryProjects(), 0);
+
+        const both = await t.api('GET', '/', { session: alice, headers: { cookie: planted } });
+        assert.match(both.text, /Your projects/);
+        assert.ok(!/mallory/.test(both.text), 'the page is alice\'s, not mallory\'s');
+        const me = await t.api('GET', '/auth/me', { session: alice, headers: { cookie: planted } });
+        assert.strictEqual(me.json().user.subject_id, alice.subject);
+        const csrfA = csrfToken({ formSecret: 'test-form-secret' }, { subject: alice.subject });
+        const asAlice = await t.api('POST', '/projects', { session: alice, form: { csrf: csrfA, name: 'Tossed but mine', environment: 'production' }, headers: { cookie: planted, origin: ORIGIN } });
+        assert.strictEqual(asAlice.status, 303, asAlice.text);
+        assert.strictEqual(await malloryProjects(), 0, 'nothing lands in mallory\'s account');
+        const mine = (await t.api('GET', '/api/v1/projects', { as: alice })).json().projects;
+        assert.ok(mine.some((p) => p.name === 'Tossed but mine'));
+        for (const p of mine.filter((x) => x.name === 'Tossed but mine')) await t.api('DELETE', `/api/v1/projects/${p.id}`, { as: alice });
+    });
+
+    await check('sign-in issues the HttpOnly session cookie; a planted OAuth state cannot finish another account\'s sign-in', async () => {
+        const login = await t.api('GET', '/auth/login');
+        assert.strictEqual(login.status, 302);
+        const state = new URL(login.headers.location).searchParams.get('state');
+        assert.strictEqual(cookieValue(login, 'ov_host_flow'), state);
+        const flow = `ov_host_flow=${state}; ov_oauth_state=${state}; ov_oauth_verifier=${cookieValue(login, 'ov_oauth_verifier')}`;
+        const cb = await t.api('GET', `/auth/callback?code=${t.network.issueCode(alice)}&state=${state}`, { headers: { cookie: flow } });
+        assert.strictEqual(cb.status, 302, cb.text);
+        const set = setCookies(cb).find((c) => c.startsWith(`${SESSION}=`));
+        assert.match(set, /; Path=\/;/);
+        assert.match(set, /; HttpOnly/);
+        assert.match(set, /; SameSite=Lax/);
+        assert.ok(!/Domain=/i.test(set), set);
+        const dash = await t.api('GET', '/', { headers: { cookie: `${SESSION}=${cookieValue(cb, SESSION)}` } });
+        assert.match(dash.text, /Your projects/);
+
+        // Mallory starts a sign-in of her own, plants her state and verifier (Path=/auth/callback) and sends alice to the callback.
+        const theirs = await t.api('GET', '/auth/login');
+        const s2 = new URL(theirs.headers.location).searchParams.get('state');
+        const tossed = `ov_oauth_state=${s2}; ov_oauth_verifier=${cookieValue(theirs, 'ov_oauth_verifier')}`;
+        for (const cookie of [tossed, `${tossed}; ov_host_flow=${state}`]) {
+            const r = await t.api('GET', `/auth/callback?code=${t.network.issueCode(mallory)}&state=${s2}`, { headers: { cookie } });
+            assert.strictEqual(r.status, 400, r.text);
+            assert.strictEqual(cookieValue(r, SESSION), undefined);
+        }
+    });
+
+    await check('refresh renews the session of the same account only; sign-out clears it', async () => {
+        const session = `${SESSION}=${t.network.userToken(alice)}`;
+        const ok = await t.api('POST', '/auth/refresh', { headers: { cookie: `${session}; ov_refresh=${t.network.refreshToken(alice)}` } });
+        assert.strictEqual(ok.status, 200, ok.text);
+        assert.strictEqual(require('openvibe-sdk/sso').decodeJwtPayload(cookieValue(ok, SESSION)).subject_id, alice.subject);
+        // A planted ov_refresh of mallory's (Path=/auth/refresh), next to alice's session or alone, never becomes a session.
+        for (const cookie of [`${session}; ov_refresh=${t.network.refreshToken(mallory)}`, `ov_refresh=${t.network.refreshToken(mallory)}`]) {
+            const r = await t.api('POST', '/auth/refresh', { headers: { cookie } });
+            assert.strictEqual(r.status, 401, r.text);
+            assert.strictEqual(cookieValue(r, SESSION), undefined);
+            assert.strictEqual(cookieValue(r, 'ov_token'), undefined);
+            assert.strictEqual(cookieValue(r, 'ov_refresh'), undefined);
+        }
+        const out = await t.api('GET', '/auth/logout', { headers: { cookie: session } });
+        assert.strictEqual(out.status, 302);
+        assert.strictEqual(cookieValue(out, SESSION), '');
+        assert.match(setCookies(out).find((c) => c.startsWith(`${SESSION}=`)), /Expires=Thu, 01 Jan 1970/);
+    });
+
+    await check('in production the session cookie is __Host- prefixed and Secure', async () => {
+        assert.deepStrictEqual(cookieNames({ cookies: { secure: true } }), { session: '__Host-ov_host_session', flow: '__Host-ov_host_flow' });
+        // The guard around a stand-in SDK router whose callback writes ov_token, as setSession does.
+        const express = require('express');
+        const app = express();
+        app.use(require('cookie-parser')());
+        const auth = { router: (ex) => ex.Router().get('/callback', (_req, res) => { res.cookie('ov_token', 'tok', {}); res.send('ok'); }) };
+        app.use('/auth', require('../server/auth/sso').createHostSession({ auth, config: { cookies: { secure: true } } }).router(express));
+        const srv = await new Promise((resolve) => { const x = app.listen(0, '127.0.0.1', () => resolve(x)); });
+        try {
+            const r = await fetch(`http://127.0.0.1:${srv.address().port}/auth/callback?state=s1`, { headers: { cookie: '__Host-ov_host_flow=s1' } });
+            assert.strictEqual(r.status, 200);
+            const set = r.headers.getSetCookie().find((c) => c.startsWith('__Host-ov_host_session='));
+            assert.match(set, /^__Host-ov_host_session=tok; Max-Age=\d+; Path=\/; Expires=[^;]+; HttpOnly; Secure; SameSite=Lax$/);
+        } finally { await new Promise((resolve) => srv.close(resolve)); }
     });
 
     let projectId, siteId;

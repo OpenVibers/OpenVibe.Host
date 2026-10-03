@@ -284,7 +284,7 @@ Requests resolve their site once from the `Host` header, read the site's active 
 
 **Why a separate registrable domain.** Tenant pages are arbitrary HTML and JavaScript. They live under `openvibe.host`, never under `openvibe.network` or `openvibe.live`, so no OpenVibe session cookie can ever reach them (`ovhost nginx tenants` refuses a sites domain under a first-party domain). The dashboard shares `openvibe.host` with the tenants, which makes tenant pages *same-site* with it. So:
 
-- the dashboard trusts only `__Host-` prefixed cookies (a subdomain cannot set them); the plain `ov_token` cookie the shared navbar reads is display-only and is never trusted;
+- the dashboard session is only Host's own `__Host-ov_host_session` cookie (HttpOnly, Secure, `Path=/`, no `Domain`; a subdomain cannot set it), written and cleared alongside the SDK's `ov_token` at sign-in, refresh and sign-out (`server/auth/sso.js`, read at `server/auth/viewer.js:99-103`). The plain `ov_token` cookie the shared navbar reads is display-only and is never trusted, a sign-in callback must match Host's own `__Host-ov_host_flow` state, and a refresh never changes the signed-in account. With `COOKIE_SECURE=false` (plain-http development) the names drop the `__Host-` prefix and are not Secure;
 - every dashboard form needs the dashboard's own `Origin` **and** a form token (an HMAC of the signed-in subject); `SameSite` alone would not stop a tenant page;
 - `/api/v1` ignores cookies entirely: `Authorization: Bearer` only;
 - nginx strips `Cookie` and `Authorization` from tenant requests, hides `Set-Cookie` from tenant responses and allows only `GET`/`HEAD` with a 1 KB body limit.
