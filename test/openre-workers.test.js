@@ -15,7 +15,11 @@ const { normalise } = require('../lib/inventory');
 const EXAMPLE = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'host.example.json'), 'utf8'));
 const RELEASE = '655b98a10aaa';
 const OLD = '0123456789ab';
-const WORKERS = [`openre-rtmp-ingest@${RELEASE}.service`, `openre-restream-worker@${RELEASE}.service`];
+const WORKERS = [
+    `openre-rtmp-ingest@${RELEASE}.service`,
+    `openre-restream-worker@${RELEASE}.service`,
+    `openre-webrtc@${RELEASE}.service`,
+];
 
 /** The standard fake host plus OpenRe as on openvibe-ovh: release layout, two units, worker instances. */
 async function openreHost({ workersRunning = true } = {}) {
@@ -48,6 +52,7 @@ async function openreHost({ workersRunning = true } = {}) {
     host.listeners.set(4500, [{ pid: 3100, process: 'node' }]);
     host.addUnit(`openre-rtmp-ingest@${RELEASE}.service`, { mainPid: 3102, ...(workersRunning ? {} : { active: 'inactive', sub: 'dead' }) });
     host.addUnit(`openre-restream-worker@${RELEASE}.service`, { mainPid: 3103, ...(workersRunning ? {} : { active: 'inactive', sub: 'dead' }) });
+    host.addUnit(`openre-webrtc@${RELEASE}.service`, { mainPid: 3104, ...(workersRunning ? {} : { active: 'inactive', sub: 'dead' }) });
     host.addUnit(`openre-rtmp-ingest@${OLD}.service`, { active: 'inactive', sub: 'dead', mainPid: 0 });
     // openre is PostgreSQL: the production database and a healthy pgBackRest stanza so that
     // `ovhost backup openre` (and the drill's restore of its .dump) can succeed.
@@ -87,7 +92,7 @@ runTests([
         const inv = normalise(EXAMPLE);
         const o = inv.services.openre;
         assert.deepStrictEqual(o.units, ['openre-api.service', 'openre-session-coordinator.service']);
-        assert.deepStrictEqual(o.workerUnits, ['openre-rtmp-ingest@.service', 'openre-restream-worker@.service']);
+        assert.deepStrictEqual(o.workerUnits, ['openre-rtmp-ingest@.service', 'openre-restream-worker@.service', 'openre-webrtc@.service']);
         assert.strictEqual(o.layout, 'release');
         assert.strictEqual(o.strategy, 'release-layout');
         assert.strictEqual(o.managed, true, 'ovhost deploy openre: release + api (WS-N task 11)');
@@ -117,9 +122,9 @@ runTests([
         const host = await openreHost();
         const r = await host.cli('status', 'openre');
         assert.strictEqual(r.code, 0, r.out);
-        assert.match(r.out, new RegExp(`openre\\s+${RELEASE}\\s+ready\\s+openre-api=active openre-session-coordinator=active workers\\[openre-rtmp-ingest@${RELEASE}=active openre-rtmp-ingest@${OLD}=inactive openre-restream-worker@${RELEASE}=active\\] ingest sessions=0$`, 'm'));
+        assert.match(r.out, new RegExp(`openre\\s+${RELEASE}\\s+ready\\s+openre-api=active openre-session-coordinator=active workers\\[openre-rtmp-ingest@${RELEASE}=active openre-rtmp-ingest@${OLD}=inactive openre-restream-worker@${RELEASE}=active openre-webrtc@${RELEASE}=active\\] ingest sessions=0$`, 'm'));
         const json = JSON.parse((await host.cli('status', 'openre', '--json')).out);
-        assert.deepStrictEqual(json[0].workers.map((w) => [w.unit, w.active]), [[`openre-rtmp-ingest@${RELEASE}.service`, 'active'], [`openre-rtmp-ingest@${OLD}.service`, 'inactive'], [`openre-restream-worker@${RELEASE}.service`, 'active']]);
+        assert.deepStrictEqual(json[0].workers.map((w) => [w.unit, w.active]), [[`openre-rtmp-ingest@${RELEASE}.service`, 'active'], [`openre-rtmp-ingest@${OLD}.service`, 'inactive'], [`openre-restream-worker@${RELEASE}.service`, 'active'], [`openre-webrtc@${RELEASE}.service`, 'active']]);
         const lists = host.calls.filter((c) => c.cmd === 'systemctl' && c.args[0] === 'list-units');
         assert.deepStrictEqual(lists[0].args, ['list-units', '--all', '--plain', '--no-legend', '--no-pager', 'openre-rtmp-ingest@*.service']);
         assert.ok(lists.every((c) => !c.privileged), 'listing needs no privileges');
@@ -130,7 +135,7 @@ runTests([
         let host = await openreHost();
         let res = JSON.parse((await host.cli('validate', 'openre', '--json')).out);
         const workers = res.findings.filter((f) => f.area === 'units' && /^worker /.test(f.message));
-        assert.deepStrictEqual(workers.map((f) => f.level), ['info', 'info', 'info']);
+        assert.deepStrictEqual(workers.map((f) => f.level), ['info', 'info', 'info', 'info']);
         assert.match(workers[0].message, /never starts, stops or restarts it/);
         assert.ok(!res.findings.some((f) => /no running instance/.test(f.message)));
         assert.deepStrictEqual(stateChanges(host), []);
@@ -139,6 +144,7 @@ runTests([
         assert.deepStrictEqual(res.findings.filter((f) => /no running instance/.test(f.message)).map((f) => [f.level, f.message]), [
             ['warn', 'no running instance of worker unit openre-rtmp-ingest@.service'],
             ['warn', 'no running instance of worker unit openre-restream-worker@.service'],
+            ['warn', 'no running instance of worker unit openre-webrtc@.service'],
         ]);
         assert.deepStrictEqual(stateChanges(host), []);
         assert.ok(!JSON.stringify(res).includes(SECRET));

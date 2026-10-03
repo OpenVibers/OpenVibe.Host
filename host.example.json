@@ -2113,7 +2113,7 @@
       }
     },
     "bot": {
-      "_note": "Not deployed yet. Bot owns openvibe.bot.conf: deploy bot installs its proxy vhost after Sites skips that filename. Before the first deploy, provision bot.env, the database and the existing TLS certificate; use ovhost deploy bot --restart if the checkout is already current so it installs and enables the service unit. Keep Sites on its ovhost deploy path (its legacy fallback still installs every vhost).",
+      "_note": "Deployed; migrations 0001 and 0002 applied. Bot owns openvibe.bot.conf: deploy bot installs its proxy vhost after Sites skips that filename. BOT_WHIP_BASE (in /etc/openvibe/bot.env) is the switch that points Bot's video at https://ingest.openre.stream/whip. Use ovhost deploy bot --restart if the checkout is already current so it installs and enables the service unit. Keep Sites on its ovhost deploy path (its legacy fallback still installs every vhost).",
       "repo": "/opt/openvibe.bot",
       "installUnits": true,
       "enableUnits": true,
@@ -2178,7 +2178,7 @@
       }
     },
     "openre": {
-      "_note": "Release layout: /opt/openre.stream/repo is the git clone, releases/<sha12> the releases (npm ci into each, chowned to ubuntu), `current` the link the API and the coordinator run from (deploy.sh release + api as ovhost deploy openre; ovhost rollback openre). units are the API and the session coordinator. workerUnits are the transport workers: one instance per release (openre-rtmp-ingest@<release>), started by deploy.sh workers (still the repository's script), drained by the coordinator when a newer generation is ready, and exiting on their own. ovhost lists them in status/validate, never starts, stops or restarts them (the inventory refuses a worker unit in units), and never prunes a release a worker instance runs from.",
+      "_note": "Release layout: /opt/openre.stream/repo is the git clone, releases/<sha12> the releases (npm ci into each, chowned to ubuntu), `current` the link the API and the coordinator run from (deploy.sh release + api as ovhost deploy openre; ovhost rollback openre). units are the API and the session coordinator. workerUnits are the transport workers: one instance per release (openre-rtmp-ingest@<release>), started by deploy.sh workers (still the repository's script), drained by the coordinator when a newer generation is ready, and exiting on their own. ovhost only lists them in status/validate (it never starts, stops or restarts them; the inventory refuses a worker unit in units), and never prunes a release a worker instance runs from. deploy.sh workers starts openre-webrtc@<release> once the WHIP vhost (ingest.openre.stream) and MEDIASOUP_ANNOUNCED_IP are set.",
       "repo": "/opt/openre.stream",
       "strategy": "release-layout",
       "owner": "root",
@@ -2196,7 +2196,8 @@
       ],
       "workerUnits": [
         "openre-rtmp-ingest@.service",
-        "openre-restream-worker@.service"
+        "openre-restream-worker@.service",
+        "openre-webrtc@.service"
       ],
       "envFile": "/etc/openvibe/openre.env",
       "env": {
