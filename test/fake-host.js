@@ -260,6 +260,10 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             // the path has left the index (`git rm --cached`). skip-worktree does not help.
             const headFiles = repo.commits.get(repo.head).files;
             const nextFiles = repo.commits.get(sha).files;
+            for (const f of Object.keys(nextFiles)) {
+                if (f in headFiles || !files.has(path.join(repo.path, f))) continue;
+                return fail(`error: The following untracked working tree files would be overwritten by merge:\n\t${f}\nPlease move or remove them before you merge.`);
+            }
             for (const f of Object.keys(headFiles)) {
                 if (f in nextFiles || repo.indexRemoved.has(f)) continue;
                 if (host.read(path.join(repo.path, f)) === headFiles[f]) continue;
