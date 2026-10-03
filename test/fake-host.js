@@ -229,9 +229,11 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         }
         case 'fetch': return ok();
         case 'diff': {
-            const a = repo.commits.get(resolveRef(repo, rest[1])).files;
-            const b = repo.commits.get(resolveRef(repo, rest[2])).files;
-            const names = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((f) => a[f] !== b[f]).sort();
+            const refs = rest.filter((x) => !x.startsWith('--'));
+            const a = repo.commits.get(resolveRef(repo, refs[0])).files;
+            const b = repo.commits.get(resolveRef(repo, refs[1])).files;
+            const added = rest.includes('--diff-filter=A');
+            const names = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((f) => (added ? !(f in a) && f in b : a[f] !== b[f])).sort();
             return ok(names.length ? `${names.join('\n')}\n` : '');
         }
         case 'log': {
@@ -264,6 +266,12 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
                 if (f in nextFiles || repo.indexRemoved.has(f)) continue;
                 if (host.read(path.join(repo.path, f)) === headFiles[f]) continue;
                 return fail(`error: Your local changes to the following files would be overwritten by merge:\n\t${f}\nPlease commit your changes or stash them before you merge.`);
+            }
+            // An untracked file where the incoming tree adds one blocks it too, even byte for byte the same
+            // (real git: Sites' deploy/nginx/openvibe.work.conf, 2026-10-03).
+            for (const f of Object.keys(nextFiles)) {
+                if (f in headFiles || host.read(path.join(repo.path, f)) == null) continue;
+                return fail(`error: The following untracked working tree files would be overwritten by merge:\n\t${f}\nPlease move or remove them before you merge.\nAborting`);
             }
             repo.checkout(sha);
             repo.indexRemoved.clear();

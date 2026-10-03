@@ -233,6 +233,29 @@ runTests([
         assert.strictEqual(again.code, 0, again.out);
     }),
 
+    test('sites: an untracked build output the release now tracks byte for byte is removed before the merge; a different one still refuses', async () => {
+        const host = sitesHost();
+        host.put('/opt/openvibe.sites/deploy/nginx/openvibe.work.conf', '# work v1', { owner: 'ubuntu' });   // the last build generated it
+        host.push({ 'deploy/nginx/openvibe.work.conf': '# work v1' }, 'track the work vhost');
+        const plan = await host.cli('plan', 'sites');
+        assert.match(plan.out, /untracked +deploy\/nginx\/openvibe\.work\.conf is removed before the merge/);
+        const r = await host.cli('deploy', 'sites');
+        assert.strictEqual(r.code, 0, r.out);
+        const rm = host.calls.findIndex((c) => c.cmd === 'rm' && c.args.includes('/opt/openvibe.sites/deploy/nginx/openvibe.work.conf'));
+        const merge = host.calls.findIndex((c) => c.cmd === 'git' && c.args.includes('merge'));
+        assert.ok(rm >= 0 && rm < merge, 'removed before the merge'); assert.strictEqual(host.calls[rm].as, 'ubuntu');
+        assert.strictEqual(host.read('/opt/openvibe.sites/deploy/nginx/openvibe.work.conf'), '# work v1');
+        assert.deepStrictEqual((await lastRecord(host, 'sites')).removedUntracked, ['deploy/nginx/openvibe.work.conf']);
+        // Different bytes are someone's file: never removed, the merge refuses as before.
+        const h2 = sitesHost();
+        h2.put('/opt/openvibe.sites/deploy/nginx/local.conf', '# a hand edit', { owner: 'ubuntu' });
+        h2.push({ 'deploy/nginx/local.conf': '# from the repository' }, 'track local.conf');
+        const r2 = await h2.cli('deploy', 'sites');
+        assert.notStrictEqual(r2.code, 0, r2.out); assert.match(r2.out, /deploy\/nginx\/local\.conf \/ Please move or remove them before you merge/);
+        assert.strictEqual(h2.read('/opt/openvibe.sites/deploy/nginx/local.conf'), '# a hand edit');
+        assert.ok(!h2.calls.some((c) => c.cmd === 'rm' && c.args.includes('/opt/openvibe.sites/deploy/nginx/local.conf')));
+    }),
+
     test('sites: nothing new does nothing', async () => {
         const host = sitesHost();
         const r = await host.cli('deploy', 'sites');
