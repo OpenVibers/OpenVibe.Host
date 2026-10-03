@@ -149,6 +149,8 @@ escape a directory: there is no directory.
 | **Certificate-validation files** (`.well-known/acme-challenge/`, `.well-known/pki-validation/`), which would let a tenant prove control of `<site>.openvibe.host` to a CA over HTTPS | **added:** refused in uploads and never served (`paths.js:49-53`); the operator issues every certificate | fixed (`1e48cb2`) |
 | **Duplicate paths, file/directory conflicts, empty uploads** | refused (`validate.js:43,58`) | fixed |
 | **A refused upload leaves partial state** | nothing is stored; the refusal is a `failed` deploy with its log and `host.deploy.failed`; the active deploy keeps serving | fixed |
+| **Git deploys** (`POST /sites/:id/source/deploys`, Phase 1) | **added:** the build runs in the project's own CI; Host receives its output through the same reader, validator, quotas, upload gate and failure records as an upload, so a hostile build output is refused exactly like a hostile upload. Host never clones, fetches or runs anything, so there is no outbound request to a tenant-chosen URL (`security-ssrf.test.js` is unchanged) and no build to isolate. The ref must be the site's connected branch and the commit a full SHA; the deploy is always the site's preview and never moves `active_deploy_id` (`test/host-git-source.test.js`) | fixed by design |
+| **A forged or stolen CI token** | the CI's token is the trust boundary: an app principal that is a `deployer` of the project (or a person's token), so it can do what any deployer can; a git deploy only reaches the preview, and going live needs the ordinary activate. The repository credential stays with the CI; Host stores only the public repo URL, branch and commit (`host_site_sources`, `host_deploy_git`), and a source write naming any other field is refused | accepted: rotate the app's client secret in Network; Run (plan T14) owns any in-Host build |
 | **Filling the shared disk** | **added:** deploys are refused with `507 storage.host_full` while the object store's filesystem has less than `HOST_MIN_FREE_BYTES` (default 5 GiB) free (`deploys.js:78-86`); `/api/ready` reports `disk_headroom`. Serving is unaffected. See also §6. | fixed (`0ff29d5`) |
 
 ## 3. Custom domains
@@ -271,8 +273,8 @@ the history of any site.
 | `/metrics` | direct loopback callers only; nginx returns 404 (`tenants.conf.tmpl:72`) | fixed |
 | `/api/ready`, `/api/health`, `/release.json` | no secrets, no tenant data (`host-secrets-dashboard`) | fixed |
 | Secrets in responses | allowlisted serializers (`server/http/serialize.js`); tested for the client secret, form secret, uploaded `.env` values and credential-like strings | fixed |
-| Tenant secrets | Stage B stores none: no environment, build secrets or deploy keys | fixed by design |
-| Tenant code execution | none: no build step, no server-side code | fixed by design |
+| Tenant secrets | Stage B stores none: no environment, build secrets, deploy keys or repository credentials. A git source is a public repo URL and branch; the credential that reads the repository and the token that posts the build stay in the tenant's CI, and that CI token is the trust boundary | fixed by design |
+| Tenant code execution | none: no build step, no server-side code. Git deploys are built in the tenant's own CI and arrive as files validated like an upload; Host never clones, fetches or runs tenant code (in-Host builds belong to Run, plan T14) | fixed by design |
 | The tenant vhost install | transactional (`nginx -t`, restore on failure); **added:** removes the interim pending vhost in the same change (`lib/nginx.js:100-`, `nginx.tenants.replaces`) | fixed (`1e48cb2`) |
 
 ## Residual risks

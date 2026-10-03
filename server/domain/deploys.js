@@ -17,8 +17,15 @@
  *             and is served only by the dashboard, to a member, at /preview/<deploy-id>/… (see
  *             server/http/tenant.js). Any pointer switch clears it (so a deploy or rollback makes it
  *             vanish), it expires on its own, and it is never announced to search engines.
+ *   git       ingestGit: the output a project's OWN CI built from the site's connected repository
+ *             (domain/site-sources.js), posted with the ref and the commit it built. The ref must be
+ *             the connected one and the commit a full SHA; the files go through create() like any
+ *             upload, are stored with source 'git' plus an immutable host_deploy_git row in the same
+ *             transaction, and always land as the site's preview: approving it is the ordinary
+ *             activate. A git deploy never moves active_deploy_id by itself.
  *
- * There is no build: Stage B serves the uploaded files as they are, and nothing is ever executed.
+ * Host never builds: it serves the uploaded files (or the CI's build output) as they are, never
+ * clones or fetches a repository, holds no credential for one, and never executes anything.
  */
 const { newId, isId } = require('../ids');
 const { ApiError } = require('../http/errors');
@@ -29,6 +36,9 @@ const DAY = 24 * 3600 * 1000;
 // How long a preview stays served. Bounded so a draft cannot linger on the dashboard forever; the
 // uploader can always upload another one.
 const PREVIEW_TTL_MS = 60 * 60 * 1000;
+// A full commit id: SHA-1 (40) or SHA-256 (64) object names, lowercase hex.
+const COMMIT_SHA_RE = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
+const GIT_COLS = 'g.provider AS git_provider, g.repo_url AS git_repo_url, g.ref AS git_ref, g.commit_sha AS git_commit_sha';
 const fmtBytes = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${n} B`);
 
 function createDeploys({ store, config = null, access, projects, sites, blobs, outbox, takedowns, log = console, indexnow = null }) {
@@ -40,8 +50,10 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
         if (!project || project.environment !== 'sandbox') announce(sites.defaultHostname(site.name), paths);
     };
     const q = {
-        byId: db.prepare('SELECT * FROM host_deploys WHERE id = ?'),
-        forSite: db.prepare("SELECT * FROM host_deploys WHERE site_id = ? AND state <> 'deleted' ORDER BY created_at DESC, seq DESC LIMIT ?"),
+        // A git deploy's provenance comes along as git_* columns (NULL for any other deploy).
+        byId: db.prepare(`SELECT d.*, ${GIT_COLS} FROM host_deploys d LEFT JOIN host_deploy_git g ON g.deploy_id = d.id WHERE d.id = ?`),
+        forSite: db.prepare(`SELECT d.*, ${GIT_COLS} FROM host_deploys d LEFT JOIN host_deploy_git g ON g.deploy_id = d.id
+                             WHERE d.site_id = ? AND d.state <> 'deleted' ORDER BY d.created_at DESC, d.seq DESC LIMIT ?`),
         insert: db.prepare(`INSERT INTO host_deploys (id, project_id, site_id, state, source, manifest, manifest_sha256, file_count, total_bytes, new_bytes, failure_code, created_by, created_at)
                             VALUES (@id, @project_id, @site_id, @state, @source, @manifest, @manifest_sha256, @file_count, @total_bytes, @new_bytes, @failure_code, @created_by, @created_at)`),
         insertFile: db.prepare('INSERT INTO host_deploy_files (deploy_id, path, sha256, size, content_type) VALUES (?, ?, ?, ?, ?)'),
@@ -64,6 +76,8 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
                                SELECT 1 FROM host_deploy_files f JOIN host_deploys d ON d.id = f.deploy_id
                                WHERE d.project_id = b.project_id AND f.sha256 = b.sha256)`),
         dropBlob: db.prepare('DELETE FROM host_blobs WHERE project_id = ? AND sha256 = ?'),
+        sourceOf: db.prepare('SELECT provider, repo_url, ref FROM host_site_sources WHERE site_id = ?'),
+        insertGit: db.prepare('INSERT INTO host_deploy_git (deploy_id, provider, repo_url, ref, commit_sha, created_at) VALUES (?, ?, ?, ?, ?, ?)'),
     };
 
     async function get(id) {
@@ -139,12 +153,15 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
      * entries: [{ path, data }] already normalised by the reader. -> { deploy, log, activated }
      * Throws ApiError (with extra.deploy_id and extra.log) when the upload is refused.
      */
-    async function create(viewer, ctx, entries, { source, activate = false, preview = false, notes = [], traceparent } = {}) {
+    async function create(viewer, ctx, entries, { source, activate = false, preview = false, notes = [], traceparent, git = null } = {}) {
         const { site, project, limits } = ctx;
         // A preview is never activated: it is the site's live preview (its pointer), not its active
-        // deploy, and it is stored with source 'preview' so the two can never be confused.
+        // deploy, and it is stored with source 'preview' so the two can never be confused. A git
+        // deploy is always a preview and keeps source 'git'; its provenance row says what it is.
+        const isGit = source === 'git';
+        if (isGit && (!git || preview !== true)) throw new Error('a git deploy is created by ingestGit, as a preview');
         const isPreview = preview === true;
-        const storedSource = isPreview ? 'preview' : source;
+        const storedSource = isPreview && !isGit ? 'preview' : source;
         if (isPreview) activate = false;
         const fail = async (status, code, problems) => {
             const r = await recordFailure(viewer, ctx, { source: storedSource, code, problems, notes, traceparent });
@@ -175,7 +192,7 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
             ...built.warnings.map((m) => ({ level: 'warn', message: m })),
             { level: 'info', message: `stored ${fresh.size} new objects (${fmtBytes(newBytes)}); ${built.files.length - fresh.size} already stored for this project` },
             { level: 'info', message: `manifest sha256 ${built.manifestSha256}` },
-            { level: 'info', message: 'no build step: Stage B serves the uploaded files as they are; nothing was executed' },
+            { level: 'info', message: isGit ? 'built outside Host by the project\'s CI; Host stored the files as they are and executed nothing' : 'no build step: Stage B serves the uploaded files as they are; nothing was executed' },
         ];
         let activated = null;
         const previewExpiresAt = isPreview ? now + PREVIEW_TTL_MS : null;
@@ -183,6 +200,7 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
             await q.insert.run({ id, project_id: project.id, site_id: site.id, state: 'ready', source: storedSource, manifest: built.manifestJson, manifest_sha256: built.manifestSha256, file_count: built.manifest.file_count, total_bytes: built.manifest.total_bytes, new_bytes: newBytes, failure_code: null, created_by: who, created_at: now });
             for (const f of built.files) await q.insertFile.run(id, f.path, f.sha256, f.size, f.content_type);
             for (const f of fresh.values()) await q.insertBlob.run(project.id, f.sha256, f.size, now);
+            if (isGit) await q.insertGit.run(id, git.provider, git.repo_url, git.ref, git.commit_sha, now);
             await outbox.emit({
                 event_type: 'host.deploy.created', actor: actorRef(viewer), visibility: 'internal', priority: 'low',
                 subject: { type: 'deploy', id },
@@ -202,6 +220,36 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
         outbox.kick();
         if (activated && activated.changed) announceSite(site, project);
         return { deploy: await get(id), log: await q.logFor.all(id), activated, preview: isPreview ? { deploy_id: id, expires_at: previewExpiresAt } : null };
+    }
+
+    /**
+     * May the site take a git deploy of `ref` at `commit_sha`? -> the provenance to record.
+     * 409 source.not_connected, 409 source.ref_mismatch, 422 source.commit_sha / source.ref. Either
+     * value may be left out (undefined) to check only the connection, before the body is read.
+     */
+    async function gitTarget(site, { ref, commit_sha: sha } = {}) {
+        const src = await q.sourceOf.get(site.id);
+        if (!src) throw new ApiError(409, 'source.not_connected', 'this site has no Git source: connect a repository and branch first (PUT /api/v1/sites/:id/source)');
+        if (ref !== undefined) {
+            if (typeof ref !== 'string' || !ref) throw new ApiError(422, 'source.ref', 'ref is required: the branch this commit was built from');
+            if (ref !== src.ref) throw new ApiError(409, 'source.ref_mismatch', `this site deploys from ${src.ref}, not ${ref.slice(0, 200)}`);
+        }
+        if (sha !== undefined && (typeof sha !== 'string' || !COMMIT_SHA_RE.test(sha))) {
+            throw new ApiError(422, 'source.commit_sha', 'commit_sha must be the full commit id: 40 or 64 lowercase hex characters');
+        }
+        return { provider: src.provider, repo_url: src.repo_url, ref: src.ref, commit_sha: sha };
+    }
+
+    /**
+     * A git deploy: the build output the project's CI posts for the connected ref at commit_sha.
+     * ctx is precheck()'s result for siteId. It lands as the site's preview and never activates;
+     * a refused file is a failed deploy (recordFailure, through create) and host.deploy.failed.
+     */
+    async function ingestGit(viewer, ctx, siteId, entries, { ref, commit_sha, notes = [], traceparent } = {}) {
+        if (!ctx || !ctx.site || ctx.site.id !== siteId) throw new ApiError(404, 'site.not_found', 'no such site');
+        const git = await gitTarget(ctx.site, { ref: ref == null ? '' : ref, commit_sha: commit_sha == null ? '' : commit_sha });
+        const why = [...notes, `git: ${git.repo_url} ${git.ref} at ${git.commit_sha}`];
+        return await create(viewer, ctx, entries, { source: 'git', preview: true, activate: false, notes: why, traceparent, git });
     }
 
     /** Inside a transaction. Compare-and-set on the pointer read in the same transaction. */
@@ -295,7 +343,7 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
     }
 
     return {
-        get, load, precheck, create, recordFailure, activate, rollback, remove, collectGarbage, unlinkBlobs, limitsFor,
+        get, load, precheck, create, ingestGit, gitTarget, recordFailure, activate, rollback, remove, collectGarbage, unlinkBlobs, limitsFor,
         list: async (siteId, limit = 100) => await q.forSite.all(siteId, Math.min(Math.max(limit, 1), 200)),
         logOf: async (id) => await q.logFor.all(id),
         filesOf: async (id) => await q.files.all(id),

@@ -15,7 +15,7 @@ const { readUpload, UploadError } = require('./upload');
 const { ApiError, privateNoStore } = require('./errors');
 
 function createDashboard(ctx) {
-    const { config, projects, sites, deploys, domains, siteConfig, viewers, access, log = console } = ctx;
+    const { config, projects, sites, deploys, domains, siteConfig, siteSources, viewers, access, log = console } = ctx;
     const router = express.Router();
     const urlencoded = express.urlencoded({ extended: false, limit: '16kb' });
 
@@ -92,6 +92,7 @@ function createDashboard(ctx) {
             deploys: await deploys.list(site.id, 50), activations: await deploys.activationsOf(site.id, 10),
             domains: (await domains.listForSite(site.id)).map((d) => ({ domain: d, instructions: domains.instructions(d, site) })),
             siteConfig: { ...cfg, headersText: siteConfig.headersToText(cfg.headers), redirectsText: siteConfig.redirectsToText(cfg.redirects) },
+            source: await siteSources.forSite(site.id),
         }), takedownNotice(await ctx.takedowns.ofSite(site)) || notice(req));
     }));
 
@@ -139,6 +140,15 @@ function createDashboard(ctx) {
         const redirects = siteConfig.parseRedirectsText(req.body.redirects);
         await siteConfig.set(req.viewer, site, { headers, redirects, spa: req.body.spa === '1' });
         return back(`/sites/${site.id}`, 'Site configuration saved.');
+    }));
+    // The Git source the project's CI deploys from (Host never fetches it); git deploys land as previews.
+    router.post('/sites/:id/source', action(async (req) => {
+        const { site } = await siteSources.put(req.viewer, req.params.id, { provider: req.body.provider || undefined, repo_url: req.body.repo_url, ref: req.body.ref });
+        return back(`/sites/${site.id}`, 'Git source saved. Your CI posts each build to it as a preview.');
+    }));
+    router.post('/sites/:id/source/remove', action(async (req) => {
+        const { site } = await siteSources.remove(req.viewer, req.params.id);
+        return back(`/sites/${site.id}`, 'Git source removed.');
     }));
     router.post('/sites/:id/domains', action(async (req) => {
         const { domain } = await domains.add(req.viewer, req.params.id, { hostname: req.body.hostname });
