@@ -50,7 +50,7 @@ runTests([
         const { host, cli, provision } = setup();
         const result = await cli('service', 'add', 'bot', '--json');
         assert.strictEqual(result.code, 0, result.out);
-        assert.doesNotMatch(result.out, /production|127\.0\.0\.1|4630|https:\/\/openvibe\.bot|sk_live_/);
+        assert.doesNotMatch(result.out, /NODE_ENV=production|127\.0\.0\.1|4630|https:\/\/openvibe\.bot|sk_live_/);
         const live = JSON.parse(host.read('/etc/openvibe/host.json'));
         assert.ok(live.services.bot);
         assert.ok(!Object.hasOwn(live.services.bot, '_note'));
@@ -71,7 +71,13 @@ runTests([
         assert.ok(host.calls.some((c) => c.cmd === 'git' && c.args[0] === 'clone' && c.as === 'ubuntu'));
         const r = JSON.parse(result.out);
         assert.deepStrictEqual(r.unset, ['OV_OAUTH_CLIENT_SECRET']);
-        assert.match(r.remaining.join('\n'), /service-principal\.js create bot --env-file \/etc\/openvibe\/bot\.env/);
+        const step = r.remaining.join('\n');
+        assert.ok(step.includes('sudo systemd-run'), step);
+        assert.ok(step.includes('-p EnvironmentFile=/etc/openvibe/network.env'), step);
+        assert.ok(step.includes('-p WorkingDirectory=/opt/openvibe.network'), step);
+        assert.ok(step.includes("service-principal.js list | grep -Eq '^bot[[:space:]]'"), step);
+        assert.ok(step.includes('then verb=rotate; else verb=create; fi'), step);
+        assert.ok(step.includes('"$verb" bot --env-file /etc/openvibe/bot.env'), step);
         assert.match(r.remaining.join('\n'), /ovhost validate bot; ovhost deploy bot --restart/);
         const repeat = await cli('service', 'add', 'bot');
         assert.strictEqual(repeat.code, 1);
@@ -82,9 +88,25 @@ runTests([
         const result = await cli('service', 'add', 'bot');
         assert.strictEqual(result.code, 0, result.out);
         assert.match(result.out, /^still empty in \/etc\/openvibe\/bot\.env: OV_OAUTH_CLIENT_SECRET$/m);
-        assert.match(result.out, /node server\/setup\/service-principal\.js create bot --env-file \/etc\/openvibe\/bot\.env/);
+        assert.ok(result.out.includes('sudo systemd-run'), result.out);
+        assert.ok(result.out.includes('-p EnvironmentFile=/etc/openvibe/network.env'), result.out);
+        assert.ok(result.out.includes('-p WorkingDirectory=/opt/openvibe.network'), result.out);
+        assert.ok(result.out.includes("service-principal.js list | grep -Eq '^bot[[:space:]]'"), result.out);
+        assert.ok(result.out.includes('then verb=rotate; else verb=create; fi'), result.out);
+        assert.ok(result.out.includes('"$verb" bot --env-file /etc/openvibe/bot.env'), result.out);
         assert.match(result.out, /^then: ovhost validate bot; ovhost deploy bot --restart$/m);
-        assert.doesNotMatch(result.out, new RegExp(`production|127\\.0\\.0\\.1|4630|https://openvibe\\.bot|${SECRET}`));
+        assert.doesNotMatch(result.out, new RegExp(`NODE_ENV=production|127\\.0\\.0\\.1|4630|https://openvibe\\.bot|${SECRET}`));
+    }),
+    test("the principal step uses the inventory's Network checkout and env file", async () => {
+        const { host, cli } = setup();
+        const doc = JSON.parse(host.read('/etc/openvibe/host.json'));
+        doc.services.network = { repo: '/srv/net', owner: 'ubuntu', units: [], envFile: '/etc/openvibe/net-prod.env', port: 4000, lifecycle: lifecycleDoc() };
+        host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
+        const result = await cli('service', 'add', 'bot');
+        assert.strictEqual(result.code, 0, result.out);
+        assert.ok(result.out.includes('-p EnvironmentFile=/etc/openvibe/net-prod.env'), result.out);
+        assert.ok(result.out.includes('-p WorkingDirectory=/srv/net'), result.out);
+        assert.doesNotMatch(result.out, new RegExp(SECRET));
     }),
     test('refuses an occupied checkout before changing the inventory', async () => {
         const { host, cli } = setup();
