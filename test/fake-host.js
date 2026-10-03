@@ -18,6 +18,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
     const files = new Map(); // path -> { type: 'file'|'dir'|'symlink', content, mode, owner, target }
     const calls = [];
     const repos = new Map(); // repoPath -> repo
+    const remoteRepos = new Map(); // URL -> files for a new clone
     const units = new Map(); // unit -> state
     const http = new Map(); // url -> fn({ headers, method, body }) -> { status, body } (request() also passes method and body)
     const alivePids = new Set();
@@ -25,7 +26,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
     let clock = start;
     let seq = 0;
     const host = {
-        files, calls, repos, units, http, alivePids, listeners,
+        files, calls, repos, remoteRepos, units, http, alivePids, listeners,
         nginxTest: () => ({ code: 0, stderr: 'nginx: configuration file /etc/nginx/nginx.conf test is successful' }),
         npm: null, // (cwd, argv, as) -> undefined | { code, stderr } ; default installs package.json deps
         npmRewritesLockfile: true,
@@ -183,6 +184,18 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         return matches.length === 1 ? matches[0] : null;
     }
     function gitCmd(args, opts) {
+        if (args[0] === 'clone') {
+            const url = args[args.length - 2];
+            const dest = args[args.length - 1];
+            const source = remoteRepos.get(url);
+            if (!source || (files.has(path.resolve(dest)) && (files.get(path.resolve(dest)).type !== 'dir' || [...files.keys()].some((p) => p.startsWith(`${path.resolve(dest)}/`))))) return { code: 128, stdout: '', stderr: 'clone source missing or destination occupied' };
+            const branch = args[args.indexOf('--branch') + 1];
+            const repo = host.createRepo(dest, { owner: opts.as || 'root', branch });
+            const sha = repo.commit(source);
+            repo.publish(sha);
+            repo.checkout(sha);
+            return { code: 0, stdout: '', stderr: '' };
+        }
         const repo = repos.get(args[1]) || repos.get(resolveLinks(args[1]));
         if (!repo) return { code: 128, stdout: '', stderr: 'not a git repository' };
         let i = 2;
@@ -422,6 +435,13 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             case 'systemctl': return systemctlCmd(args);
             case 'nginx': return { stdout: '', ...host.nginxTest() };
             case 'rm': rmTree(args[args.length - 1]); return { code: 0, stdout: '', stderr: '' };
+            case 'cat': {
+                // Reads as opts.as: another user's file needs the world-read bit.
+                const e = get(args[args.length - 1]);
+                if (!e || e.type !== 'file') return { code: 1, stdout: '', stderr: 'cat: No such file or directory' };
+                if (opts.as && opts.as !== 'root' && e.owner !== opts.as && !(e.mode & 0o004)) return { code: 1, stdout: '', stderr: 'cat: Permission denied' };
+                return { code: 0, stdout: String(e.content), stderr: '' };
+            }
             case 'install': {
                 const src = args[args.length - 2];
                 const dest = args[args.length - 1];
@@ -436,7 +456,8 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
                 const target = resolveLinks(args[args.length - 1]);
                 const e = files.get(target);
                 if (!e) return { code: 1, stdout: '', stderr: 'chown: no such file' };
-                const who = args.filter((a) => !a.startsWith('-'))[0].split(':')[0];
+                const whoRaw = args.filter((a) => !a.startsWith('-'))[0].split(':')[0];
+                const who = whoRaw === '0' ? 'root' : whoRaw;
                 if (args.includes('-R')) { for (const [k, v] of files) if (k === target || k.startsWith(`${target}/`)) v.owner = who; } else e.owner = who;
                 return { code: 0, stdout: '', stderr: '' };
             }
@@ -548,7 +569,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
                 }
                 const e = get(src);
                 if (!e || e.type !== 'file') return { code: 1, stdout: '', stderr: `cp: cannot stat '${src}': No such file or directory` };
-                put(dest, e.content, { owner: opts.as || user, mode: 0o644 });
+                put(dest, e.content, { owner: args.includes('-p') ? e.owner : opts.as || user, mode: args.includes('-p') ? e.mode : 0o644 });
                 return { code: 0, stdout: '', stderr: '' };
             }
             default: return { code: 127, stdout: '', stderr: `fake host: no ${cmd}` };
