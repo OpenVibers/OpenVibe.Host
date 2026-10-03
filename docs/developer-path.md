@@ -53,7 +53,7 @@ copied to Media.
 Install (once, as root, in `/opt/openvibe.network`, then here):
 
 ```sh
-node server/setup/service-principal.js create probe --env-file /etc/openvibe/probe.env   # secret never printed
+node --env-file=/etc/openvibe/network.env server/setup/service-principal.js create probe --write-env /etc/openvibe/probe.env   # secret never printed
 systemctl restart openvibe-network        # seeds probe's default grants
 install -m 644 deploy/systemd/openvibe-toolsjob.{service,timer} /etc/systemd/system/ && systemctl daemon-reload
 systemctl enable --now openvibe-toolsjob.timer
