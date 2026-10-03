@@ -79,11 +79,11 @@ All commands run on the production host. None of them prints a secret.
 
 1. **Is the `host` client there?** Network seeds it at boot, with a secret that only its database holds.
    ```
-   cd /opt/openvibe.network && sudo node server/setup/service-principal.js list | grep -E '^host\s'
+   cd /opt/openvibe.network && sudo node --env-file=/etc/openvibe/network.env server/setup/service-principal.js list | grep -E '^host\s'
    ```
    Expect `host	site	OpenVibe.Host`. It is listed as `site` because it has the dashboard's redirect
    URI; client_credentials works for it all the same. If the line is missing, create the client instead of rotating it in step 2:
-   `sudo node server/setup/service-principal.js create host --env-file /etc/openvibe/host.env`.
+   `sudo node --env-file=/etc/openvibe/network.env server/setup/service-principal.js create host --write-env /etc/openvibe/host.env`.
 2. **Does Host's env file already hold its secret?** It does if the Host API was set up with one. The
    first command counts matching lines and never prints a value.
    ```
@@ -91,7 +91,7 @@ All commands run on the production host. None of them prints a secret.
    ```
    If it prints `0`, or the file does not exist, write a fresh secret into it:
    ```
-   cd /opt/openvibe.network && sudo node server/setup/service-principal.js rotate host --env-file /etc/openvibe/host.env
+   cd /opt/openvibe.network && sudo node --env-file=/etc/openvibe/network.env server/setup/service-principal.js rotate host --write-env /etc/openvibe/host.env
    sudo systemctl restart openvibe-host
    ```
    Rotating changes the secret the running Host API uses, so restart it afterwards. The script writes
