@@ -208,6 +208,99 @@ runTests([
     }),
 
     // ── static-build (Sites) ──
+    test('sites: an untracked repo vhost the release tracks is removed before the merge', async () => {
+        const host = sitesHost();
+        const file = 'deploy/nginx/openvibe.work.conf';
+        const local = 'server { # built on host }\n';
+        const incoming = 'server { # tracked by release }\n';
+        host.put(`/opt/openvibe.sites/${file}`, local, { owner: 'ubuntu' });
+        const to = host.push({ [file]: incoming }, 'track work vhost');
+        const plan = JSON.parse((await host.cli('plan', 'sites', '--json')).out);
+        assert.deepStrictEqual(plan.untrackedGenerated, [file]);
+        assert.match((await host.cli('plan', 'sites')).out, /untracked +deploy\/nginx\/openvibe\.work\.conf is build output, removed before the merge/);
+        const r = await host.cli('deploy', 'sites');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.strictEqual(host.repo.head, to);
+        const rm = host.calls.findIndex((c) => c.cmd === 'rm' && c.args.includes(`/opt/openvibe.sites/${file}`));
+        const merge = host.calls.findIndex((c) => c.cmd === 'git' && c.args.includes('merge'));
+        assert.ok(rm >= 0 && rm < merge, 'removed before the merge');
+        assert.strictEqual(host.calls[rm].as, 'ubuntu');
+        assert.match(r.out, /removing untracked build output deploy\/nginx\/openvibe\.work\.conf \(the release tracks it\)/);
+        assert.strictEqual(host.read(`/opt/openvibe.sites/${file}`), incoming);
+        assert.deepStrictEqual((await lastRecord(host, 'sites')).removedUntracked, [file]);
+    }),
+
+    test('sites: a skipped untracked repo vhost is left for its owning service', async () => {
+        const host = sitesHost();
+        const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
+        raw.services.sites.nginx = { repoVhosts: 'deploy/nginx/*.conf', installOnDeploy: true, skipVhosts: ['openvibe.bot.conf'] };
+        host.put('/etc/openvibe/host.json', JSON.stringify(raw), { mode: 0o640 });
+        const file = 'deploy/nginx/openvibe.bot.conf';
+        const from = host.repo.head;
+        host.put(`/opt/openvibe.sites/${file}`, 'server { # Bot-owned }\n', { owner: 'ubuntu' });
+        host.push({ [file]: 'server { # incoming Sites copy }\n' }, 'track bot vhost');
+        const plan = JSON.parse((await host.cli('plan', 'sites', '--json')).out);
+        assert.deepStrictEqual(plan.untrackedGenerated, []);
+        const r = await host.cli('deploy', 'sites');
+        assert.strictEqual(r.code, 2, r.out);
+        assert.match(r.out, /untracked working tree files would be overwritten by merge/);
+        assert.strictEqual(host.repo.head, from);
+        assert.strictEqual(host.read(`/opt/openvibe.sites/${file}`), 'server { # Bot-owned }\n');
+        assert.ok(!host.calls.some((c) => c.cmd === 'rm' && c.args.includes(`/opt/openvibe.sites/${file}`)));
+        assert.ok(!(await lastRecord(host, 'sites')).removedUntracked);
+    }),
+
+    test('sites: an untracked dist page the release tracks is removed before the merge', async () => {
+        const host = sitesHost();
+        const file = 'dist/openvibe.work/index.html';
+        const incoming = '<h1>Work</h1>';
+        host.put(`/opt/openvibe.sites/${file}`, '<h1>Built locally</h1>', { owner: 'ubuntu' });
+        const to = host.push({ [file]: incoming }, 'track work page');
+        const plan = JSON.parse((await host.cli('plan', 'sites', '--json')).out);
+        assert.deepStrictEqual(plan.untrackedGenerated, [file]);
+        const r = await host.cli('deploy', 'sites');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.strictEqual(host.repo.head, to);
+        const rm = host.calls.findIndex((c) => c.cmd === 'rm' && c.args.includes(`/opt/openvibe.sites/${file}`));
+        const merge = host.calls.findIndex((c) => c.cmd === 'git' && c.args.includes('merge'));
+        assert.ok(rm >= 0 && rm < merge, 'removed before the merge');
+        assert.strictEqual(host.calls[rm].as, 'ubuntu');
+        assert.strictEqual(host.read(`/opt/openvibe.sites/${file}`), incoming);
+        assert.deepStrictEqual((await lastRecord(host, 'sites')).removedUntracked, [file]);
+    }),
+
+    test('sites: an unrelated untracked file the release tracks still blocks the merge', async () => {
+        const host = sitesHost();
+        const file = 'notes.txt';
+        const from = host.repo.head;
+        host.put(`/opt/openvibe.sites/${file}`, 'local notes', { owner: 'ubuntu' });
+        host.push({ [file]: 'release notes' }, 'track notes');
+        const plan = JSON.parse((await host.cli('plan', 'sites', '--json')).out);
+        assert.deepStrictEqual(plan.untrackedGenerated, []);
+        const r = await host.cli('deploy', 'sites');
+        assert.strictEqual(r.code, 2, r.out);
+        assert.match(r.out, /untracked working tree files would be overwritten by merge/);
+        assert.strictEqual(host.repo.head, from);
+        assert.strictEqual(host.read(`/opt/openvibe.sites/${file}`), 'local notes');
+        assert.ok(!host.calls.some((c) => c.cmd === 'rm' && c.args.includes(`/opt/openvibe.sites/${file}`)));
+        assert.ok(!(await lastRecord(host, 'sites')).removedUntracked);
+    }),
+
+    test('sites: a nested vhost outside the repo glob still blocks the merge', async () => {
+        const host = sitesHost();
+        const file = 'deploy/nginx/nested/openvibe.work.conf';
+        const from = host.repo.head;
+        host.put(`/opt/openvibe.sites/${file}`, 'local vhost', { owner: 'ubuntu' });
+        host.push({ [file]: 'release vhost' }, 'track nested vhost');
+        const plan = JSON.parse((await host.cli('plan', 'sites', '--json')).out);
+        assert.deepStrictEqual(plan.untrackedGenerated, []);
+        const r = await host.cli('deploy', 'sites');
+        assert.strictEqual(r.code, 2, r.out);
+        assert.match(r.out, /untracked working tree files would be overwritten by merge/);
+        assert.strictEqual(host.repo.head, from);
+        assert.strictEqual(host.read(`/opt/openvibe.sites/${file}`), 'local vhost');
+    }),
+
     test('sites: build output from the last build is restored first, npm ci + build, vhosts installed behind nginx -t, one notification per placeholder', async () => {
         const host = withEvents(sitesHost());
         // The previous deploy's build left the tracked dist/ dirty (today's date): that never blocks a deploy.
