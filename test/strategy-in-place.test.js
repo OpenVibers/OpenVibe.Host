@@ -230,6 +230,26 @@ runTests([
         assert.deepStrictEqual((await lastRecord(host, 'sites')).removedUntracked, [file]);
     }),
 
+    test('sites: a skipped untracked repo vhost is left for its owning service', async () => {
+        const host = sitesHost();
+        const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
+        raw.services.sites.nginx = { repoVhosts: 'deploy/nginx/*.conf', installOnDeploy: true, skipVhosts: ['openvibe.bot.conf'] };
+        host.put('/etc/openvibe/host.json', JSON.stringify(raw), { mode: 0o640 });
+        const file = 'deploy/nginx/openvibe.bot.conf';
+        const from = host.repo.head;
+        host.put(`/opt/openvibe.sites/${file}`, 'server { # Bot-owned }\n', { owner: 'ubuntu' });
+        host.push({ [file]: 'server { # incoming Sites copy }\n' }, 'track bot vhost');
+        const plan = JSON.parse((await host.cli('plan', 'sites', '--json')).out);
+        assert.deepStrictEqual(plan.untrackedGenerated, []);
+        const r = await host.cli('deploy', 'sites');
+        assert.strictEqual(r.code, 2, r.out);
+        assert.match(r.out, /untracked working tree files would be overwritten by merge/);
+        assert.strictEqual(host.repo.head, from);
+        assert.strictEqual(host.read(`/opt/openvibe.sites/${file}`), 'server { # Bot-owned }\n');
+        assert.ok(!host.calls.some((c) => c.cmd === 'rm' && c.args.includes(`/opt/openvibe.sites/${file}`)));
+        assert.ok(!(await lastRecord(host, 'sites')).removedUntracked);
+    }),
+
     test('sites: an untracked dist page the release tracks is removed before the merge', async () => {
         const host = sitesHost();
         const file = 'dist/openvibe.work/index.html';
