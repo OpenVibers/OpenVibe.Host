@@ -15,6 +15,7 @@ const path = require('path');
 const http = require('http');
 const { startNetwork } = require('./mocks');
 const { site: siteTar } = require('./tar');
+const { cookieNames } = require('../../server/auth/sso');
 
 // The Stage B suites deploy dozens of times a minute as one person: per-actor limits are tested on their own
 // (test/actor-limits.test.js), so they are off here unless a test turns them on.
@@ -84,7 +85,8 @@ async function boot(opts = {}) {
             if (o.host !== undefined) headers.host = o.host;
             if (o.as && typeof o.as === 'object') headers.authorization = `Bearer ${network.userToken(o.as)}`;
             if (typeof o.as === 'string') headers.authorization = `Bearer ${o.as}`;
-            if (o.session) headers.cookie = [headers.cookie, `ov_token=${network.userToken(o.session)}`].filter(Boolean).join('; ');
+            // A dashboard session is Host's own cookie (server/auth/sso.js); ov_token is display-only.
+            if (o.session) headers.cookie = [headers.cookie, `${cookieNames(t.config).session}=${network.userToken(o.session)}`].filter(Boolean).join('; ');
             let body = o.body;
             if (o.json !== undefined) { body = JSON.stringify(o.json); headers['content-type'] = 'application/json'; }
             if (o.form) { body = new URLSearchParams(o.form).toString(); headers['content-type'] = 'application/x-www-form-urlencoded'; }

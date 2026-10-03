@@ -35,6 +35,7 @@ const { createDomains } = require('./domain/domains');
 const { createSiteConfig } = require('./domain/site-config');
 const { createSsoClient } = require('openvibe-sdk/sso');
 const { createViewerResolver } = require('./auth/viewer');
+const { createHostSession } = require('./auth/sso');
 const { createTenantServer } = require('./http/tenant');
 const { createUploadGate } = require('./http/upload');
 const { createApi } = require('./http/api');
@@ -210,7 +211,7 @@ async function createApp(opts = {}) {
 
     // ── Sign-in (OAuth2 client of OpenVibe.Network) ─────────
     app.use('/auth/', rateLimit({ windowMs: 15 * 60_000, max: 60, standardHeaders: true, legacyHeaders: false }));
-    app.use('/auth', auth.router(express));
+    app.use('/auth', createHostSession({ auth, config }).router(express));
     { const legal = require('openvibe-shared/legal'); app.get(legal.PATHS, legal.handler({ id: 'host', service: 'host', host: 'openvibe.host', name: 'OpenVibe.Host', profile: 'ugc' })); }
 
     // ── Static assets (content-hashed ?v= → immutable) ──────

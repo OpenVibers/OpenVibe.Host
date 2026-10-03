@@ -1,7 +1,8 @@
 'use strict';
 /**
  * In-process stand-in for OpenVibe.Network with a real RS256 key pair: JWKS and /oauth/token
- * (client_credentials → service tokens with the requested scope as capabilities).
+ * (client_credentials → service tokens with the requested scope as capabilities; authorization_code and
+ * refresh_token → user tokens for issueCode()/refreshToken()).
  * userToken()/serviceToken()/appToken() mint what browsers, services and apps present to Host.
  */
 const http = require('http');
@@ -42,6 +43,13 @@ async function startNetwork() {
                 const cap = String(scope || '').split(/\s+/).filter(Boolean);
                 return json(200, { access_token: sign({ sub: `svc:${body.client_id}`, actor_type: 'service', aud: [body.audience || 'openvibe.events'], cap }), token_type: 'Bearer', expires_in: 300 });
             }
+            // Browser sign-in: a code from issueCode(), a refresh token from refreshToken() (single use, rotated).
+            const grant = body.grant_type === 'authorization_code' ? grants.get(`code:${body.code}`) : body.grant_type === 'refresh_token' ? grants.get(`rt:${body.refresh_token}`) : undefined;
+            if (grant === undefined && ['authorization_code', 'refresh_token'].includes(body.grant_type)) return json(400, { error: 'invalid_grant' });
+            if (grant) {
+                grants.delete(body.grant_type === 'authorization_code' ? `code:${body.code}` : `rt:${body.refresh_token}`);
+                return json(200, { access_token: userToken(grant), refresh_token: refreshToken(grant), token_type: 'Bearer', expires_in: 3600 });
+            }
             return json(400, { error: 'unsupported_grant_type' });
         }
         return json(404, { error: 'not found' });
@@ -50,6 +58,9 @@ async function startNetwork() {
     function sign({ sub, actor_type = 'service', aud, cap, ...extra }) {
         return serviceAuth.signServiceToken({ iss: issuer, sub, actor_type, aud, cap, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 300, jti: crypto.randomUUID(), ...extra }, privatePem);
     }
+    const grants = new Map();
+    const issueCode = (u) => { const c = crypto.randomBytes(12).toString('hex'); grants.set(`code:${c}`, u); return c; };
+    const refreshToken = (u) => { const r = crypto.randomBytes(12).toString('hex'); grants.set(`rt:${r}`, u); return r; };
     function addUser(username, extra = {}) {
         return { subject: ids.newId('user'), username, display_name: extra.display_name || username, role: extra.role || 'user' };
     }
@@ -67,7 +78,7 @@ async function startNetwork() {
     function appToken(appId, cap, extra = {}) {
         return sign({ sub: `app:${appId}`, actor_type: 'app', aud: ['openvibe.host'], cap, project_id: 'prj_01J8ZQ4Y7N3M2K1H0G9F8E7D6C', env: 'production', ...extra });
     }
-    return { ...srv, publicPem, addUser, userToken, fedcmAssertion, serviceToken, appToken, sign };
+    return { ...srv, publicPem, addUser, userToken, issueCode, refreshToken, fedcmAssertion, serviceToken, appToken, sign };
 }
 
 module.exports = { startNetwork, listen };

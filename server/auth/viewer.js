@@ -6,7 +6,8 @@
  *   { kind: 'anonymous' }
  *   { kind: 'user', subject: 'usr_…', staff, user }
  *       API: a Network user JWT in `Authorization: Bearer` (cookies are ignored on /api/v1).
- *       Dashboard: the ov_token session cookie (openvibe-sdk/sso; the shared navbar reads the same cookie).
+ *       Dashboard: only Host's own __Host-ov_host_session cookie (./sso.js). ov_token (openvibe-sdk/sso)
+ *       is display-only for the shared navbar: a tenant page on <site>.openvibe.host can plant one.
  *       staff = the contracts staff map's staff.site.configure (ADR-022):
  *       quotas, takedowns, and maintaining or deleting any project (never deploying to it).
  *   { kind: 'service', service: 'svc:codes' | 'app:app_…', claims, subject, env }
@@ -19,9 +20,10 @@
  * never downgraded to anonymous.
  */
 const contracts = require('openvibe-contracts');
-const { claimsToUser, decodeJwtPayload, parseCookies, COOKIES } = require('openvibe-sdk/sso');
+const { claimsToUser, decodeJwtPayload } = require('openvibe-sdk/sso');
 const { verifyServiceToken } = require('openvibe-sdk/auth');
 const { checkCapability } = require('./capabilities');
+const { sessionToken } = require('./sso');
 
 const { ids, http, staff: staffMap } = contracts;
 const PRINCIPAL_SUB = /^(svc|app|mod):/;
@@ -95,7 +97,7 @@ function createViewerResolver({ auth, config, log = console }) {
     }
 
     async function resolveDashboard(req) {
-        const token = parseCookies(req)[COOKIES.access] || null;
+        const token = sessionToken(config, req);
         if (!token) return ANONYMOUS;
         return (await fromUserToken(token)) || ANONYMOUS;
     }
