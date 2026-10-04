@@ -10,6 +10,7 @@
  *                      a browser folder upload sends "<folder>/css/site.css" and strip=folder
  *                      removes that shared first segment)
  *       optional fields: activate=1, root=<subdirectory to deploy>, strip=folder, csrf (dashboard)
+ *       git deploys (POST /sites/:id/source/deploys) also: ref=<branch>, commit_sha=<full commit id>
  *
  * Query parameters activate=1 and root=… work for both forms.
  * -> { source: 'archive'|'files', entries: [{ path, data }], fields, notes: [] }
@@ -19,7 +20,7 @@ const { readArchive, normaliseName, selectRoot, stripSharedTop, ArchiveError } =
 const { checkPath, PathError } = require('../artifacts/paths');
 
 const ARCHIVE_TYPES = new Set(['application/gzip', 'application/x-gzip', 'application/x-tar', 'application/octet-stream', 'application/x-compressed-tar', 'application/tar', 'application/tar+gzip']);
-const FIELD_NAMES = new Set(['activate', 'preview', 'mode', 'root', 'strip', 'csrf', 'expected_active']);
+const FIELD_NAMES = new Set(['activate', 'preview', 'mode', 'root', 'strip', 'csrf', 'expected_active', 'ref', 'commit_sha']);
 const fmt = (n) => `${(n / 1048576).toFixed(1)} MiB`;
 
 class UploadError extends Error {

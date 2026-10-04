@@ -302,6 +302,8 @@ People present their Network user JWT as a Bearer token. Services and apps prese
 | `GET/POST /sites/:id/deploys` · `GET /deploys/:id` · `GET /deploys/:id/log` | `host.deploy.create` | deployer |
 | `POST /deploys/:id/activate` · `POST /sites/:id/rollback` (`{ deploy_id?, expected_active? }`) | `host.deploy.create` | deployer |
 | `DELETE /deploys/:id` (not the active one) | `host.site.manage` | maintainer |
+| `GET/PUT/DELETE /sites/:id/source` (`{ provider, repo_url, ref }`) | `host.site.manage` | maintainer (GET: member) |
+| `POST /sites/:id/source/deploys?ref=…&commit_sha=…` (the upload body; always a preview) | `host.deploy.create` | deployer |
 | `POST/DELETE /projects/:id/takedown` · `POST/DELETE /sites/:id/takedown` | `host.site.manage` | Network staff only |
 | `GET/POST /sites/:id/domains` · `POST /domains/:id/verify` · `DELETE /domains/:id` | `host.domain.manage` | maintainer (reads: member) |
 
@@ -312,6 +314,41 @@ The four capability ids (`host.site.config` since v0.83.0) and the service manif
 ### Activation and rollback
 
 Activation is one PostgreSQL transaction: a compare-and-set on the site's `active_deploy_id`, an activation record and the `host.deploy.activated` event. If any part fails, none of it happens. `expected_active` turns a racing operator's switch into a 409. Rollback goes to a named ready deploy of the same site, or to the most recent previously active one that still exists. The active deploy cannot be deleted. Deleting another deploy removes its objects when no other deploy of the project uses them.
+
+### Git deploys (Phase 1)
+
+A site can be connected to a Git repository, but **the build runs in the project's own CI, never in Host**. Host never clones or fetches the repository, holds no credential for it, and executes nothing; the CI's token is the trust boundary.
+
+- **Connect.** A maintainer sets the site's source: `PUT /api/v1/sites/:id/source` with `{ "provider": "github", "repo_url": "https://github.com/<owner>/<repo>", "ref": "main" }`. `repo_url` must be `https` on the provider's own host (`github.com`, `gitlab.com`, `codeberg.org`) with the path `owner/repo` and an optional `.git`, and no user, port, query or fragment; `ref` must be a branch name by `git check-ref-format`'s rules (at most 200 characters, no `..`, no leading `-`). Any other field (a token, a key) is refused with 422. The row (`host_site_sources`) is public provenance; the read role can GET it.
+- **Deploy.** The CI checks out the commit, builds, and posts the output to `POST /api/v1/sites/:id/source/deploys?ref=<branch>&commit_sha=<full sha>` with the same body and limits as an upload (`ref` and `commit_sha` may also be multipart fields). It authenticates as an app (`app:app_…`, a Network client-credentials token for audience `openvibe.host` with `host.deploy.create`) that is a `deployer` of the project, or with a person's Bearer token. A site with no source answers `409 source.not_connected`, another branch `409 source.ref_mismatch`, a commit that is not 40 or 64 lowercase hex characters `422 source.commit_sha`, and `activate` `422 source.activate`. The files then go through exactly the upload validation; a refused file is a failed deploy with `host.deploy.failed`.
+- **Preview, then approve.** An accepted build is stored as a deploy with `source: "git"` and an immutable `host_deploy_git` row (provider, repo URL, ref, commit), written in the same transaction, and becomes the site's live preview at `/preview/<deploy-id>/` (one hour, members only). It never touches the active deploy. A deployer approves it with the ordinary `POST /api/v1/deploys/:id/activate`; responses show the provenance as `deploy.git`.
+
+A minimal GitHub Actions workflow (the app's client id and secret are repository secrets; Host never sees them):
+
+```yaml
+name: Deploy to OpenVibe Host
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci && npm run build          # your build; the output is in dist/
+      - name: Post the build as a preview
+        env:
+          CLIENT_ID: ${{ secrets.OPENVIBE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.OPENVIBE_CLIENT_SECRET }}
+          SITE_ID: ${{ vars.OPENVIBE_SITE_ID }}
+        run: |
+          TOKEN=$(curl -fsS https://openvibe.network/oauth/token \
+            -d grant_type=client_credentials -d audience=openvibe.host \
+            -d client_id="$CLIENT_ID" -d client_secret="$CLIENT_SECRET" | jq -r .access_token)
+          tar -czf site.tar.gz -C dist .
+          curl -fsS -X POST "https://openvibe.host/api/v1/sites/$SITE_ID/source/deploys?ref=${GITHUB_REF_NAME}&commit_sha=${GITHUB_SHA}" \
+            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/gzip' --data-binary @site.tar.gz
+```
 
 ### Events
 
@@ -369,7 +406,7 @@ The service runs on the host (loopback, since 2026-09-23) and the pending tenant
 - Projects are created in Host. When Network has projects (ADR-014), Host should accept only Network project ids and read membership from Network.
 - `openvibe.host` is not on the Public Suffix List, so a tenant page can still set `Domain=openvibe.host` cookies (a cookie bomb breaks the dashboard and other tenant sites for that visitor). The protections above do not depend on it. [docs/threat-review.md §5](docs/threat-review.md#5-the-public-suffix-list-question) records the decision (launch without it) and the recommended follow-up (dashboard off the tenant zone, then list the zone).
 - Tenant objects are not in `ovhost backup` (only `host.db`).
-- No deploy of a Git repository (uploads only).
+- Git deploys are Phase 1 only (see [Git deploys](#git-deploys-phase-1)): the project's own CI builds and posts the output. Host never clones, fetches, holds a repository credential or builds; in-Host builds belong to Run (plan T14). There is no webhook: a push reaches Host only through the CI's call.
 - Tenant sites publish their own sitemap/robots/feed; when a deploy ships no `sitemap.xml` or `robots.txt`, Host generates one (the manifest's HTML pages on the host the request came in on, so a verified custom domain gets its own `sitemap.xml`; sandbox projects get `Disallow: /` and are `noindex`). A tenant's own file at either path always wins. The dashboard host serves `/robots.txt` and `/sitemap.xml` (front page and legal pages).
 - The Codes portal (Wave 20) does not exist, so there is no public developer onboarding for Host yet.
 
@@ -387,6 +424,7 @@ The service runs on the host (loopback, since 2026-09-23) and the pending tenant
 - **IndexNow** (`test/indexnow.test.js`): off without `INDEXNOW_KEY` (no key route, nothing sent); with a key the key file is served at `/<key>.txt` as `text/plain` on the dashboard and on tenant hosts; activating a deploy pings the site page and its sitemap, a rollback or a site deletion pings again, a ready-but-not-active deploy and a sandbox site never ping.
 - **Tenant sitemap/robots** (`test/host-sitemap.test.js`): a deploy that ships none gets a generated `sitemap.xml` (the manifest's HTML pages, `index.html` → the directory URL, the error page left out, on the host the request came in on — so a verified custom domain gets its own) and `robots.txt` (crawlers welcomed and the sitemap named; a sandbox site gets `Disallow: /` and stays `noindex`); a file the tenant uploaded at either path wins; correct content types and caching; HEAD works; no secret in the body.
 - **Preview deploys** (`test/host-preview.test.js`): `POST /sites/:id/deploys?preview=1` stores a deploy with `source=preview` and points the site at it without activating (the public site keeps serving its active deploy); `/preview/<deploy-id>/…` on the dashboard is served to a project member only — non-members and signed-out callers get a plain 404, a public tenant host never serves it, every response is `noindex, no-store`, and the response's CSP sandboxes the tenant content into an opaque origin (no `allow-same-origin`) so it can never act as `openvibe.host`; a preview is never pinged to IndexNow and never listed in the site's sitemap; it vanishes when it expires, when the site deploys or rolls back, or when it is deleted; and it serves only its own project's objects (a same-named file of another project is not reachable).
+- **Git deploys** (`test/host-git-source.test.js`): a maintainer connects a source, a deployer gets 403 and a non-member 404, a bad URL, provider or ref is 422 and a credential field is refused; an app deployer's ingest is a `source=git` deploy with its `host_deploy_git` row and the site's preview while the public host keeps serving the active deploy; activate flips the pointer and clears the preview; an invalid file (a failed deploy and `host.deploy.failed`), a ref mismatch, an unconnected site, a bad SHA and `activate=1` all leave `active_deploy_id` unchanged; `host_deploy_git` rows are immutable; source responses hold only the allowlisted fields.
 - **Home-page size budget** (`test/perf-budget.test.js`): the server on a fresh database, the home page measured with `openvibe-shared/perf-budget` — html 15.9 KB (4.3 br), js 4 files 212.2 KB (49.9 br), css 1 file 3.1 KB (0.9 br), 0 external — within the committed budgets.
 - The isolation test also covers cross-origin reads from a tenant page (no CORS grant anywhere), ETag/Range existence oracles, delegated service tokens, app principals and the dashboard.
 
