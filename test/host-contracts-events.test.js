@@ -13,6 +13,20 @@ const { listen } = require('./stageb/mocks');
 const { CAPABILITIES } = require('../server/auth/capabilities');
 const { EVENT_TYPES } = require('../server/events/outbox');
 
+/**
+ * Routes Host guards today whose capability entries are only in OpenVibe.Contracts main (OpenVibe.Contracts#18
+ * added the git-source routes for the next release; the pinned tag predates it). They are exempt from the
+ * "the released manifest lists every route" half of the check until the pin reaches that release, and no
+ * further: each key must be a real guarded route with the capability the release gives it, and must not be
+ * in the pinned manifest — so when the pin is bumped the exemption turns red and has to be deleted.
+ */
+const PENDING_CONTRACTS_RELEASE = {
+    'GET /api/v1/sites/:id/source': 'host.site.manage',
+    'PUT /api/v1/sites/:id/source': 'host.site.manage',
+    'DELETE /api/v1/sites/:id/source': 'host.site.manage',
+    'POST /api/v1/sites/:id/source/deploys': 'host.deploy.create',
+};
+
 (async () => {
     const ids = Object.values(CAPABILITIES);
     const caps = ids.map((id) => contracts.capabilities.get(id));
@@ -35,8 +49,17 @@ const { EVENT_TYPES } = require('../server/events/outbox');
         for (const r of routes) {
             const cap = caps.find((c) => c.id === r.cap);
             assert.ok(cap, r.cap);
-            assert.ok(cap.implementedBy.includes(`${r.method} ${r.route}`), `${r.method} ${r.route} missing from ${r.cap}.implementedBy`);
+            const key = `${r.method} ${r.route}`;
+            const pending = PENDING_CONTRACTS_RELEASE[key];
+            if (pending != null) {
+                assert.strictEqual(pending, r.cap, `${key} is exempt for ${pending}, not ${r.cap}`);
+                assert.ok(caps.every((c) => !c.implementedBy.includes(key)), `${key} is released now: drop it from PENDING_CONTRACTS_RELEASE`);
+                continue;
+            }
+            assert.ok(cap.implementedBy.includes(key), `${key} missing from ${r.cap}.implementedBy`);
         }
+        const guarded = new Set(routes.map((r) => `${r.method} ${r.route}`));
+        for (const key of Object.keys(PENDING_CONTRACTS_RELEASE)) assert.ok(guarded.has(key), `${key} is not a guarded route: drop it from PENDING_CONTRACTS_RELEASE`);
     });
 
     await check('the released service manifest declares every event the service emits', async () => {

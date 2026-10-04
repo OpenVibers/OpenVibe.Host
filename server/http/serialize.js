@@ -68,8 +68,24 @@ function deploy(d, { active = false, files = null, log = null } = {}) {
         failure_code: d.failure_code || null,
         created_by: d.created_by,
         created_at: iso(d.created_at),
+        ...(d.source === 'git' && d.git_commit_sha ? { git: { provider: d.git_provider, repo_url: d.git_repo_url, ref: d.git_ref, commit_sha: d.git_commit_sha } } : {}),
         ...(files ? { files: files.map((f) => ({ path: f.path, sha256: f.sha256, size: f.size, content_type: f.content_type })) } : {}),
         ...(log ? { log: log.map(logLine) } : {}),
+    };
+}
+
+/** A site's Git source (domain/site-sources.js): public provenance only, never a credential. */
+function source(src) {
+    if (!src) return null;
+    return {
+        site_id: src.site_id,
+        provider: src.provider,
+        repo_url: src.repo_url,
+        ref: src.ref,
+        created_by: src.created_by || null,
+        created_at: iso(src.created_at),
+        updated_by: src.updated_by || null,
+        updated_at: iso(src.updated_at),
     };
 }
 
@@ -96,4 +112,4 @@ function activation(a) {
     return { deploy_id: a.deploy_id, previous_deploy_id: a.previous_deploy_id || null, kind: a.kind, actor: a.actor, at: iso(a.created_at) };
 }
 
-module.exports = { project, takedownOut, quotaOut, usageOut, site, deploy, logLine, domain, activation, iso };
+module.exports = { project, takedownOut, quotaOut, usageOut, site, deploy, source, logLine, domain, activation, iso };

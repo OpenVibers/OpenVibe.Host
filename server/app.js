@@ -33,6 +33,7 @@ const { createSites } = require('./domain/sites');
 const { createDeploys } = require('./domain/deploys');
 const { createDomains } = require('./domain/domains');
 const { createSiteConfig } = require('./domain/site-config');
+const { createSiteSources } = require('./domain/site-sources');
 const { createSsoClient } = require('openvibe-sdk/sso');
 const { createViewerResolver } = require('./auth/viewer');
 const { createHostSession } = require('./auth/sso');
@@ -112,6 +113,7 @@ async function createApp(opts = {}) {
     const deploys = createDeploys({ store, config, access, projects, sites, blobs, outbox, takedowns, log, indexnow: announce });
     const domains = createDomains({ store, config, access, projects, sites, outbox, resolver: opts.resolver, log, indexnow: announce });
     const siteConfig = createSiteConfig({ store });
+    const siteSources = createSiteSources({ store, sites });
     const auth = opts.auth || createSsoClient({
         site: 'host',
         baseUrl: config.baseUrl,
@@ -131,7 +133,7 @@ async function createApp(opts = {}) {
     const uploadGate = createUploadGate(config.uploads.maxConcurrent);
     const worker = createWorker({ config, store, domains, blobs, outbox, log });
 
-    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, siteConfig, auth, viewers, tenant, worker, uploadGate, indexnow, log };
+    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, siteConfig, siteSources, auth, viewers, tenant, worker, uploadGate, indexnow, log };
 
     const app = express();
     app.disable('x-powered-by');

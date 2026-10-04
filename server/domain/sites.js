@@ -99,6 +99,7 @@ function createSites({ store, config, access, projects, takedowns, indexnow = nu
         await db.prepare('DELETE FROM host_deploy_files WHERE deploy_id IN (SELECT id FROM host_deploys WHERE site_id = ?)').run(site.id);
         await db.prepare('DELETE FROM host_domains WHERE site_id = ?').run(site.id);
         await db.prepare('DELETE FROM host_site_config WHERE site_id = ?').run(site.id);
+        await db.prepare('DELETE FROM host_site_sources WHERE site_id = ?').run(site.id);
     }
 
     async function remove(viewer, id, { deploys }) {

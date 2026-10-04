@@ -16,6 +16,8 @@
  *   host_deploy_logs      the upload/validation log of each deploy (there is no build in Stage B)
  *   host_domains          default <site>.openvibe.host and custom domains (TXT-verified)
  *   host_takedowns        staff takedowns of a site or a project (serving stops; content is kept)
+ *   host_site_sources     the Git repository + branch a site's own CI deploys from (public, no credential)
+ *   host_deploy_git       what a git deploy was built from: repository, ref, commit (immutable)
  *   event_outbox          openvibe-sdk transactional outbox
  *
  * Immutability is enforced by the database itself: triggers refuse any UPDATE of a deploy's
@@ -28,7 +30,7 @@ const { createDb } = require('openvibe-sdk/db');
 const MIGRATIONS = path.join(__dirname, '..', 'migrations');
 const DEV_PGLITE = path.join(__dirname, '..', 'data', 'pglite');
 
-const CHARTER_TABLES = ['host_projects', 'host_project_members', 'host_quotas', 'host_sites', 'host_deploys', 'host_deploy_files', 'host_blobs', 'host_activations', 'host_deploy_logs', 'host_domains', 'host_takedowns'];
+const CHARTER_TABLES = ['host_projects', 'host_project_members', 'host_quotas', 'host_sites', 'host_deploys', 'host_deploy_files', 'host_blobs', 'host_activations', 'host_deploy_logs', 'host_domains', 'host_takedowns', 'host_site_sources', 'host_deploy_git'];
 
 /**
  * The serving handle (ADR-035): DATABASE_URL through PgBouncer; in development without it, an embedded PGlite database

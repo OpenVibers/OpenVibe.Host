@@ -9,9 +9,12 @@
  *              PUT/DELETE /projects/:id/members/:principal                        host.site.manage
  *   sites      GET/POST /projects/:id/sites · GET/DELETE /sites/:id                host.site.manage
  *              GET/PUT/DELETE /sites/:id/config (headers, redirects, SPA fallback)  host.site.config
+ *              GET/PUT/DELETE /sites/:id/source (Git repository + branch)          host.site.manage
  *   deploys    GET/POST /sites/:id/deploys · GET /deploys/:id · GET /deploys/:id/log
  *              POST /deploys/:id/activate · POST /sites/:id/rollback              host.deploy.create
  *              DELETE /deploys/:id                                                host.site.manage
+ *              POST /sites/:id/source/deploys (the project's CI posts a build; always a preview)
+ *                                                                                 host.deploy.create
  *   domains    GET/POST /sites/:id/domains · POST /domains/:id/verify
  *              DELETE /domains/:id                                                host.domain.manage
  *   takedowns  POST/DELETE /projects/:id/takedown · POST/DELETE /sites/:id/takedown   host.site.manage (staff)
@@ -26,7 +29,7 @@ const out = require('./serialize');
 const truthy = (v) => v === true || v === 1 || ['1', 'true', 'yes', 'on'].includes(String(v || '').toLowerCase());
 
 function createApi(ctx) {
-    const { config, projects, sites, deploys, domains, siteConfig, viewers, takedowns } = ctx;
+    const { config, projects, sites, deploys, domains, siteConfig, siteSources, viewers, takedowns } = ctx;
     const router = express.Router();
 
     // CORS for first-party browser origins presenting a Bearer token (never credentials/cookies).
@@ -143,10 +146,20 @@ function createApi(ctx) {
         };
     }));
 
-    router.post('/sites/:id/deploys', guard('host.deploy.create'), async (req, res) => {
+    /**
+     * An upload (POST /sites/:id/deploys) or, with `git`, a git deploy (POST /sites/:id/source/deploys):
+     * the same body, limits, gate and failure records; a git deploy also names ref and commit_sha
+     * (query or form fields) and always lands as the site's preview.
+     */
+    async function receive(req, res, { git = false } = {}) {
         let release = null;
         try {
             const pre = await deploys.precheck(req.viewer, req.params.id);
+            if (git) {
+                // Refused before a byte is read: activate, an unconnected site, a wrong ref or SHA in the query.
+                if (truthy(req.query.activate)) throw noActivate();
+                await deploys.gitTarget(pre.site, { ref: req.query.ref, commit_sha: req.query.commit_sha });
+            }
             release = ctx.uploadGate.enter();
             if (!release) { res.set('Retry-After', '30'); throw new ApiError(503, 'upload.busy', 'Host is validating other uploads right now; try again in 30 seconds'); }
             let up;
@@ -156,8 +169,15 @@ function createApi(ctx) {
                 if (!(err instanceof UploadError)) throw err;
                 if (err.closeConnection) res.set('Connection', 'close');
                 const multipart = String(req.headers['content-type'] || '').startsWith('multipart/');
-                const r = await deploys.recordFailure(req.viewer, pre, { source: err.source || (multipart ? 'files' : 'archive'), code: err.code, problems: [{ code: err.code, message: err.message }], traceparent: tp(req) });
+                const r = await deploys.recordFailure(req.viewer, pre, { source: git ? 'git' : err.source || (multipart ? 'files' : 'archive'), code: err.code, problems: [{ code: err.code, message: err.message }], traceparent: tp(req) });
                 return contracts.http.sendProblem(res, err.status, err.code, { detail: err.message, ctx: req.ov, extra: { deploy_id: r.deploy.id, log: r.log.map((l) => `${l.level}: ${l.message}`) } });
+            }
+            if (git) {
+                if (truthy(up.fields.activate)) throw noActivate();
+                const field = (name) => (up.fields[name] != null ? up.fields[name] : req.query[name]);
+                const r = await deploys.ingestGit(req.viewer, pre, pre.site.id, up.entries, { ref: field('ref'), commit_sha: field('commit_sha'), notes: up.notes, traceparent: tp(req) });
+                const site = await sites.get(pre.site.id);
+                return res.status(201).json({ deploy: out.deploy(r.deploy, { active: site.active_deploy_id === r.deploy.id, log: r.log }), activated: false, preview: r.preview, url: siteUrl(sites.defaultHostname(site.name)) });
             }
             const preview = truthy(up.fields.preview != null ? up.fields.preview : req.query.preview);
             // A preview is never the site's active deploy; it is served only at /preview/<id>/ later.
@@ -172,7 +192,9 @@ function createApi(ctx) {
         } finally {
             if (release) release();
         }
-    });
+    }
+    const noActivate = () => new ApiError(422, 'source.activate', 'a git deploy is never activated on arrival: it lands as the site\'s preview; approve it with POST /api/v1/deploys/:id/activate');
+    router.post('/sites/:id/deploys', guard('host.deploy.create'), (req, res) => receive(req, res));
 
     router.get('/deploys/:id', guard('host.deploy.create'), run(async (req) => {
         const { deploy, site } = await deploys.load(req.viewer, req.params.id, 'read');
@@ -224,6 +246,23 @@ function createApi(ctx) {
         const { site } = await sites.load(req.viewer, req.params.id, 'maintain');
         return { config: await siteConfig.remove(site) };
     }));
+
+    // ── Git source: the repository + branch the project's own CI deploys from (host.site.manage) ──
+    // Host never clones, fetches or builds it and holds no credential: the CI posts its build output
+    // to /source/deploys with the ref and the commit it built, and that deploy is only ever a preview.
+    router.get('/sites/:id/source', guard('host.site.manage'), run(async (req) => {
+        const { source } = await siteSources.get(req.viewer, req.params.id);
+        return { source: out.source(source) };
+    }));
+    router.put('/sites/:id/source', guard('host.site.manage'), jsonBody, run(async (req) => {
+        const { source } = await siteSources.put(req.viewer, req.params.id, req.body);
+        return { source: out.source(source) };
+    }));
+    router.delete('/sites/:id/source', guard('host.site.manage'), run(async (req) => {
+        await siteSources.remove(req.viewer, req.params.id);
+        return { source: null };
+    }));
+    router.post('/sites/:id/source/deploys', guard('host.deploy.create'), (req, res) => receive(req, res, { git: true }));
 
     router.use((req, res) => contracts.http.sendProblem(res, 404, 'route.not_found', { detail: `no route ${req.method} ${req.baseUrl}${req.path}`, ctx: req.ov }));
     return router;
