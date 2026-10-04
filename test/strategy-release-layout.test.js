@@ -332,7 +332,7 @@ runTests([
         assert.ok(host.calls.some((c) => c.cmd === 'chown' && c.args.join(' ') === `-R ubuntu:ubuntu /opt/openre.stream/releases/${to.slice(0, 12)}`));
         assert.strictEqual(host.files.get(`/opt/openre.stream/releases/${to.slice(0, 12)}/server/index.js`).owner, 'ubuntu');
         assert.deepStrictEqual(host.restarts(), ['openre-api.service', 'openre-session-coordinator.service']);
-        assert.ok(!host.calls.some((c) => c.cmd === 'systemctl' && /openre-(rtmp-ingest|restream-worker)@/.test(String(c.args[1])) && c.args[0] !== 'show'), 'no worker unit is started, stopped or restarted');
+        assert.ok(!host.calls.some((c) => c.cmd === 'systemctl' && /openre-(rtmp-ingest|restream-worker|jsmpeg)@/.test(String(c.args[1])) && c.args[0] !== 'show'), 'no worker unit is started, stopped or restarted');
         assert.ok((await host.releaseIds()).includes(first), 'the release the workers run from is kept');
         // A second deploy prunes to keep (2), but never the release a worker instance runs from.
         host.push({ 'server/index.js': 'api3();' }, 'api3');
@@ -342,6 +342,26 @@ runTests([
         const ids = await host.releaseIds();
         assert.ok(ids.includes(first), `the workers' release survives pruning (${ids.join(' ')})`);
         assert.ok(!ids.includes(to.slice(0, 12)), 'an unused old release is pruned');
+    }),
+
+    test('openre: a release only its JSMPEG worker runs from survives pruning', async () => {
+        const host = await openreHost();
+        const first = host.firstRelease;
+        // The RTMP and restream workers have moved on; only openre-jsmpeg@<first> is still running from
+        // the first release, so it is the only thing keeping that release alive.
+        for (const w of ['openre-rtmp-ingest', 'openre-restream-worker']) {
+            const u = host.units.get(`${w}@${first}.service`);
+            u.active = 'inactive';
+            u.sub = 'dead';
+        }
+        host.push({ 'server/index.js': 'api2();' }, 'api2');
+        assert.strictEqual((await host.cli('deploy', 'openre')).code, 0);
+        host.push({ 'server/index.js': 'api3();' }, 'api3');
+        assert.strictEqual((await host.cli('deploy', 'openre')).code, 0);
+        const ids = await host.releaseIds();
+        assert.ok(ids.includes(first), `the JSMPEG worker's release survives pruning (${ids.join(' ')})`);
+        // Listing it is all ovhost ever does: the JSMPEG worker unit is never started, stopped or restarted.
+        assert.ok(!host.calls.some((c) => c.cmd === 'systemctl' && c.args[0] !== 'show' && String(c.args[1]).includes('openre-jsmpeg')), 'the JSMPEG worker unit is only ever read');
     }),
 
     test('openre: an ingest session refuses the API restart; --to <sha12> rolls back; a docs-only change needs no restart', async () => {
