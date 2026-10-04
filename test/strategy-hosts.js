@@ -161,7 +161,7 @@ function openreEntry(overrides = {}) {
         strategy: 'release-layout',
         release: { id: 'sha12', reuseModules: false, chown: 'ubuntu:ubuntu', keep: 2 },
         units: ['openre-api.service', 'openre-session-coordinator.service'],
-        workerUnits: ['openre-rtmp-ingest@.service', 'openre-restream-worker@.service'],
+        workerUnits: ['openre-rtmp-ingest@.service', 'openre-restream-worker@.service', 'openre-jsmpeg@.service'],
         envFile: '/etc/openvibe/openre.env',
         port: 4500,
         ready: { url: 'http://127.0.0.1:4500/api/ready', timeoutSeconds: 60 },
@@ -187,6 +187,7 @@ async function openreHost(overrides = {}) {
     host.put('/var/lib/openre/openre.db', 'sqlite', { owner: 'ubuntu' });
     host.addUnit(`openre-rtmp-ingest@${host.firstRelease}.service`, { mainPid: 3102 });
     host.addUnit(`openre-restream-worker@${host.firstRelease}.service`, { mainPid: 3103 });
+    host.addUnit(`openre-jsmpeg@${host.firstRelease}.service`, { mainPid: 3105 });
     host.sessions = 0;
     host.sqliteHandler = () => [{ n: host.sessions }];
     host.http.set('http://127.0.0.1:4500/api/ready', host.readyFor('openre-api.service'));

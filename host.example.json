@@ -2178,7 +2178,7 @@
       }
     },
     "openre": {
-      "_note": "Release layout: /opt/openre.stream/repo is the git clone, releases/<sha12> the releases (npm ci into each, chowned to ubuntu), `current` the link the API and the coordinator run from (deploy.sh release + api as ovhost deploy openre; ovhost rollback openre). units are the API and the session coordinator. workerUnits are the transport workers: one instance per release (openre-rtmp-ingest@<release>), started by deploy.sh workers (still the repository's script), drained by the coordinator when a newer generation is ready, and exiting on their own. ovhost only lists them in status/validate (it never starts, stops or restarts them; the inventory refuses a worker unit in units), and never prunes a release a worker instance runs from. deploy.sh workers starts openre-webrtc@<release> once the WHIP vhost (ingest.openre.stream) and MEDIASOUP_ANNOUNCED_IP are set.",
+      "_note": "Release layout: /opt/openre.stream/repo is the git clone, releases/<sha12> the releases (npm ci into each, chowned to ubuntu), `current` the link the API and the coordinator run from (deploy.sh release + api as ovhost deploy openre; ovhost rollback openre). units are the API and the session coordinator. workerUnits are the transport workers: one instance per release (openre-rtmp-ingest@<release>, openre-jsmpeg@<release>, openre-webrtc@<release>), started by deploy.sh workers (still the repository's script), drained by the coordinator when a newer generation is ready, and exiting on their own. ovhost lists them in status/validate, never starts, stops or restarts them (the inventory refuses a worker unit in units), and never prunes a release a worker instance runs from. deploy.sh workers starts openre-webrtc@<release> once the WHIP vhost (ingest.openre.stream) and MEDIASOUP_ANNOUNCED_IP are set.",
       "repo": "/opt/openre.stream",
       "strategy": "release-layout",
       "owner": "root",
@@ -2197,6 +2197,7 @@
       "workerUnits": [
         "openre-rtmp-ingest@.service",
         "openre-restream-worker@.service",
+        "openre-jsmpeg@.service",
         "openre-webrtc@.service"
       ],
       "envFile": "/etc/openvibe/openre.env",
