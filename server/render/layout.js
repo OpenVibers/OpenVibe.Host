@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const appIcon = require('openvibe-shared/app-icon');
 const frame = require('openvibe-shared/frame');
+const shell = require('openvibe-shared/shell');
 
 const NETWORK_URL = 'https://openvibe.network';
 const SITE_NAME = 'OpenVibe.Host';
@@ -58,43 +59,40 @@ function renderPage(o) {
         ? `Signed in as ${who} · <a href="/auth/logout?next=%2F">Sign out</a>`
         : `<a href="/auth/login?next=${loginNext}">Sign in with OpenVibe</a>`;
     const notice = o.notice ? `<p class="notice notice-${esc(o.notice.kind || 'info')}" role="status">${esc(o.notice.text)}</p>` : '';
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(o.title ? `${o.title} · ${SITE_NAME}` : SITE_NAME)}</title>
-<meta name="robots" content="${o.indexable ? 'index, follow' : 'noindex, nofollow'}">
-${o.indexable ? `<link rel="canonical" href="${esc(`${o.config.baseUrl}${o.path && o.path.split('?')[0] !== '/' ? o.path.split('?')[0] : '/'}`)}">` : ''}
-<meta name="description" content="OpenVibe.Host: static site hosting for OpenVibe projects (alpha).">
-${appIcon.headTags({ site: 'host' })}
-<link rel="stylesheet" href="${asset('css/host.css')}">
-<script src="${ovServe.url('theme-loader.js')}" defer></script>
-<script src="${ovServe.url('navbar.js')}" defer></script>
-<script src="${ovServe.url('footer.js')}" defer></script>
-<meta name="ov-boost" content="host@${esc(RELEASE)}">
-<script src="${ovServe.url('boost.js')}" data-main="#main" defer></script>
-</head>
-<body>
-<a class="skip" href="#main">Skip to content</a>
+    // shell.page (openvibe-shared/shell) writes the document, the SEO head, the theme-loader, navbar.js and
+    // footer.js with the navbar init, the noscript nav and the SSR footer; the rest of the head and the body
+    // are this site's own. Only Host's own pages come through here, never a tenant site (http/tenant.js).
+    const canonical = o.indexable ? `${o.config.baseUrl}${o.path && o.path.split('?')[0] !== '/' ? o.path.split('?')[0] : '/'}` : undefined;
+    return shell.page({
+        name: SITE_NAME, service: 'host', lang: 'en',
+        title: o.title || SITE_NAME,
+        titleSuffix: o.title ? ` · ${SITE_NAME}` : undefined,
+        siteName: SITE_NAME,
+        description: 'OpenVibe.Host: static site hosting for OpenVibe projects (alpha).',
+        canonical,
+        robots: o.indexable ? 'index, follow' : 'noindex, nofollow',
+        navbar: nav, footer, home: '/', navLinks: [{ label: 'Projects', href: '/' }],
+        head: [
+            appIcon.headTags({ site: 'host' }),
+            `<link rel="stylesheet" href="${asset('css/host.css')}">`,
+            `<meta name="ov-boost" content="host@${esc(RELEASE)}">`,
+            `<script src="${ovServe.url('boost.js')}" data-main="#main" defer></script>`,
+        ].join('\n'),
+        body: `<a class="skip" href="#main">Skip to content</a>
 <div id="navbar-mount"></div>
-${frame.noscriptNav({ name: SITE_NAME, home: '/', links: [{ label: 'Projects', href: '/' }] })}
 <noscript><div class="account-bar" role="navigation" aria-label="Account">${account}</div></noscript>
 <main id="main" class="page">
 ${notice}
 ${o.body || ''}
 ${o.path === '/' ? frame.shipped({ service: 'host', title: `Recently shipped on ${SITE_NAME}` }) : ''}
 </main>
-${frame.footer(footer)}
 <script>
 window.__OV_PAGE = ${JSON.stringify({ navbar: nav, footer }).replace(/</g, '\\u003c')};
 document.addEventListener('DOMContentLoaded', function () {
-  try { if (window.OpenVibeNavbar) OpenVibeNavbar.init(window.__OV_PAGE.navbar); } catch (e) { /* the Frame is optional */ }
-  try { if (window.OpenVibeFooter) OpenVibeFooter.init(window.__OV_PAGE.footer); } catch (e) { /* */ }
+  try { if (window.OpenVibeFooter) OpenVibeFooter.init(window.__OV_PAGE.footer); } catch (e) { /* the SSR footer stays */ }
 });
-</script>
-</body>
-</html>`;
+</script>`,
+    });
 }
 
 module.exports = { renderPage, esc, asset, assetVersion, setRelease, SITE_NAME, NETWORK_URL };

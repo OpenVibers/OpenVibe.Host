@@ -15,8 +15,8 @@ const BUDGETS = {
     htmlRawKB: 18,   // measured 15.9 (fresh database)
     htmlBrotliKB: 5,   // 4.3
     jsFiles: 5,   // 4
-    jsRawKB: 230,   // 212.2
-    jsBrotliKB: 53,   // 49.9
+    jsRawKB: 250,   // 239.1 (openvibe-shared 2.6.0 served scripts; was 212.2 on 2.2.0)
+    jsBrotliKB: 60,   // 56.3 (was 49.9)
     cssFiles: 2,   // 1
     cssRawKB: 5,   // 3.1
     cssBrotliKB: 2,   // 0.9

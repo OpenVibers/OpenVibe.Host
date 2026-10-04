@@ -2,6 +2,7 @@
   "repository": "OpenVibers/OpenVibe.Host",
   "stage": "alpha",
   "code": true,
+  "crawlRoutes": ["/robots.txt", "/sitemap.xml", "/llms.txt", "/llms-full.txt"],
   "wave": "W21 Stage A + Stage B",
   "plan": "OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026)",
   "runtime": "node 22; Stage A: CLI (ovhost); Stage B: express 4 + PostgreSQL 18 (openvibe-sdk/db, async) + Valkey 9 service",
@@ -12,7 +13,7 @@
   "packages": [
     "openvibe-contracts v0.79.0",
     "openvibe-sdk v0.25.0",
-    "openvibe-shared v2.2.0"
+    "openvibe-shared v2.6.0"
   ],
   "capabilities": [
     "host.site.manage",
