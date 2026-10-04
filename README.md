@@ -52,7 +52,7 @@ Stage A adds a few safety rules of its own:
 - OpenVibe.Contracts (`openvibe-contracts` v0.79.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
 - OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.25.0 transactional outbox (openvibe-sdk/limits for the per-actor limits).
-- `openvibe-shared` v2.2.0 (Stage B): shared chrome, legal pages, `/release.json`, `/metrics`, `/api/ready`.
+- `openvibe-shared` v2.6.0 (Stage B): shared chrome (Host's own pages are composed with `openvibe-shared/shell`), legal pages, `/release.json`, `/metrics`, `/api/ready`.
 - OpenVibe.Media: not yet. The roadmap stores artifacts "through Media where practical"; Stage B keeps them on local disk for now (see [Not done yet](#not-done-yet-stage-b)).
 
 ## Capabilities
@@ -249,7 +249,7 @@ A Node service (`server/`, Express 4, better-sqlite3, port **4910**, service id 
 
 | Host | What answers |
 |---|---|
-| `openvibe.host` (the `BASE_URL` host) and loopback | the dashboard, `/api/v1`, `/auth/*`, `/api/ready`, `/api/health`, `/release.json`, `/limits.json` (the default project limits, from config), `/metrics` (direct loopback only), legal pages |
+| `openvibe.host` (the `BASE_URL` host) and loopback | the dashboard, `/api/v1`, `/auth/*`, `/api/ready`, `/api/health`, `/release.json`, `/limits.json` (the default project limits, from config), `/metrics` (direct loopback only), legal pages, and the crawl files `/robots.txt`, `/sitemap.xml`, `/llms.txt`, `/llms-full.txt` (`text/plain`, cached like the sitemap; they list only Host's own public pages: the front page, `/updates` and the legal pages, never a customer site, a preview or an operator path) |
 | `<site>.openvibe.host` (one label) | that site's active deploy, and nothing else: no API, no sign-in, no cookies |
 | a custom domain with `status = verified` | the site it was verified for |
 | anything else (including pending, failed or lapsed custom domains, and `a.b.openvibe.host`) | `404 Unknown host`, with no tenant content |
@@ -370,7 +370,7 @@ These tenant events have subject `deploy` and visibility `internal`; `host.deplo
 
 ### Dashboard
 
-Server-rendered pages with the shared chrome (`openvibe-shared` v2.2.0: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
+Server-rendered pages with the shared chrome (`openvibe-shared` v2.6.0 `shell.page`: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
 
 ### Observability
 

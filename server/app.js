@@ -20,6 +20,7 @@ const rateLimit = require('express-rate-limit');
 const contracts = require('openvibe-contracts');
 const sharedMetrics = require('openvibe-shared/metrics');
 const cache = require('openvibe-shared/cache-policy');
+const sharedSeo = require('openvibe-shared/seo');
 const { createIndexNow } = require('openvibe-shared/indexnow');
 
 const configLib = require('./config');
@@ -210,6 +211,35 @@ async function createApp(opts = {}) {
         .send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
     app.get('/sitemap.xml', (_req, res) => res.type('application/xml').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 }))
         .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${['/', ...legalPaths].map((p) => `  <url><loc>${config.baseUrl}${p}</loc></url>`).join('\n')}\n</urlset>\n`));
+    // /llms.txt and /llms-full.txt (llmstxt.org): a map of Host's own public pages only. A tenant site, a preview
+    // URL, the dashboard, /api and /internal are never listed (a tenant's own /llms.txt is its deploy's file).
+    const SITE_SUMMARY = 'OpenVibe.Host: static site hosting for OpenVibe projects (alpha). Immutable deploys, custom domains and one-step rollback.';
+    const legalTitles = require('openvibe-shared/legal').TITLES;
+    const publicPages = [
+        { title: 'OpenVibe.Host', url: '/', text: 'The public front page of OpenVibe.Host: static site hosting for OpenVibe projects. Upload a folder or a .tar.gz of HTML, CSS, JavaScript, images and fonts; Host keeps every deploy as an immutable artifact, serves the active one on a <site>.openvibe.host address or a verified custom domain, and rolls back in one step. Alpha: static files only, no build step and no server-side code.' },
+        { title: 'What shipped on OpenVibe.Host', url: '/updates', text: 'The public update log for OpenVibe.Host: what shipped, newest first.' },
+        ...legalPaths.map((p) => ({ title: legalTitles[p.slice(1)] || p.slice(1), url: p, text: `The ${legalTitles[p.slice(1)] || p.slice(1)} of OpenVibe.Host.` })),
+    ];
+    app.get('/llms.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.llmsTxt({
+        name: 'OpenVibe.Host',
+        summary: SITE_SUMMARY,
+        details: 'The sites Host serves belong to their owners and are not listed here; the dashboard, sign-in and the API are per-person.',
+        sections: [
+            { title: 'Public pages', links: publicPages.map((p) => ({ title: p.title, url: `${config.baseUrl}${p.url}` })) },
+            { title: 'Machine-readable', links: [
+                { title: 'Sitemap', url: `${config.baseUrl}/sitemap.xml`, note: 'the public pages' },
+                { title: 'robots.txt', url: `${config.baseUrl}/robots.txt` },
+                { title: 'llms-full.txt', url: `${config.baseUrl}/llms-full.txt`, note: 'this same map with a description of each public page' },
+            ] },
+        ],
+    })));
+    app.get('/llms-full.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.llmsFull({
+        site: { name: 'OpenVibe.Host', url: config.baseUrl },
+        summary: SITE_SUMMARY,
+        base: config.baseUrl,
+        maxBytes: 512 * 1024,
+        sections: [{ title: 'Public pages', pages: publicPages }],
+    })));
 
     // ── Sign-in (OAuth2 client of OpenVibe.Network) ─────────
     app.use('/auth/', rateLimit({ windowMs: 15 * 60_000, max: 60, standardHeaders: true, legacyHeaders: false }));
