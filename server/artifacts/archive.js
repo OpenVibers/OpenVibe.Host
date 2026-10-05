@@ -6,9 +6,13 @@
  * The reader never touches the filesystem: entries are parsed from a Buffer and nothing is
  * extracted. Symbolic links, hard links, devices, FIFOs, sparse and other special entries are
  * refused (the whole deploy fails), never skipped silently. Decompression is capped
- * (maxOutputLength), so a gzip bomb stops at the limit instead of filling memory.
+ * (maxOutputLength), so a gzip bomb stops at the limit instead of filling memory; it runs on the
+ * libuv threadpool (async zlib), so a large upload does not block the event loop.
  */
 const zlib = require('zlib');
+const { promisify } = require('util');
+
+const gunzip = promisify(zlib.gunzip);
 
 class ArchiveError extends Error {
     constructor(code, message, status = 422) { super(message); this.code = code; this.status = status; }
@@ -60,13 +64,13 @@ const TYPE_NAMES = { 1: 'a hard link', 2: 'a symbolic link', 3: 'a character dev
  * buf: the uploaded bytes (gzip or plain tar). limits: { maxTotalBytes, maxFiles, maxFileBytes }.
  * -> { entries: [{ path, data }], directories: n, compressed: bool }
  */
-function readArchive(buf, limits) {
+async function readArchive(buf, limits) {
     let tar = buf;
     const compressed = buf.length >= 2 && buf[0] === 0x1f && buf[1] === 0x8b;
     if (compressed) {
         const cap = limits.maxTotalBytes + (limits.maxFiles + 16) * 3 * BLOCK + 1024 * 1024;
         try {
-            tar = zlib.gunzipSync(buf, { maxOutputLength: cap });
+            tar = await gunzip(buf, { maxOutputLength: cap });
         } catch (err) {
             if (err && (err.code === 'ERR_BUFFER_TOO_LARGE' || err instanceof RangeError)) {
                 throw new ArchiveError('deploy.too_large', 'the archive expands beyond the size this project may deploy', 413);

@@ -151,7 +151,7 @@ async function readUpload(req, { maxUploadBytes, maxUnpackedBytes = Infinity, li
     if (rawArchive) {
         source = 'archive';
         let r;
-        try { r = readArchive(rawArchive, { ...limits, maxTotalBytes: Math.min(limits.maxTotalBytes, maxUnpackedBytes) }); } catch (err) {
+        try { r = await readArchive(rawArchive, { ...limits, maxTotalBytes: Math.min(limits.maxTotalBytes, maxUnpackedBytes) }); } catch (err) {
             if (err instanceof ArchiveError) { const e = new UploadError(err.status, err.code, err.message); e.fields = fields; e.source = 'archive'; throw e; }
             throw err;
         }
