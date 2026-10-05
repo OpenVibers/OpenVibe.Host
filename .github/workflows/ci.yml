@@ -6,7 +6,7 @@ on:
 jobs:
   # install, node --check, npm test and openvibe-contracts-check: the shared test job (Track Q).
   test:
-    uses: OpenVibers/OpenVibe.Shared/.github/workflows/test.yml@423fe519b5fe9594cc81b670e5ba5cb9f21f6176
+    uses: OpenVibers/OpenVibe.Shared/.github/workflows/test.yml@aa570e4815063dc65624a6a486038d83ff6f6ec0
     with:
       syntax-dirs: lib server
       contracts-service: host
@@ -14,7 +14,8 @@ jobs:
       # scripts/test-services.sh). npm test runs every file on PGlite; test:pg runs them all through PgBouncer.
       test: 'eval "$(node_modules/openvibe-sdk/scripts/test-services.sh up)" && npm test && npm run test:pg'
       contracts-src: lib server
+      docs-status: true
       extra: node --check bin/ovhost && for f in scripts/*.sh; do bash -n "$f"; done
   # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo (Track Q).
   security:
-    uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@423fe519b5fe9594cc81b670e5ba5cb9f21f6176
+    uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@aa570e4815063dc65624a6a486038d83ff6f6ec0
