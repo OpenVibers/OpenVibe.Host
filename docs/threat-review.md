@@ -285,6 +285,6 @@ the history of any site.
 | Unverified or lapsed custom domains reach nginx's default server | medium (confusion, mis-served content on a stranger's domain) | operator: catch-all `default_server` (docs/launch.md step 0) |
 | Cookie bomb across tenants and the dashboard (no PSL) | low (per-visitor nuisance; takedown exists) | owner decision (§5) |
 | No abuse mailbox/owner | medium (process, not code) | owner |
-| Objects not backed up | medium for tenants (alpha, documented) | follow-up: add the object store to the backup run |
+| Objects not backed up | medium for tenants (alpha, documented) | fixed: the inventory's `objects` entry archives the store, the off-host copy encrypts it, and a drill restores it and checks every blob's sha256 |
 | Decompressing an upload blocked the event loop (`gunzipSync`) | done: async `zlib.gunzip` on the libuv threadpool (`server/artifacts/archive.js`), same `maxOutputLength` cap | done |
 | Takedown routes not in released `openvibe-contracts` `host.site.manage.implementedBy` | none at runtime (the contract check passes) | Contracts: next release (docs/launch.md) |

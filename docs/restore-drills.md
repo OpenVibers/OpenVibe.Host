@@ -92,6 +92,9 @@ block (see `host.example.json`):
    `PRAGMA integrity_check`, run as the service user, must return `ok` for each copy;
    otherwise the drill fails before anything starts. A PostgreSQL service restores its `.dump` into a
    scratch database instead — see [A PostgreSQL drill](#a-postgresql-drill).
+   Every `objects` directory the service declares is restored as well: its archive is extracted into
+   `<tmp>/<name>`, owned by the service user and never the live directory, and every blob is checked
+   against the sha256 in its file name.
 2. **Start.** A second instance starts from the production checkout through `systemd-run`, as the
    service user. It uses the production unit's `ExecStart` and `WorkingDirectory`, the production
    unit's non-secret `Environment=` values and the production env file. After that it loads
@@ -184,7 +187,7 @@ Supported with declared overrides (the table above records which have passed on 
 - network
 - community
 - events
-- host (the Host API: `host.db` only, counts only)
+- host (the Host API: the `ov_host` database and the tenant object store, whose blobs are sha256-checked; counts only)
 - billing
 - chat
 - search

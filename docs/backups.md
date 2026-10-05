@@ -14,7 +14,7 @@ Restore drills (a second instance started from a backup and compared with produc
 ## What is backed up
 
 `ovhost backup --all` backs up every service in the inventory (`/etc/openvibe/host.json`) that has
-a `databases` list. `databases[]` items are one of two **engines** ([db-inventory.md](db-inventory.md)):
+a `databases` or `objects` list. `databases[]` items are one of two **engines** ([db-inventory.md](db-inventory.md)):
 SQLite, a file the service user's worker copies; and PostgreSQL, a database in the host's cluster
 (ADR-035) that ovhost verifies through pgBackRest and periodically dumps. With `host.example.json`:
 
@@ -33,6 +33,13 @@ services](#postgresql-services) covers what that means.
 
 A database that does not exist yet (a service that is not deployed) is reported as `skipped` and
 does not fail the run. Adding a database to the inventory is all it takes to include it.
+
+**Object directories.** A service may also declare `objects`: a list of `{ name, path }` directories
+whose files are content-addressed, each named by its own sha256. OpenVibe.Host's tenant object store
+(`HOST_STORAGE_DIR=/var/lib/openvibe-host-api/objects`) is the first. `ovhost backup` archives each
+directory as `<name>.tar.gz` (root:root 0600, like every other copy); the off-host code encrypts and
+uploads it with the rest, and a [drill](restore-drills.md) extracts it into its own scratch directory
+and checks every blob's sha256.
 
 ## One run
 
@@ -448,7 +455,7 @@ Do this at least once after installing, and again after any change to the key or
 
 | Command | What it does | Exit |
 |---|---|---|
-| `ovhost backup --all [--offsite] [--logical] [--no-prune] [--keep-daily n] [--keep-weekly n]` | back up every service with databases (verify pgBackRest, dump SQLite, dump PostgreSQL when due or `--logical`); prune; summary; optionally upload | 0 all ok · 1 lock/usage · 2 any failure |
+| `ovhost backup --all [--offsite] [--logical] [--no-prune] [--keep-daily n] [--keep-weekly n]` | back up every service with databases or object directories (verify pgBackRest, dump SQLite, dump PostgreSQL when due or `--logical`, archive object directories); prune; summary; optionally upload | 0 all ok · 1 lock/usage · 2 any failure |
 | `ovhost offsite push [--run <run>]` | upload a run (default: the latest) again, for example after a failed upload | 0 · 1 config · 2 failure |
 | `ovhost offsite list [<service>] [--from-host <h>]` | runs off-host, newest first | 0 · 1 config · 2 bucket error |
 | `ovhost offsite check` | config, key and bucket access; uploads nothing | 0 · 1 config · 2 bucket error |

@@ -13,6 +13,7 @@
 const crypto = require('crypto');
 const path = require('path');
 const { Readable, Writable } = require('stream');
+const { createTarGz, readTarGz } = require('../lib/tar');
 
 function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', start = Date.parse('2026-09-22T12:00:00Z') } = {}) {
     const files = new Map(); // path -> { type: 'file'|'dir'|'symlink', content, mode, owner, target }
@@ -365,6 +366,44 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         return { code: 0, stdout: 'Done', stderr: '' };
     }
 
+    // ── tar (backup/drill of a content-addressed object directory) ──
+    // Only the two forms the backup and drill use: `tar -czf <dest> -C <dir> .` and
+    // `tar -xzf <archive> -C <dir>`. The archive is a real gzipped tar (lib/tar.js), so it survives
+    // the off-host encrypt/decrypt pipeline byte for byte.
+    function tarCmd(args, opts) {
+        const mode = String(args[0] || '');
+        const archive = args[1];
+        const ci = args.indexOf('-C');
+        const dir = ci >= 0 ? args[ci + 1] : '.';
+        if (mode.includes('c')) {
+            const target = args[args.length - 1];
+            const base = resolveLinks(dir);
+            const root = resolveLinks(path.join(dir, target));
+            const entries = [];
+            for (const [k, v] of files) {
+                if (v.type !== 'file') continue;
+                if (k !== root && !k.startsWith(`${root}/`)) continue;
+                entries.push({ name: path.relative(base, k), content: v.content });
+            }
+            put(archive, createTarGz(entries, clock), { owner: opts.as || user, mode: 0o600 });
+            return { code: 0, stdout: '', stderr: '' };
+        }
+        if (mode.includes('x')) {
+            const e = get(archive);
+            if (!e || e.type !== 'file') return { code: 1, stdout: '', stderr: `tar: ${archive}: No such file or directory` };
+            const destdir = resolveLinks(dir);
+            let parsed;
+            try { parsed = readTarGz(Buffer.isBuffer(e.content) ? e.content : Buffer.from(String(e.content))); } catch (err) { return { code: 1, stdout: '', stderr: `tar: ${err.message}` }; }
+            for (const f of parsed) {
+                const name = f.name.replace(/^\.\//, '');
+                if (!name || name.split('/').includes('..')) continue;
+                put(path.join(destdir, name), f.content, { owner: opts.as || 'root', mode: 0o644 });
+            }
+            return { code: 0, stdout: '', stderr: '' };
+        }
+        return { code: 1, stdout: '', stderr: `fake tar: unsupported ${args.join(' ')}` };
+    }
+
     // ── systemd ──
     host.addUnit = (unit, state = {}) => {
         units.set(unit, { load: 'loaded', active: 'active', sub: 'running', mainPid: 1000 + units.size, fragmentPath: `/etc/systemd/system/${unit}`, dropIns: [], partOf: [], restarts: 0, runningSha: null, ...state });
@@ -572,6 +611,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
                 return { code: 0, stdout: `${JSON.stringify(stanzas)}\n`, stderr: '' };
             }
             case 'systemd-run': return systemdRunCmd(args);
+            case 'tar': return tarCmd(args, opts);
             case 'cp': {
                 const src = args[args.length - 2];
                 const dest = args[args.length - 1];

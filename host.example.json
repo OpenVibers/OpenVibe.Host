@@ -940,7 +940,7 @@
       }
     },
     "host": {
-      "_note": "OpenVibe.Host Stage B (tenant static hosting): the Host API service on port 4910. Not deployed as of 22 Sep 2026. Its content-addressed objects live in /var/lib/openvibe-host-api, which is NOT ovhost's own stateDir (/var/lib/openvibe-host); its database is the PostgreSQL database ov_host. Tenant vhosts: `ovhost nginx tenants host`.",
+      "_note": "OpenVibe.Host Stage B (tenant static hosting): the Host API service on port 4910. Not deployed as of 22 Sep 2026. Its content-addressed objects live in /var/lib/openvibe-host-api/objects (`HOST_STORAGE_DIR`), which is NOT ovhost's own stateDir (/var/lib/openvibe-host); its database is the PostgreSQL database ov_host. Tenant vhosts: `ovhost nginx tenants host`.",
       "repo": "/opt/openvibe.host",
       "units": [
         "openvibe-host.service"
@@ -974,6 +974,12 @@
           "name": "host",
           "engine": "postgresql",
           "database": "ov_host"
+        }
+      ],
+      "objects": [
+        {
+          "name": "objects",
+          "path": "/var/lib/openvibe-host-api/objects"
         }
       ],
       "nginx": {
@@ -1036,7 +1042,7 @@
             "table": "host_domains"
           }
         ],
-        "_notes": "Restores the ov_host database only: `ovhost backup host` does not copy the content-addressed objects, so tenant content cannot be compared (every /api/v1 read needs auth). HOST_WORKER=off stops DNS rechecks and the object sweep."
+        "_notes": "Restores the ov_host database and the archived `objects` directory into {tmp}/objects (HOST_STORAGE_DIR), checking every blob's sha256; tenant content is still not compared (every /api/v1 read needs auth). HOST_WORKER=off stops DNS rechecks and the object sweep."
       }
     },
     "billing": {

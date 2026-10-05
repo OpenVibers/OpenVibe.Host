@@ -6,6 +6,7 @@
  * the drill log is written.
  */
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { scenario, test, runTests, SECRET } = require('./helpers');
@@ -14,7 +15,14 @@ const { compareBodies } = require('../lib/commands/drill');
 
 const DRILL_DIR = '/var/lib/openvibe-drills';
 const PROD_DB = '/var/lib/openvibe-tools/tools.db';
+const OBJECTS_DIR = '/var/lib/openvibe-host-api/objects';
 const PASTES = '[{"id":"pst_1","title":"hello"},{"id":"pst_2","title":"world"}]';
+
+/** A content-addressed blob under the Host object-store layout: <root>/projects/<prj>/<aa>/<sha256>. */
+function blob(root, data) {
+    const sha = crypto.createHash('sha256').update(data).digest('hex');
+    return { sha, path: `${root}/projects/prj_1/${sha.slice(0, 2)}/${sha}` };
+}
 
 function toolsEntry(drillOverrides = {}) {
     return {
@@ -40,10 +48,12 @@ function toolsEntry(drillOverrides = {}) {
  * The standard fake host plus Tools in production, with one `ovhost backup tools` taken.
  * The drill instance's behaviour is controlled through `host.drill`.
  */
-async function drillScenario({ drill: drillOverrides, backup = true } = {}) {
+async function drillScenario({ drill: drillOverrides, backup = true, objects = null, blobs = [] } = {}) {
     const host = scenario();
     const doc = JSON.parse(host.read('/etc/openvibe/host.json'));
-    doc.services.tools = toolsEntry(drillOverrides);
+    const tools = toolsEntry(drillOverrides);
+    if (objects) tools.objects = objects;
+    doc.services.tools = tools;
     host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
 
     const repo = host.createRepo('/opt/openvibe.tools', { owner: 'ubuntu' });
@@ -99,6 +109,8 @@ async function drillScenario({ drill: drillOverrides, backup = true } = {}) {
         if (signal === 'SIGKILL' && host.drill.ignoreKill) return false;
         return undefined;
     };
+
+    for (const b of blobs) host.put(b.path, b.content, { owner: 'ubuntu', mode: 0o644 });
 
     if (backup) {
         const b = await host.cli('backup', 'tools', '--json');
@@ -543,6 +555,81 @@ runTests([
         const multi = { ...entry, drill: { ...entry.drill } };
         delete multi.drill.unit;
         normalise({ services: { apps: multi } });   // valid inventory; the drill itself refuses (below)
+    }),
+
+    test('objects: the declared object directory is archived, restored into scratch, and every blob sha256 checked', async () => {
+        const a = 'tenant page a\n';
+        const b = 'tenant asset b\n';
+        const pa = blob(OBJECTS_DIR, a);
+        const pb = blob(OBJECTS_DIR, b);
+        const host = await drillScenario({
+            objects: [{ name: 'objects', path: OBJECTS_DIR }],
+            blobs: [{ path: pa.path, content: a }, { path: pb.path, content: b }],
+            drill: {
+                env: { PORT: '{port}', HOST: '127.0.0.1', DISCORD_RELAY_ENABLED: '0', EVENTS_URL: '', UPLOAD_DIR: '{tmp}/data/uploads', GREETING: 'two words', HOST_STORAGE_DIR: '{tmp}/objects' },
+                dirs: ['{tmp}/data', '{tmp}/objects'],
+            },
+        });
+        const archive = `${host.backupDir}/objects.tar.gz`;
+        assert.deepStrictEqual([host.files.get(archive).owner, host.files.get(archive).mode], ['root', 0o600], 'the archive is an ordinary root-only copy');
+        const r = await host.cli('drill', 'tools', '--keep');
+        assert.strictEqual(r.code, 0, r.out);
+        const rec = lastLog(host);
+        assert.strictEqual(rec.kept, true);
+        assert.deepStrictEqual(rec.objects.map((o) => [o.name, o.blobs, o.skipped, o.integrity]), [['objects', 2, 0, 'sha256 ok']]);
+        const tmp = rec.dir;
+        // Restored into the drill's own scratch directory, never the live object directory.
+        assert.strictEqual(rec.objects[0].copy, `${tmp}/objects`);
+        assert.ok(rec.objects[0].copy.startsWith(`${tmp}/`));
+        assert.strictEqual(host.read(`${tmp}/objects/projects/prj_1/${pa.sha.slice(0, 2)}/${pa.sha}`), a);
+        assert.strictEqual(host.read(`${tmp}/objects/projects/prj_1/${pb.sha.slice(0, 2)}/${pb.sha}`), b);
+        // The instance is pointed at the restored directory, not production's.
+        assert.ok(host.read(`${tmp}/drill.env`).split('\n').includes(`HOST_STORAGE_DIR=${tmp}/objects`));
+        assert.match(rec.markdown, /object store `objects` 2 blob\(s\) sha256 ok/);
+        // The live objects were never written or moved.
+        assert.strictEqual(host.read(pa.path), a);
+        assert.strictEqual(host.read(pb.path), b);
+    }),
+
+    test('objects: a blob whose bytes do not match the sha256 in its name fails the drill before anything starts', async () => {
+        const good = 'good blob\n';
+        const p = blob(OBJECTS_DIR, good);
+        const wrongName = 'a'.repeat(64);
+        const host = await drillScenario({
+            objects: [{ name: 'objects', path: OBJECTS_DIR }],
+            blobs: [{ path: p.path, content: good }, { path: `${OBJECTS_DIR}/projects/prj_1/aa/${wrongName}`, content: 'not its name\n' }],
+        });
+        const before = fsSnapshot(host);
+        const r = await host.cli('drill', 'tools');
+        assert.strictEqual(r.code, 2, r.out);
+        const rec = lastLog(host);
+        assert.strictEqual(rec.failure.stage, 'objects');
+        assert.match(rec.failure.message, /blob\(s\) do not match their name/);
+        assert.match(rec.failure.message, /aa\/a{64}/);
+        assert.strictEqual(host.systemdRuns.length, 0, 'nothing is started');
+        assert.ok(!host.files.has(rec.dir));
+        assert.strictEqual(host.read(p.path), good, 'the live object is untouched');
+        for (const changed of changedPaths(before, fsSnapshot(host))) assert.ok(allowedWrite(changed, rec.dir), `unexpected write: ${changed}`);
+    }),
+
+    test('objects: a service declaring an object directory refuses to drill from a backup without its archive', async () => {
+        // The directory does not exist, so the backup records the object directory as skipped.
+        const host = await drillScenario({ objects: [{ name: 'objects', path: OBJECTS_DIR }], blobs: [] });
+        const r = await host.cli('drill', 'tools');
+        assert.strictEqual(r.code, 1);
+        assert.match(r.out, /has no copy of the objects object directory \(objects\.tar\.gz\)/);
+        assert.strictEqual(host.systemdRuns.length, 0);
+    }),
+
+    test('inventory: object directories are validated', () => {
+        const base = { owner: 'ubuntu', repo: '/opt/openvibe.host', units: [], databases: [{ name: 'host', engine: 'postgresql', database: 'ov_host' }] };
+        const svc = (objects) => normalise({ services: { h: { ...base, objects } } });
+        assert.deepStrictEqual(svc([{ name: 'objects', path: '/var/lib/openvibe-host-api/objects' }]).services.h.objects, [{ name: 'objects', path: '/var/lib/openvibe-host-api/objects' }]);
+        assert.deepStrictEqual(svc(undefined).services.h.objects, []);
+        assert.throws(() => svc([{ name: 'a/b', path: '/x' }]), /name must be a plain name/);
+        assert.throws(() => svc([{ name: 'objects', path: 'relative' }]), /absolute path/);
+        assert.throws(() => svc([{ name: 'objects', path: '/x' }, { name: 'objects', path: '/y' }]), /listed twice/);
+        assert.throws(() => svc('nope'), /must be a list of directories/);
     }),
 
     test('several units and neither drill.unit nor drill.command: refused', async () => {

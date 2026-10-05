@@ -15,10 +15,12 @@ const retention = require('../lib/retention');
 const offsite = require('../lib/offsite');
 const { normalise } = require('../lib/inventory');
 const { mockS3 } = require('./s3-mock');
+const { readTarGz } = require('../lib/tar');
 
 const DAY = 86400000;
 const KEY_HEX = crypto.createHash('sha256').update('test backup key').digest('hex');
 const S3_SECRET = `${SECRET}-s3`;
+const TENANT_BLOB = 'tenant object bytes\n';
 
 /** The standard fake host plus AI (two databases) and OpenRe (not deployed), a backup env and key. */
 function backupHost({ envMode = 0o600, keyMode = 0o600, envOwner = 'root', env = null } = {}) {
@@ -73,6 +75,25 @@ function pgOffsiteHost({ dumpContent = null } = {}) {
 
 function noSecrets(text, what) {
     for (const s of [S3_SECRET, SECRET, KEY_HEX]) assert.ok(!String(text).includes(s), `${what} leaked a secret value`);
+}
+
+/** backupHost plus a service "host" on PostgreSQL with a declared content-addressed object directory. */
+function objectsHost() {
+    const host = backupHost();
+    const doc = JSON.parse(host.read('/etc/openvibe/host.json'));
+    doc.services.host = {
+        repo: '/opt/openvibe.host',
+        units: [],
+        databases: [{ name: 'host', engine: 'postgresql', database: 'ov_host' }],
+        objects: [{ name: 'objects', path: '/var/lib/openvibe-host-api/objects' }],
+    };
+    host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
+    host.inv = normalise(doc);
+    host.pgDatabases.add('ov_host');
+    host.pgBackups = [{ type: 'diff', timestamp: { stop: Math.floor(host.exec.now() / 1000) - 3600 } }];
+    host.tenantSha = crypto.createHash('sha256').update(TENANT_BLOB).digest('hex');
+    host.put(`/var/lib/openvibe-host-api/objects/projects/prj_1/${host.tenantSha.slice(0, 2)}/${host.tenantSha}`, TENANT_BLOB, { owner: 'ubuntu', mode: 0o644 });
+    return host;
 }
 
 async function decrypt(key, buf) {
@@ -355,6 +376,32 @@ runTests([
         assert.strictEqual(s3.objects.size, 0);
     }),
 
+    test('--offsite: a declared object directory is archived, encrypted, uploaded and recorded in the manifest', async () => {
+        const host = objectsHost();
+        const r = await host.cli('backup', '--all', '--offsite');
+        assert.strictEqual(r.code, 0, r.out);
+        // The archive is an ordinary root-only copy in the local backup...
+        const local = host.files.get('/var/backups/openvibe/host/20260922-120000/objects.tar.gz');
+        assert.deepStrictEqual([local.owner, local.mode], ['root', 0o600]);
+        // ...and an encrypted object off-host, under the same rules as every other file.
+        const base = 'openvibe-backups/fake-host/20260922-120000/';
+        const key = `${base}host/objects.tar.gz.ovbk`;
+        assert.ok(host.s3.objects.has(key), [...host.s3.objects.keys()].join('\n'));
+        const enc = host.s3.objects.get(key);
+        assert.ok(!enc.includes('tenant object'), 'the archive is not encrypted');
+        const plain = await decrypt(Buffer.from(KEY_HEX, 'hex'), enc);
+        const entries = readTarGz(plain);
+        assert.deepStrictEqual(entries.map((e) => e.name), [`projects/prj_1/${host.tenantSha.slice(0, 2)}/${host.tenantSha}`]);
+        assert.strictEqual(entries[0].content, TENANT_BLOB);
+        const m = JSON.parse(host.s3.objects.get(`${base}manifest.json`));
+        const f = m.services.host.files.find((x) => x.file === 'objects.tar.gz');
+        assert.deepStrictEqual([f.kind, f.name], ['objects', 'objects']);
+        assert.strictEqual(f.plainSha256, crypto.createHash('sha256').update(plain).digest('hex'));
+        noSecrets(host.s3.objects.get(`${base}manifest.json`), 'the manifest');
+        noSecrets(JSON.stringify(host.s3.sent), 'S3 requests');
+        noSecrets(r.out, 'CLI output');
+    }),
+
     test('off-host retention: runs older than 30 days are deleted, the newest 7 always stay, and nothing is pruned after a failed upload', async () => {
         const host = backupHost();
         const put = (run) => {
@@ -485,6 +532,22 @@ runTests([
         const refused = await bad.cli('restore-download', 'trade', 'latest');
         assert.strictEqual(refused.code, 2, refused.out);
         assert.match(refused.out, /pg_restore --list .* failed|text format dump/);
+    }),
+
+    test('restore-download: an object archive is written without a database check and never over the live object directory', async () => {
+        const host = objectsHost();
+        await host.cli('backup', '--all', '--offsite');
+        const near = await host.cli('restore-download', 'host', 'latest', '--out', '/var/lib/openvibe-host-api/objects');
+        assert.strictEqual(near.code, 1, near.out);
+        assert.match(near.out, /refusing --out: .*object directory/);
+        const r = await host.cli('restore-download', 'host', 'latest', '--out', '/root/r-host', '--json');
+        assert.strictEqual(r.code, 0, r.out);
+        const rec = JSON.parse(r.out);
+        const f = rec.files.find((x) => x.file.endsWith('objects.tar.gz'));
+        assert.deepStrictEqual([f.kind, f.quickCheck], ['objects', null], 'an object archive is not quick_checked as a database');
+        assert.ok(host.files.has('/root/r-host/objects.tar.gz'));
+        assert.ok(!host.sqliteCalls.some((c) => c.db === '/root/r-host/objects.tar.gz'));
+        assert.ok(rec.files.some((x) => x.file.endsWith('host.dump') && x.kind === 'database'), 'the database is still checked');
     }),
 
     // ── configuration ──────────────────────────────────────────────────────────
