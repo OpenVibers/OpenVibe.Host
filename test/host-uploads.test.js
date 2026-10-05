@@ -10,6 +10,7 @@ const path = require('path');
 const zlib = require('zlib');
 const { boot, check, done } = require('./stageb/boot');
 const { tarball } = require('./stageb/tar');
+const { readArchive } = require('../server/artifacts/archive');
 
 (async () => {
     const t = await boot();
@@ -99,6 +100,22 @@ const { tarball } = require('./stageb/tar');
         const body = await refused(null, 'deploy.too_large', { raw: bomb });
         assert.match(body.detail, /expands beyond|add up to/);
         await t.api('PUT', `/api/v1/projects/${project.id}/quota`, { as: t.user('staff2', { role: 'admin' }), json: { storage_bytes: null } });
+    });
+
+    await check('a large decompression leaves the event loop responsive', async () => {
+        const size = 32 * 1024 * 1024;
+        const raw = tarball([{ name: 'big.txt', content: Buffer.alloc(size, 97) }]);
+        assert.ok(raw.length < 1024 * 1024, 'the archive is small on the wire');
+        let resolved = false;
+        const pending = readArchive(raw, { maxTotalBytes: 64 * 1024 * 1024, maxFiles: 10, maxFileBytes: 64 * 1024 * 1024 })
+            .then((r) => { resolved = true; return r; });
+        assert.strictEqual(typeof pending.then, 'function', 'readArchive is asynchronous');
+        await new Promise((r) => setTimeout(r, 0));
+        assert.strictEqual(resolved, false, 'a timer fired while the archive was still decompressing');
+        const parsed = await pending;
+        assert.strictEqual(parsed.compressed, true);
+        assert.strictEqual(parsed.entries.length, 1);
+        assert.strictEqual(parsed.entries[0].data.length, size);
     });
 
     await check('multipart filenames go through the same rules', async () => {

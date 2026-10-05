@@ -286,5 +286,5 @@ the history of any site.
 | Cookie bomb across tenants and the dashboard (no PSL) | low (per-visitor nuisance; takedown exists) | owner decision (§5) |
 | No abuse mailbox/owner | medium (process, not code) | owner |
 | Objects not backed up | medium for tenants (alpha, documented) | follow-up: add the object store to the backup run |
-| `gunzipSync` blocks the event loop per upload | low (bounded) | follow-up if uploads grow |
+| Decompressing an upload blocked the event loop (`gunzipSync`) | done: async `zlib.gunzip` on the libuv threadpool (`server/artifacts/archive.js`), same `maxOutputLength` cap | done |
 | Takedown routes not in released `openvibe-contracts` `host.site.manage.implementedBy` | none at runtime (the contract check passes) | Contracts: next release (docs/launch.md) |
