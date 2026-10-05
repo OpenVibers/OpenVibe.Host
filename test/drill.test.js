@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const { scenario, test, runTests, SECRET } = require('./helpers');
 const { normalise } = require('../lib/inventory');
-const { compareBodies } = require('../lib/commands/drill');
+const { compareBodies, verifyObjectBlobs } = require('../lib/commands/drill');
 
 const DRILL_DIR = '/var/lib/openvibe-drills';
 const PROD_DB = '/var/lib/openvibe-tools/tools.db';
@@ -578,6 +578,11 @@ runTests([
         assert.strictEqual(rec.kept, true);
         assert.deepStrictEqual(rec.objects.map((o) => [o.name, o.blobs, o.skipped, o.integrity]), [['objects', 2, 0, 'sha256 ok']]);
         const tmp = rec.dir;
+        // The archive is listed first, then extracted without restoring production's ownership or modes.
+        assert.ok(host.calls.some((c) => c.cmd === 'tar' && c.args[0] === '-tvzf' && c.args[1] === archive), 'listed before extraction');
+        const extract = host.calls.find((c) => c.cmd === 'tar' && c.args[0] === '-xzf');
+        assert.deepStrictEqual(extract.args, ['-xzf', archive, '-C', `${tmp}/objects`, '--no-same-owner', '--no-same-permissions']);
+        assert.strictEqual(extract.privileged, true);
         // Restored into the drill's own scratch directory, never the live object directory.
         assert.strictEqual(rec.objects[0].copy, `${tmp}/objects`);
         assert.ok(rec.objects[0].copy.startsWith(`${tmp}/`));
@@ -619,6 +624,57 @@ runTests([
         assert.strictEqual(r.code, 1);
         assert.match(r.out, /has no copy of the objects object directory \(objects\.tar\.gz\)/);
         assert.strictEqual(host.systemdRuns.length, 0);
+    }),
+
+    test('objects: a symlink or special-file member is refused before root extracts the archive', async () => {
+        for (const member of [{ type: 'l', name: './evil', target: '/' }, { type: 'p', name: './fifo' }]) {
+            const a = 'tenant page a\n';
+            const pa = blob(OBJECTS_DIR, a);
+            const host = await drillScenario({ objects: [{ name: 'objects', path: OBJECTS_DIR }], blobs: [{ path: pa.path, content: a }] });
+            host.tarMembers = [member];
+            const r = await host.cli('drill', 'tools');
+            assert.strictEqual(r.code, 2, `${member.type}: ${r.out}`);
+            const rec = lastLog(host);
+            assert.strictEqual(rec.failure.stage, 'objects');
+            assert.match(rec.failure.message, /not a regular file or directory/);
+            assert.ok(!host.calls.some((c) => c.cmd === 'tar' && c.args[0] === '-xzf'), `${member.type}: never extracted`);
+            assert.ok(!host.files.has(rec.dir), 'cleaned up');
+        }
+    }),
+
+    test('objects: a symlinked directory already in the restored tree is refused, not walked as root', async () => {
+        const host = scenario();
+        const dir = '/var/lib/openvibe-drills/tools-20260922-120100/objects';
+        const good = 'a good blob\n';
+        const sha = crypto.createHash('sha256').update(good).digest('hex');
+        host.put(`${dir}/projects/prj_1/${sha.slice(0, 2)}/${sha}`, good, { owner: 'ubuntu' });
+        // A file whose name IS a sha256 but whose bytes are not, behind a symlinked directory: if the
+        // walk followed the link it would hash this and report a mismatch.
+        const outsideSha = 'b'.repeat(64);
+        host.put(`/var/lib/openvibe-secret/${outsideSha}`, 'not its name\n', { owner: 'root', mode: 0o600 });
+        await host.exec.symlink('/var/lib/openvibe-secret', `${dir}/evil`);
+        const entry = { blobs: 0, skipped: 0, bytes: 0, mismatches: 0 };
+        await assert.rejects(
+            verifyObjectBlobs(host.exec, dir, entry),
+            (err) => /evil \(symlink or special file\)/.test(err.message) && !err.message.includes(outsideSha) && !err.message.includes('/var/lib/openvibe-secret'),
+        );
+        assert.strictEqual(entry.blobs, 1, 'the real blob was still checked');
+        assert.strictEqual(entry.mismatches, 1);
+    }),
+
+    test('objects: a drill with no room to extract the archive fails before root restores it', async () => {
+        const a = 'tenant page a\n';
+        const pa = blob(OBJECTS_DIR, a);
+        const host = await drillScenario({ objects: [{ name: 'objects', path: OBJECTS_DIR }], blobs: [{ path: pa.path, content: a }] });
+        const callsBefore = host.calls.length;
+        host.statfsFree = 1024;
+        const r = await host.cli('drill', 'tools');
+        assert.strictEqual(r.code, 2, r.out);
+        const rec = lastLog(host);
+        assert.strictEqual(rec.failure.stage, 'space');
+        assert.match(rec.failure.message, /not enough free space under \/var\/lib\/openvibe-drills/);
+        assert.ok(!host.calls.slice(callsBefore).some((c) => c.cmd === 'tar'), 'nothing was tarred or extracted');
+        assert.ok(!host.files.has(rec.dir));
     }),
 
     test('inventory: object directories are validated', () => {

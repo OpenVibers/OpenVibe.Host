@@ -402,6 +402,57 @@ runTests([
         noSecrets(r.out, 'CLI output');
     }),
 
+    test('an object archive is written only after root has taken the staging directory over', async () => {
+        const host = objectsHost();
+        const r = await host.cli('backup', 'host');
+        assert.strictEqual(r.code, 0, r.out);
+        const tarCall = host.calls.find((c) => c.cmd === 'tar' && c.args.some((a) => String(a).endsWith('objects.tar.gz')));
+        assert.ok(tarCall, 'the object directory was tarred');
+        assert.strictEqual(tarCall.privileged, true);
+        const stage = path.dirname(tarCall.args[1]);
+        const lockAt = host.calls.findIndex((c) => c.cmd === 'chown' && c.args[c.args.length - 1] === stage && c.args.includes('root:root'));
+        const chmodAt = host.calls.findIndex((c) => c.cmd === 'chmod' && c.args[c.args.length - 1] === stage && c.args.includes('0700'));
+        const tarAt = host.calls.indexOf(tarCall);
+        assert.ok(lockAt >= 0 && chmodAt >= 0, 'root locked the staging directory down');
+        assert.ok(lockAt < tarAt && chmodAt < tarAt, 'root owned the stage before tar opened the archive');
+    }),
+
+    test('a tar warning for transient scratch under the store is accepted, and the scratch excluded', async () => {
+        const host = objectsHost();
+        host.put('/var/lib/openvibe-host-api/objects/tmp/aaaaaaaaaaaa.part', 'half-written upload', { owner: 'ubuntu', mode: 0o644 });
+        host.onTar = (args) => (String(args[0]).includes('c') ? { code: 1, stderr: 'tar: ./tmp/aaaaaaaaaaaa.part: file changed as we read it\n' } : undefined);
+        const r = await host.cli('backup', 'host', '--json');
+        host.onTar = null;
+        assert.strictEqual(r.code, 0, r.out);
+        const rec = JSON.parse(r.out);
+        const f = rec.files.find((x) => x.kind === 'objects');
+        assert.ok(f && !f.error, JSON.stringify(f));
+        assert.ok(Number.isFinite(f.sourceBytes) && f.sourceBytes > 0, 'the source size was recorded for the drill');
+        const tarCall = host.calls.find((c) => c.cmd === 'tar' && c.args.some((a) => String(a).endsWith('.tar.gz')));
+        assert.ok(tarCall.args.includes('--exclude=./tmp'), tarCall.args.join(' '));
+        const names = readTarGz(host.files.get(`${rec.dir}/objects.tar.gz`).content).map((e) => e.name);
+        assert.ok(!names.some((n) => n.startsWith('tmp/')), `scratch was archived: ${names.join(', ')}`);
+        assert.ok(names.length >= 1, 'the tenant blob is still archived');
+    }),
+
+    test('a genuine tar failure still fails the backup', async () => {
+        const host = objectsHost();
+        host.onTar = (args) => (String(args[0]).includes('c') ? { code: 2, stderr: 'tar: ./projects: Cannot open: Permission denied\n' } : undefined);
+        const r = await host.cli('backup', 'host');
+        host.onTar = null;
+        assert.strictEqual(r.code, 2, r.out);
+        assert.match(r.out, /Permission denied/);
+    }),
+
+    test('an object directory is not archived when the staging filesystem has no room', async () => {
+        const host = objectsHost();
+        host.statfsFree = 1024;
+        const r = await host.cli('backup', 'host');
+        assert.strictEqual(r.code, 2, r.out);
+        assert.match(r.out, /not enough free space under \/var\/backups\/openvibe\.staging/);
+        assert.ok(!host.calls.some((c) => c.cmd === 'tar'), 'nothing was tarred');
+    }),
+
     test('off-host retention: runs older than 30 days are deleted, the newest 7 always stay, and nothing is pruned after a failed upload', async () => {
         const host = backupHost();
         const put = (run) => {

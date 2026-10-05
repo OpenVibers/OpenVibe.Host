@@ -54,6 +54,8 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         statfsFree: 100 * 1024 ** 3,
         statfsSize: 500 * 1024 ** 3,
         reads: [],
+        onTar: null, // (args, opts, real) -> undefined | { code, stdout, stderr } ; override a tar result
+        tarMembers: [], // [{ type, name, target }] extra (non-)members a `tar -tvzf` listing reports
         certbot: null, // (args, opts) -> { code, stdout, stderr } | Error ; default: nothing to do
         certbotCalls: [], // { args, as, privileged }
         journalctl: null, // (args, opts) -> { code, stdout, stderr } ; default: no entries
@@ -367,14 +369,25 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
     }
 
     // ── tar (backup/drill of a content-addressed object directory) ──
-    // Only the two forms the backup and drill use: `tar -czf <dest> -C <dir> .` and
-    // `tar -xzf <archive> -C <dir>`. The archive is a real gzipped tar (lib/tar.js), so it survives
-    // the off-host encrypt/decrypt pipeline byte for byte.
+    // The forms the backup and drill use: `tar -czf <dest> -C <dir> .`, `tar -tvzf <archive>` (the
+    // drill's member pre-check) and `tar -xzf <archive> -C <dir>`. The archive is a real gzipped tar
+    // (lib/tar.js), so it survives the off-host encrypt/decrypt pipeline byte for byte.
     function tarCmd(args, opts) {
+        const result = tarCmdReal(args, opts);
+        // A test can override the result (to simulate a warning or a failure) after the real archive
+        // was made, so --exclude and the archive's contents stay realistic.
+        if (host.onTar) { const r = host.onTar(args, opts, result); if (r) return { stdout: '', stderr: '', ...r }; }
+        return result;
+    }
+    function tarCmdReal(args, opts) {
         const mode = String(args[0] || '');
         const archive = args[1];
         const ci = args.indexOf('-C');
         const dir = ci >= 0 ? args[ci + 1] : '.';
+        // `--exclude=PAT` (used for Host's transient <root>/tmp scratch): skip a member whose relative
+        // name is the pattern or sits under it.
+        const excludes = args.filter((a) => a.startsWith('--exclude=')).map((a) => a.slice(10).replace(/^\.\//, ''));
+        const excluded = (name) => excludes.some((ex) => name === ex || name.startsWith(`${ex}/`));
         if (mode.includes('c')) {
             const target = args[args.length - 1];
             const base = resolveLinks(dir);
@@ -383,10 +396,21 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             for (const [k, v] of files) {
                 if (v.type !== 'file') continue;
                 if (k !== root && !k.startsWith(`${root}/`)) continue;
-                entries.push({ name: path.relative(base, k), content: v.content });
+                const name = path.relative(base, k);
+                if (excluded(name)) continue;
+                entries.push({ name, content: v.content });
             }
             put(archive, createTarGz(entries, clock), { owner: opts.as || user, mode: 0o600 });
             return { code: 0, stdout: '', stderr: '' };
+        }
+        if (mode.includes('t')) {
+            const e = get(archive);
+            if (!e || e.type !== 'file') return { code: 1, stdout: '', stderr: `tar: ${archive}: No such file or directory` };
+            let parsed;
+            try { parsed = readTarGz(Buffer.isBuffer(e.content) ? e.content : Buffer.from(String(e.content))); } catch (err) { return { code: 1, stdout: '', stderr: `tar: ${err.message}` }; }
+            const lines = parsed.map((f) => `-rw-r--r-- ubuntu/ubuntu ${Buffer.byteLength(f.content)} 2026-09-22 12:00 ${f.name}`);
+            for (const m of host.tarMembers) lines.push(`${m.type}rw-r--r-- root/root 0 2026-09-22 12:00 ${m.name}${m.target ? ` -> ${m.target}` : ''}`);
+            return { code: 0, stdout: lines.length ? `${lines.join('\n')}\n` : '', stderr: '' };
         }
         if (mode.includes('x')) {
             const e = get(archive);
@@ -537,6 +561,17 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             case 'node': {
                 const r = host.onNode ? host.onNode(args, opts) : undefined;
                 return r ? { stdout: '', stderr: '', ...r } : { code: 0, stdout: '', stderr: '' };
+            }
+            case 'du': {
+                const target = args[args.length - 1];
+                const root = resolveLinks(target);
+                if (!files.has(root)) return { code: 1, stdout: '', stderr: `du: cannot access '${target}': No such file or directory` };
+                let total = 0;
+                for (const [k, v] of files) {
+                    if (k !== root && !k.startsWith(`${root}/`)) continue;
+                    total += v.type === 'file' ? Buffer.byteLength(Buffer.isBuffer(v.content) ? v.content : String(v.content)) : 4096;
+                }
+                return { code: 0, stdout: `${total}\t${target}\n`, stderr: '' };
             }
             case 'certbot': {
                 host.certbotCalls.push({ args, as: opts.as || null, privileged: !!opts.privileged });
