@@ -41,7 +41,7 @@
     "B": "alpha: running on the host on loopback :4910 (2026-09-23 audit), not launched; launch-rule items met in code and tests, launch steps in docs/launch.md, threat review in docs/threat-review.md",
     "C": "not started (deliberately: blocked until isolation and metering are proven)"
   },
-  "artifactStorage": "local disk, content-addressed per project (not OpenVibe.Media yet)",
+  "artifactStorage": "local disk, content-addressed per project; HOST_OBJECT_STORE=media writes objects through to OpenVibe.Media with local disk as the read cache (opt-in, off by default)",
   "customDomainCertificates": "operator-issued (certbot), not automated",
   "installedOnHost": true,
   "deployed": "loopback only, not launched",

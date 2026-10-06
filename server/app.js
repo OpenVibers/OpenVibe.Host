@@ -76,7 +76,25 @@ async function createApp(opts = {}) {
     const log = opts.log || console;
     // PostgreSQL (ADR-035): opened and migrated here unless the caller (a test, a script) hands in a store.
     const store = opts.store || await openStore(config, { now: opts.now, log });
-    const blobs = createBlobStore(opts.storageDir || config.storageDir);
+    // The object store: local disk, written through to OpenVibe.Media when HOST_OBJECT_STORE=media.
+    // The Media client is built here (not at module load) and fetches a token lazily; unset config
+    // leaves media null and the store is exactly the local one.
+    const mediaStore = config.objectStore.mode === 'media' ? {
+        url: config.media.url,
+        namespace: config.media.namespace,
+        scope: config.media.scope,
+        clientId: config.oauth.clientId,
+        clientSecret: config.oauth.clientSecret,
+        tokenUrl: `${config.networkInternalUrl}/oauth/token`,
+        ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+    } : null;
+    // The Media delete re-checks this just before it runs: a deploy may have re-used the sha since
+    // the caller decided the blob was unreferenced, and Media holds the durable copy.
+    const blobReferenced = store.db.prepare('SELECT 1 FROM host_blobs WHERE project_id = ? AND sha256 = ?');
+    const blobs = createBlobStore(opts.storageDir || config.storageDir, {
+        media: mediaStore,
+        isReferenced: async (projectId, sha256) => Boolean(await blobReferenced.get(projectId, sha256)),
+    });
     require('./http/errors').setLogger(log);
 
     // IndexNow (openvibe-shared/indexnow): created once at boot from INDEXNOW_KEY. Unset → off, nothing

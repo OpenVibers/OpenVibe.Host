@@ -8,8 +8,9 @@
  *
  * A request resolves its site ONCE from the Host header, reads the site's active deploy pointer
  * ONCE, and from then on reads only immutable rows of that deploy (host_deploy_files). The file's
- * bytes come from <storage>/projects/<that site's project>/<sha256>: the path is built from the
- * project id and the manifest's hash, never from the URL, so no URL, encoding or Host trick can
+ * bytes come from the blob store keyed by the project id and the manifest's hash — the local disk
+ * cache, or, with HOST_OBJECT_STORE=media, the object fetched back from OpenVibe.Media and verified
+ * (server/storage.js). The key is never built from the URL, so no URL, encoding or Host trick can
  * reach another project's objects.
  *
  * Responses: GET/HEAD only; Content-Type from the manifest; strong ETag (the sha256); 304 on
@@ -178,7 +179,7 @@ function createTenantServer({ store, config, blobs, takedowns = null, siteConfig
         return { list: [p, `${p}.html`], dirIndex: `${p}/index.html`, dir: false, path: p };
     }
 
-    function send(req, res, site, row, { status = 200, cache, deployId = site.active_deploy_id }) {
+    async function send(req, res, site, row, { status = 200, cache, deployId = site.active_deploy_id }) {
         const etag = `"${row.sha256}"`;
         res.setHeader('ETag', etag);
         res.setHeader('Content-Type', row.content_type);
@@ -203,9 +204,19 @@ function createTenantServer({ store, config, blobs, takedowns = null, siteConfig
         } else {
             res.statusCode = status;
         }
-        res.setHeader('Content-Length', row.size === 0 ? 0 : end - start + 1);
-        if (req.method === 'HEAD' || row.size === 0) return res.end();
-        const file = blobs.pathFor(row.project_id, row.sha256);
+        const length = row.size === 0 ? 0 : end - start + 1;
+        if (req.method === 'HEAD' || row.size === 0) { res.setHeader('Content-Length', length); return res.end(); }
+        // The local cache, or (Media store) the object fetched from Media, its sha256 verified, and
+        // cached. A miss that cannot be satisfied is a 500: bytes of the wrong content are never served.
+        let file;
+        try {
+            file = await blobs.ensure(row.project_id, row.sha256);
+        } catch (err) {
+            log.error('[Host] object missing or unreadable:', row.project_id, row.sha256, err.code || err.message);
+            if (!res.headersSent) { res.removeHeader('Content-Range'); return plain(res, 500, 'This file could not be read. Try again later.'); }
+            return res.destroy();
+        }
+        res.setHeader('Content-Length', length);
         const stream = fs.createReadStream(file, { start, end });
         stream.on('error', (err) => {
             log.error('[Host] object missing or unreadable:', row.project_id, row.sha256, err.code || err.message);
