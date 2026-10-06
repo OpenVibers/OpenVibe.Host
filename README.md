@@ -283,8 +283,15 @@ becomes the read cache and **OpenVibe.Media** is the source of truth:
 - serving reads the local cache; a miss re-fetches the object from Media, verifies its sha256 and
   only then caches and serves it (a mismatch is a `500`, never served);
 - an object is deleted from Media exactly where the local store would delete the blob (deploy GC,
-  project removal, the hourly orphan sweep), so an object a remaining deploy still references is
-  never deleted.
+  project removal, the hourly orphan sweep), and the delete re-checks `host_blobs` just before it
+  runs, so an object a deploy re-referenced while the delete was in flight keeps its Media copy;
+- an empty file (0 bytes) is stored in the local cache only: Media's upload refuses empty
+  objects, and the serving path never asks Media for a size-0 file;
+- the hourly orphan sweep walks the **local cache files** only, so a Media object with no cache
+  file (for example a duplicate left by two uploads that raced before puts were serialised) is
+  not reaped by the sweep; project removal deletes it, and puts are serialised per
+  `(project, sha256)` so two deploys sharing a new sha do not create a duplicate in the first
+  place.
 
 Host authenticates to Media with its Network service principal (client credentials, audience
 `openvibe.media`), which must hold `media.object.upload`, `media.object.read`, `media.object.list`

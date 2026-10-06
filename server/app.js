@@ -88,7 +88,13 @@ async function createApp(opts = {}) {
         tokenUrl: `${config.networkInternalUrl}/oauth/token`,
         ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
     } : null;
-    const blobs = createBlobStore(opts.storageDir || config.storageDir, { media: mediaStore, log });
+    // The Media delete re-checks this just before it runs: a deploy may have re-used the sha since
+    // the caller decided the blob was unreferenced, and Media holds the durable copy.
+    const blobReferenced = store.db.prepare('SELECT 1 FROM host_blobs WHERE project_id = ? AND sha256 = ?');
+    const blobs = createBlobStore(opts.storageDir || config.storageDir, {
+        media: mediaStore,
+        isReferenced: async (projectId, sha256) => Boolean(await blobReferenced.get(projectId, sha256)),
+    });
     require('./http/errors').setLogger(log);
 
     // IndexNow (openvibe-shared/indexnow): created once at boot from INDEXNOW_KEY. Unset → off, nothing

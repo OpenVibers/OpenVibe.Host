@@ -11,9 +11,15 @@
  *   media.objects                 Map id -> object (bytes, content_hash, metadata, lifecycle_status)
  *   media.calls                   every request { method, url, bytes, auth }
  *   media.failUpload = true       every init answers 403 (a deploy must then fail)
+ *   media.failUploadAfter = n     refuse inits once n have succeeded (fail mid-deploy)
+ *   media.delayContentMs = ms     delay the signed content GET (a stalled download)
  *   media.failDelete = true       every delete answers 500
  *   media.tamper.add(id)          the signed content GET answers other bytes
  *   media.countInits()            init requests so far
+ *   media.acceptedInits()         inits that were allowed (the rest were refused)
+ *   media.countLists()            namespace list requests so far
+ *   media.countDownloads()        signed content GETs so far
+ *   media.seed(projectId, bytes)  put a ready object straight into the fake, returns its id
  *   media.readyFor(projectId)     ready objects whose metadata.project_id is that project
  *   media.byHash(projectId, sha)  the ready object for that project and content hash
  *   await media.close()
@@ -27,7 +33,8 @@ const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 function startMedia({ app = 'host' } = {}) {
     const objects = new Map();
     const calls = [];
-    const media = { objects, calls, app, failUpload: false, failDelete: false, tamper: new Set() };
+    const media = { objects, calls, app, failUpload: false, failUploadAfter: null, delayContentMs: 0, failDelete: false, tamper: new Set() };
+    let acceptedInits = 0;
     const basePath = `/api/v2/${encodeURIComponent(app)}/objects`;
     const base = () => `http://127.0.0.1:${server.address().port}`;
     const json = (res, status, obj) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
@@ -48,7 +55,10 @@ function startMedia({ app = 'host' } = {}) {
             if (rel === null) return json(res, 404, { code: 'media.not_found' });
 
             if (rel === '' && req.method === 'POST') {
-                if (media.failUpload) return json(res, 403, { code: 'media.object.denied', detail: 'the fake refuses every upload' });
+                if (media.failUpload || (media.failUploadAfter != null && acceptedInits >= media.failUploadAfter)) {
+                    return json(res, 403, { code: 'media.object.denied', detail: 'the fake refuses every upload' });
+                }
+                acceptedInits++;
                 let body = {};
                 try { body = JSON.parse(raw.toString('utf8')); } catch { /* malformed: treat as empty */ }
                 const id = `med_${ids.ulid()}`;
@@ -79,9 +89,14 @@ function startMedia({ app = 'host' } = {}) {
                 return json(res, 200, {});
             }
             if (sub === 'content' && req.method === 'GET') {
-                if (media.tamper.has(obj.id)) { res.writeHead(200, { 'Content-Type': 'application/octet-stream' }); return res.end(Buffer.from('TAMPERED BYTES')); }
-                res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
-                return res.end(obj.bytes || Buffer.alloc(0));
+                const sendContent = () => {
+                    if (res.destroyed || res.writableEnded) return;   // the client gave up (timeout)
+                    if (media.tamper.has(obj.id)) { res.writeHead(200, { 'Content-Type': 'application/octet-stream' }); return res.end(Buffer.from('TAMPERED BYTES')); }
+                    res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
+                    return res.end(obj.bytes || Buffer.alloc(0));
+                };
+                if (media.delayContentMs) { setTimeout(sendContent, media.delayContentMs); return; }
+                return sendContent();
             }
             if (sub === 'complete' && req.method === 'POST') {
                 let body = {};
@@ -110,6 +125,20 @@ function startMedia({ app = 'host' } = {}) {
             media.url = base();
             media.close = () => new Promise((r) => server.close(r));
             media.countInits = () => calls.filter((c) => c.method === 'POST' && new URL(c.url, 'http://x').pathname === basePath).length;
+            media.acceptedInits = () => acceptedInits;
+            media.countLists = () => calls.filter((c) => c.method === 'GET' && new URL(c.url, 'http://x').pathname === basePath).length;
+            media.countDownloads = () => calls.filter((c) => c.method === 'GET' && new URL(c.url, 'http://x').pathname.endsWith('/content')).length;
+            media.seed = (projectId, bytes) => {
+                const b = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+                const h = sha256(b);
+                const id = `med_${ids.ulid()}`;
+                objects.set(id, {
+                    id, namespace: app, kind: 'file', visibility: 'private', lifecycle_status: 'ready',
+                    mime_type: 'application/octet-stream', size_bytes: b.length, content_hash: h,
+                    metadata: { project_id: projectId, sha256: h }, bytes: b,
+                });
+                return id;
+            };
             media.ready = () => [...objects.values()].filter((o) => o.lifecycle_status === 'ready');
             media.readyFor = (projectId) => media.ready().filter((o) => o.metadata && o.metadata.project_id === projectId);
             media.byHash = (projectId, sha) => media.ready().find((o) => o.metadata && o.metadata.project_id === projectId && o.content_hash === sha) || null;

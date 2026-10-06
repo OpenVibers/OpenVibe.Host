@@ -163,8 +163,8 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
         const isPreview = preview === true;
         const storedSource = isPreview && !isGit ? 'preview' : source;
         if (isPreview) activate = false;
-        const fail = async (status, code, problems) => {
-            const r = await recordFailure(viewer, ctx, { source: storedSource, code, problems, notes, traceparent });
+        const fail = async (status, code, problems, extraNotes = []) => {
+            const r = await recordFailure(viewer, ctx, { source: storedSource, code, problems, notes: [...notes, ...extraNotes], traceparent });
             throw new ApiError(status, code, problems[0] ? problems[0].message : code, { deploy_id: r.deploy.id, log: r.log.map((l) => `${l.level}: ${l.message}`) });
         };
 
@@ -183,11 +183,22 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
         // Objects first (idempotent, content-addressed); rows only after they are durable. With the
         // Media store this is where a deploy waits for Media to acknowledge every object: a refusal
         // fails the deploy, recorded with its log, instead of publishing a local-only success.
+        const stored = [];
+        let current = null;
         try {
-            for (const f of fresh.values()) await blobs.put(project.id, f.sha256, f.data);
+            for (const f of fresh.values()) {
+                current = f.sha256;
+                await blobs.put(project.id, f.sha256, f.data);
+                stored.push(f.sha256);
+            }
         } catch (err) {
-            log.error('[Host] object store refused a deploy:', project.id, err.code || err.message);
-            await fail(502, 'storage.object_store', [{ code: 'storage.object_store', message: 'the object store could not store this deploy; nothing was published' }]);
+            // Name every object this failed deploy left behind so an orphan is traceable: the ones
+            // Media already acknowledged, plus the one being written when it refused.
+            const left = [...stored, ...(current && !stored.includes(current) ? [current] : [])];
+            log.error('[Host] object store refused a deploy:', project.id, err.code || err.message,
+                `objects left by the failed deploy: ${left.length ? left.join(' ') : 'none'}`);
+            await fail(502, 'storage.object_store', [{ code: 'storage.object_store', message: 'the object store could not store this deploy; nothing was published' }],
+                [`object store: objects left by the failed deploy, which no deploy row references (a sweep or the next deploy reclaims them): ${left.join(' ') || 'none'}`]);
         }
 
         const id = newId('deploy', store.now());

@@ -111,7 +111,9 @@ function createSites({ store, config, access, projects, takedowns, indexnow = nu
             await markDeleted(site, now);
             freed = await deploys.collectGarbage(project.id);
         });
-        deploys.unlinkBlobs(project.id, freed);
+        // Await it: with the Media store the deletes are slow and detached otherwise, and the caller
+        // (project/site removal) should finish only once the durable objects are gone.
+        await deploys.unlinkBlobs(project.id, freed);
         announceSite(site, project);
         return { deleted: true };
     }

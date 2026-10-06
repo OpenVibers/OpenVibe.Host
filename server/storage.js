@@ -18,10 +18,15 @@
  *           object in Host's own namespace, keyed per project with the file's sha256 as content_hash.
  *           A deploy is not reported as stored until Media acknowledged the write; a Media failure
  *           rejects the put and the deploy fails, never a silent local-only success. ensure() serves
- *           the local cache and, on a miss, fetches the object back from Media, verifies its sha256
- *           and only then caches and serves it. Media objects are deleted only where the local store
- *           would delete the blob today (deploy GC, project removal, the worker's orphan sweep), so a
- *           Media object a remaining deploy still references is never deleted.
+ *           the local cache and, on a miss, streams the object back from Media while hashing it,
+ *           verifies the sha256 and only then renames it into the cache and serves it. Media objects
+ *           are deleted only where the local store would delete the blob today (deploy GC, project
+ *           removal, the worker's orphan sweep), and the delete re-checks host_blobs just before it
+ *           runs, so a Media object a deploy has since re-referenced is not deleted. The worker's
+ *           sweep walks only locally cached blobs, so a Media-only orphan is left to project
+ *           removal. A zero-byte file is cache-only (Media's upload refuses empty objects) and is
+ *           never fetched. A put is serialised per (project, sha256) and remove deletes every
+ *           matching object, so two deploys sharing a new sha cannot leave a duplicate behind.
  *
  * Nothing in this module reaches the network on load: the Media client is built inside
  * createMediaStore(), only when the Media store is selected, and it fetches a token lazily.
@@ -29,6 +34,8 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const { Readable, Transform } = require('stream');
+const { pipeline } = require('stream/promises');
 const { isId } = require('./ids');
 
 const SHA_RE = /^[0-9a-f]{64}$/;
@@ -37,6 +44,9 @@ const SHA_RE = /^[0-9a-f]{64}$/;
 // list, delete. Media's older ids keep granting the newer verbs, but asking for each verb is exact.
 const MEDIA_SCOPE = 'media.object.upload media.object.read media.object.list media.object.delete';
 const MEDIA_AUDIENCE = 'openvibe.media';
+// A Media download that has not answered within this long is abandoned and the read fails with a
+// clean 500 instead of hanging. The SDK client has its own timeouts; this raw fetch does not.
+const MEDIA_FETCH_TIMEOUT_MS = 30 * 1000;
 
 const sha256Of = (data) => crypto.createHash('sha256').update(data).digest('hex');
 
@@ -141,15 +151,19 @@ function createLocalStore(root) {
         return pathFor(projectId, sha256);
     }
 
-    return { root: base, pathFor, put, exists, remove, removeProject, list, sweepTmp, writable, freeBytes, ensure };
+    return { root: base, tmpDir, pathFor, put, exists, remove, removeProject, list, sweepTmp, writable, freeBytes, ensure };
 }
 
 /**
  * The Media-backed store: local disk is the read cache, Media is the source of truth. It exposes the
  * same interface as the local store; put/ensure/remove/removeProject become async (they talk to
  * Media), and the rest delegate to the cache.
+ *
+ * opts.isReferenced(projectId, sha256) -> whether host_blobs still has a row, i.e. whether a deploy
+ * still references the blob. remove() re-checks it just before deleting, so a blob a concurrent
+ * deploy re-used after the caller found it unreferenced keeps its Media copy.
  */
-function createMediaStore(local, media) {
+function createMediaStore(local, media, { isReferenced } = {}) {
     const { createObjectsClient } = require('openvibe-sdk/media');           // v2 object API
     const { createServiceTokenClient } = require('openvibe-sdk/auth');
     if (!media || !media.url) throw new Error('HOST_OBJECT_STORE=media needs OV_MEDIA_URL (the internal OpenVibe.Media base URL)');
@@ -169,30 +183,93 @@ function createMediaStore(local, media) {
         ...(media.fetchImpl ? { fetch: media.fetchImpl } : {}),
     });
     const fetchBytes = media.fetchImpl || globalThis.fetch;
+    const fetchTimeoutMs = Number(media.fetchTimeoutMs) > 0 ? Number(media.fetchTimeoutMs) : MEDIA_FETCH_TIMEOUT_MS;
     // (project, sha256) -> Media object id, so a deploy does not list Host's namespace once per file.
     // A restart simply repopulates it; deleting an object drops its entry. Only an optimisation: an
     // empty map still finds every object by its content_hash.
     const known = new Map();
     const keyOf = (projectId, sha256) => `${projectId}\n${sha256}`;
+    // In-flight tasks by key: a concurrent put of the same new blob waits for the first upload
+    // instead of racing it into a duplicate object, and a burst of cache misses for one blob shares
+    // a single download. Keys are prefixed so a put and an ensure never block each other.
+    const inflight = new Map();
 
     const isOurs = (o, projectId, sha256) => Boolean(o)
         && o.content_hash === sha256
         && o.metadata && o.metadata.project_id === projectId;
 
-    async function findId(projectId, sha256) {
-        const hit = known.get(keyOf(projectId, sha256));
-        if (hit) return hit;
-        for await (const o of objects.iterate({})) {
-            if (isOurs(o, projectId, sha256)) { known.set(keyOf(projectId, sha256), o.id); return o.id; }
-        }
-        return null;
+    /** Run fn after every earlier task with the same key, whichever way it settled. */
+    function serialise(map, key, fn) {
+        const prev = map.get(key) || Promise.resolve();
+        const run = prev.then(fn, fn);
+        const tail = run.then(() => {}, () => {});   // the queue's tail never rejects
+        map.set(key, tail);
+        tail.then(() => { if (map.get(key) === tail) map.delete(key); });
+        return run;
     }
 
-    /** Cache the bytes locally (as today), then write through to Media. Rejects if Media refuses. */
-    async function put(projectId, sha256, data) {
+    /** Every Media object id for this (project, sha256): there can be duplicates from before puts were serialised. */
+    async function findAllIds(projectId, sha256) {
+        const ids = [];
+        for await (const o of objects.iterate({})) if (isOurs(o, projectId, sha256)) ids.push(o.id);
+        return ids;
+    }
+
+    async function findId(projectId, sha256) {
+        const key = keyOf(projectId, sha256);
+        const hit = known.get(key);
+        if (hit) return hit;
+        const ids = await findAllIds(projectId, sha256);
+        if (!ids.length) return null;
+        known.set(key, ids[0]);
+        return ids[0];
+    }
+
+    /** Stream a Media object into a temp file while hashing it; rename into the cache only on a match. */
+    async function downloadToCache(projectId, sha256, url) {
+        const dest = local.pathFor(projectId, sha256);
+        const tmp = path.join(local.tmpDir, `${crypto.randomBytes(12).toString('hex')}.part`);
+        const hash = crypto.createHash('sha256');
+        try {
+            const res = await fetchBytes(url, { signal: AbortSignal.timeout(fetchTimeoutMs) });
+            if (!res.ok) throw new Error(`download answered ${res.status}`);
+            fs.mkdirSync(path.dirname(dest), { recursive: true });
+            if (res.body) {
+                const meter = new Transform({ transform(chunk, _enc, cb) { hash.update(chunk); cb(null, chunk); } });
+                await pipeline(Readable.fromWeb(res.body), meter, fs.createWriteStream(tmp));
+            } else {
+                const buf = Buffer.from(await res.arrayBuffer());
+                hash.update(buf);
+                fs.writeFileSync(tmp, buf);
+            }
+            const actual = hash.digest('hex');
+            if (actual !== sha256) {
+                const e = new Error(`object ${sha256}: Media returned bytes whose sha256 is ${actual}; refused`);
+                e.code = 'storage.corrupt';
+                throw e;
+            }
+            fs.renameSync(tmp, dest);
+        } catch (err) {
+            fs.rmSync(tmp, { force: true });
+            if (err && err.code === 'storage.corrupt') throw err;
+            throw mediaFailure(`could not fetch object ${sha256} from Media`, err);
+        }
+    }
+
+    async function doPut(projectId, sha256, data) {
         if (!SHA_RE.test(String(sha256))) throw new TypeError('invalid sha256');
+        // Media's upload refuses zero bytes ("nothing to upload"); an empty file is a valid manifest
+        // entry, so it lives in the local cache only. ensure() serves it from there and, since the
+        // serving path short-circuits size 0, never asks Media (which has no object for it).
+        if (data.length === 0) return local.put(projectId, sha256, data);
         const changed = local.put(projectId, sha256, data);   // the cache first; verifies the digest
-        if (await findId(projectId, sha256)) return changed;  // Media holds it already (idempotent)
+        // A blob this process just wrote is new here: upload it directly. Listing Host's whole
+        // namespace once per file would be quadratic on a 300-file deploy, and Media's v2 list API has
+        // no content_hash or metadata filter. Only a blob that was already cached (a previous deploy
+        // in this process, or an earlier run) is looked up, so a restart does not upload a second copy.
+        if (!changed) {
+            if (await findId(projectId, sha256)) return changed;
+        }
         let obj;
         try {
             obj = await objects.upload(data, {
@@ -207,34 +284,54 @@ function createMediaStore(local, media) {
         return changed;
     }
 
-    /** Serve the cache; on a miss fetch from Media, verify the sha256, cache it, then serve. */
-    async function ensure(projectId, sha256) {
-        if (local.exists(projectId, sha256)) return local.pathFor(projectId, sha256);
+    /** Cache the bytes locally (as today), then write through to Media. Rejects if Media refuses. */
+    function put(projectId, sha256, data) {
+        return serialise(inflight, `put:${keyOf(projectId, sha256)}`, () => doPut(projectId, sha256, data));
+    }
+
+    async function doEnsure(projectId, sha256) {
+        if (local.exists(projectId, sha256)) return local.pathFor(projectId, sha256);   // a peer cached it while we waited
         const id = await findId(projectId, sha256);
         if (!id) throw mediaFailure(`object ${sha256} is not in Media`, null);
-        let bytes;
+        let url;
         try {
-            const { url } = await objects.signedUrl(id, { ttl: 300 });
-            const res = await fetchBytes(url);
-            if (!res.ok) throw new Error(`download answered ${res.status}`);
-            bytes = Buffer.from(await res.arrayBuffer());
+            ({ url } = await objects.signedUrl(id, { ttl: 300 }));
         } catch (err) {
             throw mediaFailure(`could not fetch object ${sha256} from Media`, err);
         }
-        const actual = sha256Of(bytes);
-        if (actual !== sha256) throw new Error(`object ${sha256}: Media returned bytes whose sha256 is ${actual}; refused`);
-        local.put(projectId, sha256, bytes);   // verifies again and caches
+        await downloadToCache(projectId, sha256, url);
         return local.pathFor(projectId, sha256);
     }
 
-    /** Delete the Media object and the cache file. Callers pass only blobs no deploy references. */
+    /**
+     * Serve the cache; on a miss fetch from Media, verify the sha256, cache it, then serve. Concurrent
+     * misses for one blob share a single download.
+     */
+    function ensure(projectId, sha256) {
+        if (local.exists(projectId, sha256)) return Promise.resolve(local.pathFor(projectId, sha256));
+        return serialise(inflight, `ensure:${keyOf(projectId, sha256)}`, () => doEnsure(projectId, sha256));
+    }
+
+    /** Delete the Media object(s) and the cache file. Callers pass only blobs no deploy references. */
     async function remove(projectId, sha256) {
         if (!SHA_RE.test(String(sha256))) throw new TypeError('invalid sha256');
+        let ids;
         try {
-            const id = await findId(projectId, sha256);
-            if (id) { await objects.delete(id); known.delete(keyOf(projectId, sha256)); }
+            ids = await findAllIds(projectId, sha256);
         } catch (err) {
             throw mediaFailure(`Media could not delete object ${sha256}`, err);
+        }
+        // Between the caller's "unreferenced" decision and this delete a concurrent deploy may have
+        // re-used the sha. host_blobs is the authority: if a row now exists, keep Media's durable copy
+        // and the cache file. The check is after the (slow) namespace scan, right before the delete.
+        if (isReferenced && await isReferenced(projectId, sha256)) return false;
+        if (ids.length) {
+            try {
+                for (const id of ids) await objects.delete(id);
+            } catch (err) {
+                throw mediaFailure(`Media could not delete object ${sha256}`, err);
+            }
+            known.delete(keyOf(projectId, sha256));
         }
         return local.remove(projectId, sha256);
     }
@@ -263,12 +360,12 @@ function createMediaStore(local, media) {
 /**
  * root: the local object directory. opts.media, when set, selects the Media-backed store (its
  * presence, built from config, is the `HOST_OBJECT_STORE=media` switch); without it the local store
- * behaves exactly as before.
+ * behaves exactly as before. opts.isReferenced is the Media store's host_blobs re-check on delete.
  */
 function createBlobStore(root, opts = {}) {
     const local = createLocalStore(root);
     if (!opts.media) return local;
-    return createMediaStore(local, opts.media);
+    return createMediaStore(local, opts.media, { isReferenced: opts.isReferenced });
 }
 
 module.exports = { createBlobStore, SHA_RE, MEDIA_SCOPE, MEDIA_AUDIENCE };

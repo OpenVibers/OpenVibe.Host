@@ -232,7 +232,11 @@ installed vhosts were fixed by hand on 2026-09-23 (`30592c0`). `TRUST_PROXY` now
 
 Objects live on the local disk (archived by `ovhost backup`, whose drill checks every blob's
 sha256), or, with `HOST_OBJECT_STORE=media`, are written through to OpenVibe.Media with local disk
-as the read cache. Tenants keep their source either way. README [Storage](../README.md#storage).
+as the read cache. Tenants keep their source either way. A Media delete re-checks `host_blobs`
+just before it runs, so a deploy that re-referenced a blob mid-sweep is not left without its
+durable copy; the hourly orphan sweep still walks only the local cache, so a Media-only orphan
+is left to project removal. Empty files are cache-only (Media's upload refuses 0 bytes). README
+[Storage](../README.md#storage).
 
 ## 7. Abuse and takedown
 

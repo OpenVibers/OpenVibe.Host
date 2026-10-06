@@ -38,7 +38,14 @@ function createWorker({ config, store, domains, blobs, outbox, log = console }) 
                 if (Date.now() - fs.statSync(o.file).mtimeMs < graceMs) continue;
                 // Through the store, so with the Media store the unreferenced Media object goes too.
                 if (await blobs.remove(o.projectId, o.sha256)) removed++;
-            } catch { /* raced with a write or already gone */ }
+            } catch (err) {
+                // A storage.media failure is a delete Media refused (grants, an outage): the sweep would
+                // otherwise look like it worked while the object leaks. Anything else raced a write or
+                // the file is already gone.
+                if (err && err.code === 'storage.media') {
+                    log.warn('[Host] object sweep could not delete a Media object:', o.projectId, o.sha256, err.message);
+                }
+            }
         }
         removed += blobs.sweepTmp(graceMs);
         return removed;

@@ -13,12 +13,28 @@
  *   - with HOST_OBJECT_STORE unset nothing calls Media at all.
  */
 const assert = require('assert');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { boot, check, done } = require('./stageb/boot');
 const { startMedia } = require('./stageb/media');
+const { createBlobStore, MEDIA_SCOPE } = require('../server/storage');
+const { createWorker } = require('../server/worker');
 
 const cachePath = (t, projectId, sha) => path.join(t.dir, 'objects', 'projects', projectId, sha.slice(0, 2), sha);
+const shaOf = (s) => crypto.createHash('sha256').update(s).digest('hex');
+/** A store built directly (not through the app) with the test's fake Media and mock Network. */
+const directStore = (t, media, { dir, isReferenced, fetchTimeoutMs } = {}) => createBlobStore(
+    dir || fs.mkdtempSync(path.join(t.dir, 'direct-')),
+    {
+        media: {
+            url: media.url, namespace: 'host', scope: MEDIA_SCOPE, clientId: 'host', clientSecret: t.SECRET,
+            tokenUrl: `${t.network.url}/oauth/token`,
+            ...(fetchTimeoutMs ? { fetchTimeoutMs } : {}),
+        },
+        isReferenced,
+    },
+);
 const filesOf = async (t, as, deployId) => (await t.api('GET', `/api/v1/deploys/${deployId}`, { as })).json().deploy.files;
 
 (async () => {
@@ -141,6 +157,150 @@ const filesOf = async (t, as, deployId) => (await t.api('GET', `/api/v1/deploys/
             assert.strictEqual(media2.calls.length, 0, 'the local store never talks to Media');
             assert.strictEqual((await t2.get('localonly.openvibe.host', '/')).text, 'LOCAL ONLY');
         } finally { await t2.close(); await media2.close(); }
+    });
+
+    await check('a zero-byte file is stored locally only and never sent to Media', async () => {
+        const pz = await t.project(alice, 'Z');
+        const sz = await t.site(alice, pz.id, 'zero');
+        const before = media.countInits();
+        const d = await t.deploy(alice, sz.id, { 'index.html': 'ZERO SITE', 'empty.txt': '' });
+        const empty = (await filesOf(t, alice, d.id)).find((f) => f.path === 'empty.txt');
+        assert.strictEqual(empty.size, 0);
+        assert.strictEqual(media.countInits(), before + 1, 'only index.html is uploaded; the empty file is not');
+        assert.strictEqual(media.byHash(pz.id, empty.sha256), null, 'Media has no object for the empty file');
+        assert.ok(fs.existsSync(cachePath(t, pz.id, empty.sha256)), 'the empty file is in the local cache');
+        const r = await t.get('zero.openvibe.host', '/empty.txt');
+        assert.strictEqual(r.status, 200);
+        assert.strictEqual(r.text, '');
+    });
+
+    await check('put uploads a fresh blob directly and looks up only an already-cached one', async () => {
+        const dir = fs.mkdtempSync(path.join(t.dir, 'direct-put-'));
+        const s1 = directStore(t, media, { dir });
+        const blob = Buffer.from('DIRECT UPLOAD');
+        const h = shaOf('DIRECT UPLOAD');
+        const lists0 = media.countLists();
+        await s1.put(pa.id, h, blob);
+        assert.strictEqual(media.countLists(), lists0, 'a fresh blob is uploaded without listing the namespace');
+        assert.ok(media.byHash(pa.id, h));
+        // A restart: a new store over the same warm cache, with no in-memory id map.
+        const s2 = directStore(t, media, { dir });
+        const inits = media.countInits();
+        const lists1 = media.countLists();
+        await s2.put(pa.id, h, blob);
+        assert.strictEqual(media.countInits(), inits, 'the cached blob is not uploaded a second time');
+        assert.ok(media.countLists() > lists1, 'the already-cached blob is looked up once');
+        assert.strictEqual(media.ready().filter((o) => o.metadata.project_id === pa.id && o.content_hash === h).length, 1);
+    });
+
+    await check('concurrent puts of one new sha upload it once', async () => {
+        const store = directStore(t, media, { dir: fs.mkdtempSync(path.join(t.dir, 'direct-race-')) });
+        const blob = Buffer.from('RACE');
+        const h = shaOf('RACE');
+        const inits = media.countInits();
+        const changed = await Promise.all([store.put(pa.id, h, blob), store.put(pa.id, h, blob), store.put(pa.id, h, blob)]);
+        assert.deepStrictEqual(changed, [true, false, false]);
+        assert.strictEqual(media.countInits(), inits + 1, 'three concurrent puts, one upload');
+        assert.strictEqual(media.ready().filter((o) => o.metadata.project_id === pa.id && o.content_hash === h).length, 1);
+    });
+
+    await check('remove deletes every Media object for a blob, not just the first', async () => {
+        const store = directStore(t, media, { dir: fs.mkdtempSync(path.join(t.dir, 'direct-dupes-')) });
+        const blob = Buffer.from('DUPLICATE');
+        const h = shaOf('DUPLICATE');
+        media.seed(pa.id, blob);
+        media.seed(pa.id, blob);            // two pre-existing duplicates (from before puts were serialised)
+        await store.put(pa.id, h, blob);    // plus the cache and one more object
+        const countOf = () => media.ready().filter((o) => o.metadata.project_id === pa.id && o.content_hash === h).length;
+        assert.strictEqual(countOf(), 3);
+        assert.strictEqual(await store.remove(pa.id, h), true);
+        assert.strictEqual(countOf(), 0, 'every duplicate is gone');
+        assert.ok(!fs.existsSync(store.pathFor(pa.id, h)), 'the cache file is gone');
+    });
+
+    await check('remove keeps a Media object and cache that host_blobs re-references mid-sweep', async () => {
+        let referenced = false;
+        const store = directStore(t, media, {
+            dir: fs.mkdtempSync(path.join(t.dir, 'direct-ref-')),
+            isReferenced: async () => referenced,
+        });
+        const blob = Buffer.from('RE-REFERENCED');
+        const h = shaOf('RE-REFERENCED');
+        await store.put(pa.id, h, blob);
+        referenced = true;   // a concurrent deploy reused the sha after the caller decided it was unreferenced
+        assert.strictEqual(await store.remove(pa.id, h), false, 'remove reports nothing removed');
+        assert.ok(media.byHash(pa.id, h), 'the durable copy stays in Media');
+        assert.ok(fs.existsSync(store.pathFor(pa.id, h)), 'the cache stays');
+        referenced = false;
+        assert.strictEqual(await store.remove(pa.id, h), true);
+        assert.strictEqual(media.byHash(pa.id, h), null, 'once unreferenced, remove deletes it');
+        assert.ok(!fs.existsSync(store.pathFor(pa.id, h)));
+    });
+
+    await check('concurrent cache misses for one blob stream it in once and rename it in', async () => {
+        const store = directStore(t, media, { dir: fs.mkdtempSync(path.join(t.dir, 'direct-coalesce-')) });
+        const blob = Buffer.from('COALESCE ME');
+        const h = shaOf('COALESCE ME');
+        await store.put(pa.id, h, blob);
+        fs.rmSync(store.pathFor(pa.id, h));
+        const downloads = media.countDownloads();
+        const files = await Promise.all([store.ensure(pa.id, h), store.ensure(pa.id, h), store.ensure(pa.id, h)]);
+        assert.deepStrictEqual(files, [store.pathFor(pa.id, h), store.pathFor(pa.id, h), store.pathFor(pa.id, h)]);
+        assert.strictEqual(media.countDownloads(), downloads + 1, 'one download for three misses');
+        assert.strictEqual(fs.readFileSync(files[0], 'utf8'), 'COALESCE ME');
+        assert.deepStrictEqual(fs.readdirSync(store.tmpDir).filter((f) => f.endsWith('.part')), [], 'no temp file is left behind');
+    });
+
+    await check('a Media download past the fetch timeout fails cleanly and caches nothing', async () => {
+        const store = directStore(t, media, { dir: fs.mkdtempSync(path.join(t.dir, 'direct-slow-')), fetchTimeoutMs: 60 });
+        const blob = Buffer.from('SLOW OBJECT');
+        const h = shaOf('SLOW OBJECT');
+        media.seed(pa.id, blob);
+        media.delayContentMs = 400;
+        try {
+            await assert.rejects(() => store.ensure(pa.id, h), (e) => e.code === 'storage.media');
+        } finally { media.delayContentMs = 0; }
+        assert.ok(!fs.existsSync(store.pathFor(pa.id, h)), 'nothing is cached from a failed download');
+    });
+
+    await check('a failed deploy names the objects it left in the deploy log', async () => {
+        const ph = await t.project(alice, 'H');
+        const sh = await t.site(alice, ph.id, 'partial');
+        const shaA = shaOf('AAAA PARTIAL');
+        media.failUploadAfter = media.acceptedInits() + 1;   // the first object lands, the second is refused
+        let r;
+        try { r = await t.upload(alice, sh.id, { 'a.txt': 'AAAA PARTIAL', 'b.txt': 'BBBB PARTIAL' }); }
+        finally { media.failUploadAfter = null; }
+        assert.strictEqual(r.status, 502, r.text);
+        assert.strictEqual(r.json().code, 'storage.object_store');
+        assert.ok(media.byHash(ph.id, shaA), 'the first object was left in Media');
+        const log = r.json().log.join('\n');
+        assert.ok(log.includes(shaA), `the deploy log names the leftover object: ${log}`);
+    });
+
+    await check('the object sweep logs a Media delete failure at warn instead of swallowing it', async () => {
+        const dir = fs.mkdtempSync(path.join(t.dir, 'sweep-'));
+        const file = path.join(dir, 'blob');
+        fs.writeFileSync(file, 'x');
+        fs.utimesSync(file, new Date(0), new Date(0));
+        const sha = 'a'.repeat(64);
+        const warnings = [];
+        const worker = createWorker({
+            config: { worker: { enabled: false } },
+            store: { db: { prepare: () => ({ get: async () => null }) } },   // no host_blobs row
+            domains: {},
+            blobs: {
+                list: function* () { yield { projectId: pa.id, sha256: sha, file }; },
+                sweepTmp: () => 0,
+                remove: async () => { const e = new Error('media down'); e.code = 'storage.media'; throw e; },
+            },
+            outbox: {},
+            log: { log() {}, error() {}, warn: (...a) => warnings.push(a.join(' ')) },
+        });
+        const removed = await worker.sweepObjects({ graceMs: 0 });
+        assert.strictEqual(removed, 0, 'a failed delete is not counted as removed');
+        assert.strictEqual(warnings.length, 1, `expected exactly one warn, got ${JSON.stringify(warnings)}`);
+        assert.ok(warnings[0].includes('Media') && warnings[0].includes(sha) && warnings[0].includes('media down'), warnings[0]);
     });
 
     await t.close();
