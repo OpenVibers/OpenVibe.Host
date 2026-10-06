@@ -159,7 +159,7 @@ function createProjects({ store, config, access, blobs, takedowns, log = console
             await db.prepare('DELETE FROM host_domains WHERE project_id = ?').run(project.id);
             await q.markDeleted.run(now, now, project.id);
         });
-        try { blobs.removeProject(project.id); } catch (err) { log.warn('[Host] could not remove project objects:', err.message); }
+        try { await blobs.removeProject(project.id); } catch (err) { log.warn('[Host] could not remove project objects:', err.message); }
         // IndexNow: every site of the project left the index (never a sandbox project, which is noindex).
         if (project.environment !== 'sandbox') for (const s of doomed) announce(`${s.name}.${config.sitesDomain}`, ['/', '/sitemap.xml']);
         return { deleted: true };

@@ -76,7 +76,19 @@ async function createApp(opts = {}) {
     const log = opts.log || console;
     // PostgreSQL (ADR-035): opened and migrated here unless the caller (a test, a script) hands in a store.
     const store = opts.store || await openStore(config, { now: opts.now, log });
-    const blobs = createBlobStore(opts.storageDir || config.storageDir);
+    // The object store: local disk, written through to OpenVibe.Media when HOST_OBJECT_STORE=media.
+    // The Media client is built here (not at module load) and fetches a token lazily; unset config
+    // leaves media null and the store is exactly the local one.
+    const mediaStore = config.objectStore.mode === 'media' ? {
+        url: config.media.url,
+        namespace: config.media.namespace,
+        scope: config.media.scope,
+        clientId: config.oauth.clientId,
+        clientSecret: config.oauth.clientSecret,
+        tokenUrl: `${config.networkInternalUrl}/oauth/token`,
+        ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
+    } : null;
+    const blobs = createBlobStore(opts.storageDir || config.storageDir, { media: mediaStore, log });
     require('./http/errors').setLogger(log);
 
     // IndexNow (openvibe-shared/indexnow): created once at boot from INDEXNOW_KEY. Unset → off, nothing

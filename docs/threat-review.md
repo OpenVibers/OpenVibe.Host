@@ -18,7 +18,7 @@ Status column says which risks are **fixed**, **mitigated**, **accepted** (with 
 
 | Asset | Where it lives |
 |---|---|
-| Other tenants' files, deploy history, logs and domains | `host_*` tables in `/var/lib/openvibe-host-api/host.db`; objects in `<HOST_STORAGE_DIR>/projects/<prj_…>/<aa>/<sha256>` |
+| Other tenants' files, deploy history, logs and domains | `host_*` tables in the `host` database; objects in `<HOST_STORAGE_DIR>/projects/<prj_…>/<aa>/<sha256>`, or, with `HOST_OBJECT_STORE=media`, in Host's own namespace in OpenVibe.Media (local disk is then the read cache) |
 | OpenVibe sessions (Network SSO tokens, other products' cookies) | browsers; Network |
 | The dashboard session and form tokens | `__Host-ov_host_session` cookie (`server/auth/sso.js:59-115`); `HOST_FORM_SECRET` |
 | Host's own credentials (`OV_OAUTH_CLIENT_SECRET`, `HOST_FORM_SECRET`) | `/etc/openvibe/host.env` (0600) |
@@ -50,9 +50,10 @@ It reads the site's active deploy pointer once, then only that deploy's immutabl
 percent-decoded segment by segment, and encoded separators (`%2f %5c %00`) are refused
 (`candidates`, `:108`). The decoded path must pass the same `checkPath` as uploads
 (`server/artifacts/paths.js:26`), and is then looked up in the manifest table, never on the
-filesystem. The bytes are opened at `blobs.pathFor(row.project_id, row.sha256)` (`:154`,
-`server/storage.js:35`): a validated `prj_` id plus a validated lowercase sha256. That path is never
-built from the URL. Absolute-form request targets must name the same host as `Host` (`:186-196`).
+filesystem. The bytes come from `blobs.ensure(row.project_id, row.sha256)`: a validated `prj_` id plus a
+validated lowercase sha256, which is the local cache file, or (with `HOST_OBJECT_STORE=media`) the
+object fetched back from Media, sha256-verified before it is cached or served (`server/storage.js`).
+That key is never built from the URL. Absolute-form request targets must name the same host as `Host` (`:186-196`).
 
 Identical bytes uploaded by two projects are stored twice. Deleting one project's copy can never
 break another's, and no tenant can confirm that another tenant has some content by uploading it.
@@ -229,9 +230,9 @@ Cloudflare. **Added:** every template ovhost renders now sends `X-Forwarded-For`
 request reaching the origin directly could choose the address that rate limits and logs use. The
 installed vhosts were fixed by hand on 2026-09-23 (`30592c0`). `TRUST_PROXY` now defaults to 1.
 
-Accepted for alpha: objects live only on the local disk and are not in `ovhost backup` (only
-`host.db` is). A lost disk loses tenant sites, and tenants keep their source. README "Not done yet"
-says so.
+Objects live on the local disk (archived by `ovhost backup`, whose drill checks every blob's
+sha256), or, with `HOST_OBJECT_STORE=media`, are written through to OpenVibe.Media with local disk
+as the read cache. Tenants keep their source either way. README [Storage](../README.md#storage).
 
 ## 7. Abuse and takedown
 
@@ -285,6 +286,6 @@ the history of any site.
 | Unverified or lapsed custom domains reach nginx's default server | medium (confusion, mis-served content on a stranger's domain) | operator: catch-all `default_server` (docs/launch.md step 0) |
 | Cookie bomb across tenants and the dashboard (no PSL) | low (per-visitor nuisance; takedown exists) | owner decision (§5) |
 | No abuse mailbox/owner | medium (process, not code) | owner |
-| Objects not backed up | medium for tenants (alpha, documented) | fixed: the inventory's `objects` entry archives the store, the off-host copy encrypts it, and a drill restores it and checks every blob's sha256 |
+| Objects not backed up | medium for tenants (alpha, documented) | fixed: the inventory's `objects` entry archives the store, the off-host copy encrypts it, and a drill restores it and checks every blob's sha256. With `HOST_OBJECT_STORE=media` the archive is the read cache and Media holds the objects |
 | Decompressing an upload blocked the event loop (`gunzipSync`) | done: async `zlib.gunzip` on the libuv threadpool (`server/artifacts/archive.js`), same `maxOutputLength` cap | done |
 | Takedown routes not in released `openvibe-contracts` `host.site.manage.implementedBy` | none at runtime (the contract check passes) | Contracts: next release (docs/launch.md) |

@@ -36,8 +36,8 @@ function createWorker({ config, store, domains, blobs, outbox, log = console }) 
             if (await known.get(o.projectId, o.sha256)) continue;
             try {
                 if (Date.now() - fs.statSync(o.file).mtimeMs < graceMs) continue;
-                fs.unlinkSync(o.file);
-                removed++;
+                // Through the store, so with the Media store the unreferenced Media object goes too.
+                if (await blobs.remove(o.projectId, o.sha256)) removed++;
             } catch { /* raced with a write or already gone */ }
         }
         removed += blobs.sweepTmp(graceMs);

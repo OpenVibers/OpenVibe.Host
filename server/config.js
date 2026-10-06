@@ -54,6 +54,20 @@ function load(env = process.env) {
         // Content-addressed deploy objects, one directory per project (tenancy keyed by project id).
         storageDir: env.HOST_STORAGE_DIR || './data/objects',
 
+        // Tenant objects: local disk is the store and the read cache. HOST_OBJECT_STORE=media writes
+        // every object through to OpenVibe.Media as well (Host's own namespace `host`, keyed per
+        // project, sha256 as content_hash) and serves a local miss from there; unset keeps the local
+        // store exactly as it is. OV_MEDIA_URL is the internal Media base URL; the credential is
+        // Host's usual Network service principal (OV_OAUTH_CLIENT_ID/SECRET), audience openvibe.media.
+        objectStore: {
+            mode: String(env.HOST_OBJECT_STORE || '').toLowerCase() === 'media' ? 'media' : 'local',
+        },
+        media: {
+            url: trim(env.OV_MEDIA_URL || 'http://127.0.0.1:4100'),
+            namespace: String(env.OV_MEDIA_NAMESPACE || 'host').trim() || 'host',
+            scope: 'media.object.upload media.object.read media.object.list media.object.delete',
+        },
+
         // OpenVibe.Network: SSO (OAuth2 authorization server), JWKS, client-credentials tokens.
         networkUrl: trim(env.OV_NETWORK_URL || 'https://openvibe.network'),
         networkInternalUrl: trim(env.OV_NETWORK_INTERNAL_URL || 'http://127.0.0.1:4000'),

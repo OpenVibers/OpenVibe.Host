@@ -53,7 +53,7 @@ Stage A adds a few safety rules of its own:
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
 - OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.26.0 transactional outbox (openvibe-sdk/limits for the per-actor limits).
 - `openvibe-shared` v2.6.0 (Stage B): shared chrome (Host's own pages are composed with `openvibe-shared/shell`), legal pages, `/release.json`, `/metrics`, `/api/ready`.
-- OpenVibe.Media: not yet. The roadmap stores artifacts "through Media where practical"; Stage B keeps them on local disk for now (see [Not done yet](#not-done-yet-stage-b)).
+- OpenVibe.Media (Stage B, opt-in): with `HOST_OBJECT_STORE=media`, deploy objects are written through to Media's Object API v2 (`openvibe-sdk/media`) and local disk becomes the read cache; unset keeps them on local disk (see [Storage](#storage)).
 
 ## Capabilities
 
@@ -258,10 +258,40 @@ A Node service (`server/`, Express 4, better-sqlite3, port **4910**, service id 
 
 - **Projects** (`prj_<ULID>`) have an owner (a `usr_` subject), an environment (`production` or `sandbox`), members with a role (`owner` > `maintainer` > `deployer`), and optionally the `network_project_id` of the OpenVibe.Network project (ADR-014: Network owns projects; until it has them, Host creates one for its owner). Every Host row and every stored object is keyed by the project id.
 - **Sites** (`site_<ULID>`) have a name (one DNS label, 3–40 characters, reserved names refused) that is their default host, `<name>.openvibe.host`, and a pointer to the active deploy. A deleted site's name is held for 30 days so nobody else can serve content on links that still point there.
-- **Deploys** (`dpl_<ULID>`) are immutable artifacts: a manifest (`host.deploy-manifest@1`: path, sha256, size and content type of every file, file count, total bytes) with its own sha256, file rows, and the upload/validation log. Database triggers refuse any update of a deploy's artifact columns or file rows. The bytes are content-addressed per project: `<HOST_STORAGE_DIR>/projects/<prj_…>/<aa>/<sha256>`.
+- **Deploys** (`dpl_<ULID>`) are immutable artifacts: a manifest (`host.deploy-manifest@1`: path, sha256, size and content type of every file, file count, total bytes) with its own sha256, file rows, and the upload/validation log. Database triggers refuse any update of a deploy's artifact columns or file rows. The bytes are content-addressed per project: `<HOST_STORAGE_DIR>/projects/<prj_…>/<aa>/<sha256>`, with `HOST_OBJECT_STORE=media` writing them through to OpenVibe.Media as well ([Storage](#storage)).
 - **Domains**: every site has its default domain. A custom domain is added as `pending` and becomes `verified` (and served) once `_openvibe-host.<hostname>` has the TXT record `openvibe-host-verification=<token>`. A verified name belongs to one site. OpenVibe domains (every domain in the released service manifests, `openvibe.<tld>`, the sites domain itself) can never be claimed. The worker re-checks pending domains (they fail after `HOST_DOMAIN_PENDING_DAYS`) and re-checks verified ones daily: a TXT record gone for `HOST_DOMAIN_LAPSE_DAYS` lapses the domain and it stops being served.
 - **Quotas** per project, enforced by Host: storage bytes (objects stored once per project, so re-uploading unchanged files costs nothing), deploys per rolling 24 hours (checked before the body is read; failed uploads count), files per deploy, bytes per file, sites, custom domains. A deploy's own size before deduplication may not exceed the storage quota. Defaults come from `HOST_QUOTA_*` / `HOST_SANDBOX_QUOTA_*`; staff override them per project. Sandbox projects get smaller quotas, no custom domains, and `X-Robots-Tag: noindex`.
 - **Build logs**: Stage B has no build step. Each deploy's log records what was received, every validation problem, what was stored, the manifest digest and the activation, and says that nothing was executed. Refused uploads are recorded as `failed` deploys, so their logs are visible too.
+
+### Storage
+
+Deploy objects are content-addressed and stored **per project** (ADR-014):
+`<HOST_STORAGE_DIR>/projects/<prj_…>/<aa>/<sha256>`. The same bytes uploaded by two projects are
+stored twice, and storage is accounted and deleted per project. Every read goes through
+`server/storage.js` and is keyed by a validated project id and the manifest's sha256, so a request
+can only ever name its own project's objects.
+
+With **`HOST_OBJECT_STORE=media`** (opt-in; unset is the local store above, unchanged) local disk
+becomes the read cache and **OpenVibe.Media** is the source of truth:
+
+- every object is written through to Media's Object API v2 (`openvibe-sdk/media`
+  `createObjectsClient`) as a **private** object in Host's own namespace (`OV_MEDIA_NAMESPACE`,
+  default `host`), keyed per project by `metadata.project_id` with the file's sha256 as
+  `content_hash`. A deploy is not reported as stored until Media acknowledged every object; a Media
+  failure fails the deploy (`502 storage.object_store`) with its log, never a silent local-only
+  success;
+- serving reads the local cache; a miss re-fetches the object from Media, verifies its sha256 and
+  only then caches and serves it (a mismatch is a `500`, never served);
+- an object is deleted from Media exactly where the local store would delete the blob (deploy GC,
+  project removal, the hourly orphan sweep), so an object a remaining deploy still references is
+  never deleted.
+
+Host authenticates to Media with its Network service principal (client credentials, audience
+`openvibe.media`), which must hold `media.object.upload`, `media.object.read`, `media.object.list`
+and `media.object.delete` for the `host` namespace and everything below it (`host.*`), and a `host`
+tenant must exist in Media. `OV_MEDIA_URL` is the internal Media base URL (default
+`http://127.0.0.1:4100`). `ovhost backup host` still archives the local cache; in the Media mode the
+Media objects are the durable copy.
 
 ### Uploads
 
@@ -277,7 +307,7 @@ A Node service (`server/`, Express 4, better-sqlite3, port **4910**, service id 
 
 ### Serving
 
-Requests resolve their site once from the `Host` header, read the site's active deploy pointer once, and then read only that deploy's immutable rows. The file's bytes are opened at a path built from the site's project id and the manifest's sha256, never from the URL, so no path, encoding or `Host` trick can reach another project's objects. Absolute-form request targets must name the same host as the `Host` header.
+Requests resolve their site once from the `Host` header, read the site's active deploy pointer once, and then read only that deploy's immutable rows. The file's bytes come from the blob store keyed by the site's project id and the manifest's sha256 — the local disk cache, or, with `HOST_OBJECT_STORE=media`, the object fetched back from Media and sha256-verified ([Storage](#storage)) — never from the URL, so no path, encoding or `Host` trick can reach another project's objects. Absolute-form request targets must name the same host as the `Host` header.
 
 - `GET`/`HEAD` only (405 otherwise). `/` and `/dir/` serve `index.html`; `/page` also tries `page.html`; `/dir` redirects to `/dir/` when `dir/index.html` exists.
 - `Content-Type` from the manifest; strong `ETag` (the sha256) with `304` on `If-None-Match`; single byte ranges (`206`/`416`).
@@ -384,6 +414,7 @@ Server-rendered pages with the shared chrome (`openvibe-shared` v2.6.0 `shell.pa
 
 - OpenVibe.Network OAuth client **`host`**, redirect `https://openvibe.host/auth/callback`, scope `profile theme`. The same client is the service principal `svc:host`.
 - Grant `[host, events.event.publish, openvibe.events]`.
+- With `HOST_OBJECT_STORE=media`: grants `[host, media.object.upload, openvibe.media]`, `[host, media.object.read, openvibe.media]`, `[host, media.object.list, openvibe.media]` and `[host, media.object.delete, openvibe.media]`, covering the `host` namespace and its subtree (`host.*`), plus a `host` tenant in Media. Network-side; Host asks for the verbs as its scope.
 - Callers of Host get `[<client>, host.site.manage | host.deploy.create | host.domain.manage, openvibe.host]` as needed. None exist yet (Codes, the expected first caller, is not built).
 - Released in `openvibe-contracts` v0.83.0 (CI contract check blocking); v0.32.0 adds the takedown routes to `host.site.manage.implementedBy`.
 
@@ -404,11 +435,11 @@ The service runs on the host (loopback, since 2026-09-23) and the pending tenant
 ### Not done yet (Stage B)
 
 - Uploads are held in memory while they are validated (bounded by `HOST_MAX_UPLOAD_BYTES` and `HOST_MAX_UNPACKED_BYTES`), so the service needs that much headroom per concurrent upload.
-- Objects live on the service's local disk, not in OpenVibe.Media; there is no replication. `ovhost backup host` archives `/var/lib/openvibe-host-api/objects` (the inventory's `objects` entry) alongside `ov_host`, uploads the encrypted archive off-host, and a restore drill extracts it and checks every blob's sha256. The database (`ov_host` on the host's data role, ADR-035; schema in [migrations/](migrations/)) is backed up with the others by pgBackRest.
+- Objects are on the service's local disk by default; there is no replication. `HOST_OBJECT_STORE=media` (opt-in) additionally writes every object through to OpenVibe.Media and keeps local disk as the read cache. `ovhost backup host` archives `/var/lib/openvibe-host-api/objects` (the inventory's `objects` entry) alongside `ov_host`, uploads the encrypted archive off-host, and a restore drill extracts it and checks every blob's sha256. The database (`ov_host` on the host's data role, ADR-035; schema in [migrations/](migrations/)) is backed up with the others by pgBackRest.
 - Certificates for custom domains are issued and installed by `ovhost certs renew --install` (step 8) on the `openvibe-certs.timer`; certbot stays outside the Host service and no key file is read.
 - Projects are created in Host. When Network has projects (ADR-014), Host should accept only Network project ids and read membership from Network.
 - `openvibe.host` is not on the Public Suffix List, so a tenant page can still set `Domain=openvibe.host` cookies (a cookie bomb breaks the dashboard and other tenant sites for that visitor). The protections above do not depend on it. [docs/threat-review.md §5](docs/threat-review.md#5-the-public-suffix-list-question) records the decision (launch without it) and the recommended follow-up (dashboard off the tenant zone, then list the zone).
-- Tenant objects are in `ovhost backup`: the inventory declares them as `objects` (`/var/lib/openvibe-host-api/objects`), the backup archives the tree, the off-host copy encrypts it, and a drill extracts it and checks every blob's sha256.
+- Tenant objects are in `ovhost backup`: the inventory declares them as `objects` (`/var/lib/openvibe-host-api/objects`), the backup archives the tree, the off-host copy encrypts it, and a drill extracts it and checks every blob's sha256. With `HOST_OBJECT_STORE=media`, this archives the read cache and Media holds the durable objects.
 - Git deploys are Phase 1 only (see [Git deploys](#git-deploys-phase-1)): the project's own CI builds and posts the output. Host never clones, fetches, holds a repository credential or builds; in-Host builds belong to Run (plan T14). There is no webhook: a push reaches Host only through the CI's call.
 - Tenant sites publish their own sitemap/robots/feed; when a deploy ships no `sitemap.xml` or `robots.txt`, Host generates one (the manifest's HTML pages on the host the request came in on, so a verified custom domain gets its own `sitemap.xml`; sandbox projects get `Disallow: /` and are `noindex`). A tenant's own file at either path always wins. The dashboard host serves `/robots.txt` and `/sitemap.xml` (front page and legal pages).
 - The Codes portal (Wave 20) does not exist, so there is no public developer onboarding for Host yet.

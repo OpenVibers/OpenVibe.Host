@@ -180,8 +180,15 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
             await fail(413, 'quota.storage', [{ code: 'quota.storage', message: `this deploy adds ${fmtBytes(newBytes)}; the project stores ${fmtBytes(used)} of ${fmtBytes(limits.quota.storageBytes)}` }]);
         }
 
-        // Objects first (idempotent, content-addressed); rows only after they are durable.
-        for (const f of fresh.values()) blobs.put(project.id, f.sha256, f.data);
+        // Objects first (idempotent, content-addressed); rows only after they are durable. With the
+        // Media store this is where a deploy waits for Media to acknowledge every object: a refusal
+        // fails the deploy, recorded with its log, instead of publishing a local-only success.
+        try {
+            for (const f of fresh.values()) await blobs.put(project.id, f.sha256, f.data);
+        } catch (err) {
+            log.error('[Host] object store refused a deploy:', project.id, err.code || err.message);
+            await fail(502, 'storage.object_store', [{ code: 'storage.object_store', message: 'the object store could not store this deploy; nothing was published' }]);
+        }
 
         const id = newId('deploy', store.now());
         const now = store.now();
@@ -319,9 +326,9 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
         return freed;
     }
 
-    function unlinkBlobs(projectId, shas) {
+    async function unlinkBlobs(projectId, shas) {
         for (const sha of shas) {
-            try { blobs.remove(projectId, sha); } catch (err) { log.warn('[Host] could not remove object:', err.message); }
+            try { await blobs.remove(projectId, sha); } catch (err) { log.warn('[Host] could not remove object:', err.message); }
         }
     }
 
@@ -338,7 +345,7 @@ function createDeploys({ store, config = null, access, projects, sites, blobs, o
             await q.clearPreviewIf.run(site.id, deploy.id);
             freed = await collectGarbage(project.id);
         });
-        unlinkBlobs(project.id, freed);
+        await unlinkBlobs(project.id, freed);
         return { deleted: true, objects_removed: freed.length };
     }
 
