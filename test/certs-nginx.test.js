@@ -55,8 +55,9 @@ runTests([
         const host = scenario();
         const ev = await host.cli('nginx', 'render', 'events');
         assert.strictEqual(ev.code, 0, ev.out);
-        assert.match(ev.out, /server_name events\.openvibe\.network;/);
-        assert.match(ev.out, /ssl_certificate +\/etc\/letsencrypt\/live\/openvibe\.network\/fullchain\.pem;/, 'wildcard certificate of the registrable domain');
+        assert.match(ev.out, /server_name openvibe\.events;/, 'only the domains the certificate covers');
+        assert.ok(!/events\.openvibe\.network/.test(ev.out.split('\n').filter((l) => /server_name/.test(l)).join('\n')), 'the other registrable domain gets its own vhost');
+        assert.match(ev.out, /ssl_certificate +\/etc\/letsencrypt\/live\/openvibe\.events\/fullchain\.pem;/, 'the certificate of the registrable domain');
         assert.match(ev.out, /location = \/realtime\/stream \{[\s\S]*proxy_buffering off;[\s\S]*proxy_read_timeout 1h;/);
         assert.match(ev.out, /proxy_pass http:\/\/127\.0\.0\.1:4300;/);
         const live = await host.cli('nginx', 'render', 'live');
@@ -67,7 +68,7 @@ runTests([
         const plain = await host.cli('nginx', 'render', 'media', '--variant', 'http');
         assert.match(plain.out, /server_name openvibe\.media;/);
         assert.ok(!/proxy_buffering off/.test(plain.out));
-        assert.strictEqual(host.read('/etc/nginx/sites-available/events.openvibe.network.conf'), null, 'render alone writes nothing');
+        assert.strictEqual(host.read('/etc/nginx/sites-available/openvibe.events.conf'), null, 'render alone writes nothing');
         assert.ok(!host.calls.some((c) => c.cmd === 'nginx' || (c.cmd === 'systemctl' && c.args[0] === 'reload')));
     }),
 
@@ -75,18 +76,18 @@ runTests([
         const host = scenario();
         const ok = await host.cli('nginx', 'render', 'events', '--install');
         assert.strictEqual(ok.code, 0, ok.out);
-        const installed = host.read('/etc/nginx/sites-available/events.openvibe.network.conf');
-        assert.match(installed, /events\.openvibe\.network/);
-        assert.ok(host.files.get('/etc/nginx/sites-enabled/events.openvibe.network.conf'));
+        const installed = host.read('/etc/nginx/sites-available/openvibe.events.conf');
+        assert.match(installed, /server_name openvibe\.events;/);
+        assert.ok(host.files.get('/etc/nginx/sites-enabled/openvibe.events.conf'));
         assert.ok(host.calls.some((c) => c.cmd === 'systemctl' && c.args[0] === 'reload' && c.args[1] === 'nginx.service'));
 
-        host.put('/etc/nginx/sites-available/events.openvibe.network.conf', '# hand-edited previous version\n');
+        host.put('/etc/nginx/sites-available/openvibe.events.conf', '# hand-edited previous version\n');
         host.nginxTest = () => ({ code: 1, stderr: 'nginx: [emerg] duplicate zone' });
         const reloadsBefore = host.calls.filter((c) => c.cmd === 'systemctl' && c.args[0] === 'reload').length;
         const bad = await host.cli('nginx', 'render', 'events', '--install');
         assert.strictEqual(bad.code, 2, bad.out);
         assert.match(bad.out, /nginx -t failed; the previous vhost files were restored/);
-        assert.strictEqual(host.read('/etc/nginx/sites-available/events.openvibe.network.conf'), '# hand-edited previous version\n');
+        assert.strictEqual(host.read('/etc/nginx/sites-available/openvibe.events.conf'), '# hand-edited previous version\n');
         assert.strictEqual(host.calls.filter((c) => c.cmd === 'systemctl' && c.args[0] === 'reload').length, reloadsBefore, 'no reload after a failed test');
 
         // A brand-new vhost that fails the test is removed again, link included.

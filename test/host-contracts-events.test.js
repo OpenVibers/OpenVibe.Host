@@ -22,10 +22,8 @@ const { EVENT_TYPES } = require('../server/events/outbox');
         for (const [i, c] of caps.entries()) {
             assert.ok(c, `${ids[i]} is not in openvibe-contracts`);
             assert.strictEqual(c.owner, 'host');
-            // host.resource.read is `planned` in the released manifest on purpose: Host ships the index
-            // (server/registry/resource-index.js) but OpenVibe.Contracts flips the capability to `active`,
-            // with the implementedBy routes, only after the deploy. Every other capability is active.
-            assert.strictEqual(c.status, c.id === 'host.resource.read' ? 'planned' : 'active', c.id);
+            // Every capability Host guards is active (host.resource.read since openvibe-contracts 0.108.0).
+            assert.strictEqual(c.status, 'active', c.id);
         }
     });
 
