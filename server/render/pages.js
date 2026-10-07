@@ -3,6 +3,7 @@
  * Dashboard page bodies. Every value is escaped; every action is a POST form carrying the form
  * token, so the dashboard works without JavaScript.
  */
+const showcase = require('openvibe-shared/showcase');
 const { esc } = require('./layout');
 
 const bytes = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(2)} GiB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MiB` : n >= 1024 ? `${(n / 1024).toFixed(1)} KiB` : `${n} B`);
@@ -15,16 +16,44 @@ function form(action, csrf, inner, { cls = '', confirm = null, enctype = null } 
         + `${confirm ? `<label class="confirm"><input type="checkbox" name="confirm" value="yes" required> ${esc(confirm)}</label>` : ''}</form>`;
 }
 
-function signedOut() {
-    return `<section class="intro">
-<h1>OpenVibe.Host</h1>
-<p>Static site hosting for OpenVibe projects. Upload a folder or a <code>.tar.gz</code> of HTML, CSS, JavaScript, images and fonts;
-Host keeps every deploy as an immutable, content-addressed artifact, serves the active one at
-<code>&lt;site&gt;.openvibe.host</code> (and on custom domains you verify), and lets you roll back to any earlier deploy in one step.</p>
-<p><strong>Alpha.</strong> Static files only: there is no build step and no server-side code, and nothing you upload is ever executed.
-Hosted bots, mods and apps (Stage C) are not available.</p>
-<p><a class="button" href="/auth/login?next=%2F">Sign in with OpenVibe</a></p>
-</section>`;
+/** A limit as the front page prints it: bytes in binary units, 0 as "none" (the environment allows none). */
+const limitValue = (n, unit) => (n === 0 ? 'none' : unit === 'bytes' ? bytes(n) : Number(n).toLocaleString('en-US'));
+
+/**
+ * The signed-out front page: the public page of openvibe.host, built with openvibe-shared/showcase. The limits table
+ * is limitsOf(config), the same object /limits.json serves, so the page never promises more than Host enforces.
+ */
+function signedOut({ limits, limitsUrl } = {}) {
+    return showcase.hero({
+        eyebrow: 'OpenVibe.Host · alpha',
+        title: 'Publish a static site.', accent: 'Roll back in one step.',
+        lede: 'Upload a folder or a .tar.gz of HTML, CSS, JavaScript, images and fonts. Every deploy is kept as an immutable, content-addressed artifact; the active one is served at <site>.openvibe.host and on custom domains you verify.',
+        actions: [{ label: 'Sign in with OpenVibe', href: '/auth/login?next=%2F', primary: true }, { label: 'See the limits', href: '#limits' }],
+        note: 'Alpha. Static files only: there is no build step and no server-side code, and nothing you upload is ever executed. Hosted bots, mods and apps are not available.',
+    }) + showcase.features({
+        title: 'What you get',
+        items: [
+            { icon: 'ov:upload', title: 'Upload from the browser or the API', text: 'A folder or an archive from the dashboard, or POST it to /api/v1. Archives are checked in memory and never extracted.' },
+            { icon: 'ov:history', title: 'Every deploy kept', text: 'Deploys never change once made. Activate an earlier one to roll back, from the dashboard or the API.' },
+            { icon: 'ov:dns', title: 'Your own domain', text: 'Add a domain and prove it with a DNS TXT record. It is served once verified and re-checked every day.' },
+            { icon: 'ov:account', title: 'Projects for a team', text: 'Owners add maintainers and members per project. Sandbox projects have smaller quotas and stay out of search.' },
+        ],
+    }) + showcase.steps({
+        title: 'Get a site online',
+        items: [
+            { title: 'Sign in', text: 'With your OpenVibe account.' },
+            { title: 'Create a project', text: 'Production, or a sandbox to try things out.' },
+            { title: 'Add a site', text: 'It gets its own name under openvibe.host.' },
+            { title: 'Upload a deploy', text: 'Activate it, and roll back to any earlier deploy whenever you need to.' },
+        ],
+    }) + (limits ? showcase.limits({
+        id: 'limits',
+        title: 'Limits',
+        lede: 'The defaults a new project starts with, by environment (the first row counts the projects one person owns).',
+        columns: ['Production', 'Sandbox'],
+        rows: limits.limits.map((l) => ({ label: l.label, values: [limitValue(l.production, l.unit), limitValue(l.sandbox, l.unit)] })),
+        source: limitsUrl,
+    }) : '');
 }
 
 function home({ projects, csrf }) {

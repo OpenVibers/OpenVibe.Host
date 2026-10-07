@@ -54,7 +54,11 @@ const ORIGIN = 'https://openvibe.host';
         assert.match(r.text, /<noscript><nav aria-label="Site"/);
         assert.match(r.text, /id="ov-footer"/);
         assert.match(r.text, /Sign in with OpenVibe/);
-        assert.match(r.text, /Stage C\) are not available/);
+        assert.match(r.text, /nothing you upload is ever executed/);
+        // The limits table is the one /limits.json serves (limitsOf(config)), never a second copy.
+        assert.match(r.text, /id="limits"/);
+        assert.match(r.text, /Files in one deploy/);
+        assert.match(r.text, /href="\/shared\/showcase\.css\?v=[0-9a-f]{12}"/);
         assert.match(r.headers['content-security-policy'], /frame-ancestors 'none'/);
         // Release notifications: release-watch's EventSource on the Events realtime stream (openvibe-shared 1.17).
         assert.match(r.headers['content-security-policy'], /connect-src 'self' https:\/\/openvibe\.network https:\/\/events\.openvibe\.network;/);

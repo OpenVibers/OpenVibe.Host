@@ -75,6 +75,8 @@ function renderPage(o) {
         head: [
             appIcon.headTags({ site: 'host' }),
             `<link rel="stylesheet" href="${asset('css/host.css')}">`,
+            // openvibe-shared stylesheets a page asks for by name (the front page's showcase.css)
+            ...(o.styles || []).map((name) => `<link rel="stylesheet" href="${esc(ovServe.url(name))}">`),
             `<meta name="ov-boost" content="host@${esc(RELEASE)}">`,
             `<script src="${ovServe.url('boost.js')}" data-main="#main" defer></script>`,
         ].join('\n'),
