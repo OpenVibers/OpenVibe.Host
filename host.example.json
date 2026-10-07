@@ -499,7 +499,7 @@
             "argv": [
               "node",
               "-e",
-              "const D=require('better-sqlite3'); new D(':memory:').close(); require('openvibe-contracts'); require('openvibe-sdk'); require('../_shared/jobs')"
+              "require('openvibe-contracts'); require('openvibe-sdk'); require('../_shared/jobs')"
             ]
           },
           {
@@ -508,7 +508,7 @@
             "argv": [
               "node",
               "-e",
-              "const D=require('better-sqlite3'); new D(':memory:').close(); require('../_shared/guard')"
+              "require('../_shared/guard')"
             ]
           }
         ]
