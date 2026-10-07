@@ -14,18 +14,20 @@
   "port": 4910,
   "domain": "openvibe.host",
   "tenantDomain": "*.openvibe.host",
-  "contracts": "openvibe-contracts v0.83.0",
+  "contracts": "openvibe-contracts v0.107.0",
   "sdk": "openvibe-sdk v0.26.0",
   "shared": "openvibe-shared v2.10.1",
   "packages": [
-    "openvibe-contracts v0.83.0",
+    "openvibe-contracts v0.107.0",
     "openvibe-sdk v0.26.0",
     "openvibe-shared v2.10.1"
   ],
   "capabilities": [
     "host.site.manage",
     "host.deploy.create",
-    "host.domain.manage"
+    "host.domain.manage",
+    "host.site.config",
+    "host.resource.read"
   ],
   "capabilitiesRegistered": true,
   "serviceManifestRegistered": "host manifest v0.2.0 released (openvibe-contracts v0.24.0+), with the four host.* events",
@@ -47,7 +49,7 @@
   "deployed": "production: openvibe.host and *.openvibe.host since 2026-10-07",
   "placeholderInSites": false,
   "adoptedByServices": [],
-  "capabilitiesNote": "released in openvibe-contracts v0.24.0; v0.32.0 adds the four takedown routes to host.site.manage.implementedBy",
+  "capabilitiesNote": "released in openvibe-contracts v0.24.0; v0.32.0 adds the four takedown routes to host.site.manage.implementedBy; v0.83.0 adds host.site.config; v0.107.0 adds the git-source routes and the planned host.resource.read (Host ships the resource index at GET /api/v1/resources and GET /api/v1/resources/:ovrn; OpenVibe.Contracts flips the capability to active, with the implementedBy routes, only after the deploy)",
   "launchReady": true,
   "features": [
     "ovhost: inventory, validate, plan, deploy with automatic rollback, rollback, status, releases",
@@ -60,6 +62,7 @@
     "Prometheus alerts relay to Network",
     "browser check and release-lifecycle acceptance suite",
     "Stage B: tenant static sites with immutable deploys, activation, rollback, custom domains, quotas and takedowns",
+    "the authority resource index (ADR-048 section 3, plan T13 step 8): GET /api/v1/resources pages Host's sites (host.site, sit_), the immutable deploys of those sites (host.deploy, dpl_) and their default and custom domains (host.domain, dom_) as common.resource-summary@1, and GET /api/v1/resources/:ovrn reads one by its OVRN, for OpenVibe.Services' fan-out; guarded by the first-party host.resource.read, scoped by ?project= and paginated with an opaque cursor",
     "Stage B git deploys, Phase 1: a site's Git source (repo + branch); the tenant's own CI posts each build, which lands as a source=git preview with immutable commit provenance and goes live only through activate (Host never clones, fetches, holds a credential or builds)",
     "per-actor limits on Stage B writes (openvibe-sdk/limits)"
   ],

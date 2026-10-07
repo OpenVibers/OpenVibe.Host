@@ -47,7 +47,7 @@ runTests([
         const m = JSON.parse(fs.readFileSync(require.resolve('openvibe-contracts/manifests/services/host.json'), 'utf8'));
         contracts.assertValid('registry.service-manifest', m);
         assert.strictEqual(m.id, 'host');
-        assert.deepStrictEqual(m.capabilities, ['host.site.manage', 'host.deploy.create', 'host.domain.manage', 'host.site.config'], 'Stage A has no API; the Stage B service enforces these four');
+        assert.deepStrictEqual([...m.capabilities].sort(), ['host.deploy.create', 'host.domain.manage', 'host.resource.read', 'host.site.config', 'host.site.manage'], 'Stage A has no API; the Stage B service enforces these five (host.resource.read: the resource index, openvibe-contracts 0.107.0)');
     }),
 
     test('as root, an inventory that is not root-owned or is writable by others is refused', async () => {
