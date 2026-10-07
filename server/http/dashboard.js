@@ -10,6 +10,8 @@ const ovServe = require('openvibe-shared/serve');
 const frame = require('openvibe-shared/frame');
 const { renderPage } = require('../render/layout');
 const pages = require('../render/pages');
+const showcase = require('openvibe-shared/showcase');
+const { limitsOf } = require('../limits');
 const { csrfToken, checkCsrf, sameOrigin } = require('../auth/forms');
 const { readUpload, UploadError } = require('./upload');
 const { ApiError, privateNoStore } = require('./errors');
@@ -28,8 +30,8 @@ function createDashboard(ctx) {
     if (ctx.actorLimits) router.use(ctx.actorLimits);
     router.use((req, res, next) => { privateNoStore(res); next(); });
 
-    function page(req, res, status, title, body, notice, { indexable = false } = {}) {
-        res.status(status).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, notice, indexable }));
+    function page(req, res, status, title, body, notice, { indexable = false, styles } = {}) {
+        res.status(status).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, notice, indexable, styles }));
     }
 
     function fail(req, res, err) {
@@ -69,7 +71,10 @@ function createDashboard(ctx) {
     router.get('/', view(async (req, res) => {
         // The signed-out front page is the public page of openvibe.host (sitemap.xml): indexable.
         // Everything behind sign-in stays noindex and private.
-        if (req.viewer.kind !== 'user') return page(req, res, 200, null, pages.signedOut(), null, { indexable: !req.query || !Object.keys(req.query).length });
+        if (req.viewer.kind !== 'user') {
+            return page(req, res, 200, null, pages.signedOut({ limits: limitsOf(config), limitsUrl: `${config.baseUrl}/limits.json` }), null,
+                { indexable: !req.query || !Object.keys(req.query).length, styles: [showcase.STYLESHEET] });
+        }
         page(req, res, 200, 'Projects', pages.home({ projects: await projects.listFor(req.viewer), csrf: csrfToken(config, req.viewer) }), notice(req));
     }));
 
