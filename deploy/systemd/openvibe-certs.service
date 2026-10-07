@@ -13,7 +13,8 @@ ExecStart=/usr/local/bin/ovhost certs renew --install
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
 UMask=0077
-# /usr and /boot read-only; /etc stays writable (certbot and the nginx install write there).
-ProtectSystem=full
+# /usr and /boot read-only; /etc stays writable (certbot and the nginx install write there). Not `full`:
+# that also makes /etc read-only, and certbot failed on /etc/letsencrypt/.certbot.lock (2026-10-07).
+ProtectSystem=true
 PrivateTmp=true
 NoNewPrivileges=true

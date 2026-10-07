@@ -38,14 +38,14 @@
   ],
   "stages": {
     "A": "alpha: ovhost CLI installed on the production host 2026-09-23 (/usr/local/bin/ovhost, inventory /etc/openvibe/host.json); every service deploys with `sudo ovhost deploy <svc>` since the 2026-09-27 cutover (roadmap WS-N task 11: Live, Tools, Sites, Games and OpenRe through the release-layout, multi-app, static-build and pnpm-build strategies); nightly backups, restore drills (19 passed 2026-09-23, docs/restore-drills.md), release notifications, incidents and maintenance, the alerts relay; the D41 deploy-and-rollback proof (scripts/d41-proof.sh) is written and tested",
-    "B": "alpha: running on the host on loopback :4910 (2026-09-23 audit), not launched; launch-rule items met in code and tests, launch steps in docs/launch.md, threat review in docs/threat-review.md",
+    "B": "launched 2026-10-07 at openvibe.host (dashboard, API, front page) and *.openvibe.host (tenant sites); docs/launch.md, threat review in docs/threat-review.md",
     "C": "not started (deliberately: blocked until isolation and metering are proven)"
   },
   "artifactStorage": "local disk, content-addressed per project; HOST_OBJECT_STORE=media writes objects through to OpenVibe.Media with local disk as the read cache (opt-in, off by default)",
   "customDomainCertificates": "operator-issued (certbot), not automated",
   "installedOnHost": true,
-  "deployed": "loopback only, not launched",
-  "placeholderInSites": true,
+  "deployed": "production: openvibe.host and *.openvibe.host since 2026-10-07",
+  "placeholderInSites": false,
   "adoptedByServices": [],
   "capabilitiesNote": "released in openvibe-contracts v0.24.0; v0.32.0 adds the four takedown routes to host.site.manage.implementedBy",
   "launchReady": true,
@@ -59,7 +59,7 @@
     "release notifications (host.release.published), incidents, maintenance windows and freezes",
     "Prometheus alerts relay to Network",
     "browser check and release-lifecycle acceptance suite",
-    "Stage B: tenant static sites with immutable deploys, activation, rollback, custom domains, quotas and takedowns (not launched)",
+    "Stage B: tenant static sites with immutable deploys, activation, rollback, custom domains, quotas and takedowns",
     "Stage B git deploys, Phase 1: a site's Git source (repo + branch); the tenant's own CI posts each build, which lands as a source=git preview with immutable commit provenance and goes live only through activate (Host never clones, fetches, holds a credential or builds)",
     "per-actor limits on Stage B writes (openvibe-sdk/limits)"
   ],

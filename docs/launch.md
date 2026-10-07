@@ -1,5 +1,12 @@
 # Launching Stage B at openvibe.host
 
+**Launched on 2026-10-07.** The window ran in this order: pre-flight (every line agreed); optional step 0, an
+nginx catch-all (`/etc/nginx/sites-available/00-default-catchall.conf`, a 444 on :80 and `ssl_reject_handshake` on
+:443 for any host no site names); the `ovhost` CLI updated; `ovhost nginx tenants host --install` (openvibe.host.conf
+and openvibe.host-custom-domains.conf written, the pending vhost removed, one clean `nginx -t`); `openvibe-certs.timer`
+enabled (its unit needed `ProtectSystem=true`, not `full`, to write /etc/letsencrypt); Sites removed openvibe.host;
+Contracts marks host live and Network pins it. Backups of the replaced vhosts are in `/root/host-launch-20261007-170330`.
+
 This is the launch release the [Launch rule](../README.md#launch-rule) describes. One change window:
 
 - `*.openvibe.host` starts serving tenant sites;
