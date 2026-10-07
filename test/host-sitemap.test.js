@@ -96,7 +96,7 @@ const CUSTOM = 'www.widgets-example.org';
         assert.strictEqual(head.status, 200);
         assert.strictEqual(head.text, '');
         for (const r of [sm, rb]) {
-            for (const secretish of [t.SECRET, '_openvibe-host', 'openvibe-host-verification', 'prj_', 'site_', 'dpl_', 'dom_']) {
+            for (const secretish of [t.SECRET, '_openvibe-host', 'openvibe-host-verification', 'prj_', 'sit_', 'dpl_', 'dom_']) {
                 assert.ok(!r.text.includes(secretish), `${secretish} in ${r.text}`);
             }
             assert.strictEqual(r.headers['set-cookie'], undefined);

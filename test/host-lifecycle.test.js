@@ -19,7 +19,7 @@ const { boot, check, done } = require('./stageb/boot');
         assert.strictEqual(project.role, 'owner');
         assert.strictEqual(project.quota.deploys_per_day, 50);
         site = await t.site(alice, project.id, 'alice');
-        assert.match(site.id, /^site_/);
+        assert.match(site.id, /^sit_/);
         assert.strictEqual(site.hostname, 'alice.openvibe.host');
         assert.strictEqual(site.url, 'https://alice.openvibe.host');
         const r = await t.api('GET', `/api/v1/sites/${site.id}`, { as: alice });

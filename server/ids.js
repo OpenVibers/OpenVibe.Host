@@ -3,11 +3,11 @@
  * Host's own identifiers: <prefix>_<ULID> (the contracts ULID, so they sort by creation time).
  *
  *   prj_  project (until OpenVibe.Network has projects; then it references network_project_id)
- *   site_ site    dpl_ deploy    dom_ domain
+ *   sit_  site    dpl_ deploy    dom_ domain
  */
 const { ids } = require('openvibe-contracts');
 
-const PREFIX = { project: 'prj', site: 'site', deploy: 'dpl', domain: 'dom' };
+const PREFIX = { project: 'prj', site: 'sit', deploy: 'dpl', domain: 'dom' };
 const ULID = '[0-9A-HJKMNP-TV-Z]{26}';
 const RE = Object.fromEntries(Object.entries(PREFIX).map(([k, p]) => [k, new RegExp(`^${p}_${ULID}$`)]));
 

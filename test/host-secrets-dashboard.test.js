@@ -204,7 +204,7 @@ const ORIGIN = 'https://openvibe.host';
         assert.match(page.text, /Deploys in the last 24 h/);
         const s = await t.api('POST', `/projects/${projectId}/sites`, { session: alice, form: { csrf, name: 'dash-site' }, headers: { origin: ORIGIN } });
         assert.strictEqual(s.status, 303, s.text);
-        siteId = s.headers.location.match(/\/sites\/(site_[0-9A-Z]+)/)[1];
+        siteId = s.headers.location.match(/\/sites\/(sit_[0-9A-Z]+)/)[1];
         const boundary = 'dashBOUNDARY';
         const part = (name, filename, content) => `--${boundary}\r\nContent-Disposition: form-data; name="${name}"${filename ? `; filename="${filename}"` : ''}\r\n\r\n${content}\r\n`;
         const body = part('csrf', null, csrf) + part('strip', null, 'folder') + part('activate', null, '1') + part('files', 'site/index.html', 'DASH OK') + `--${boundary}--\r\n`;
