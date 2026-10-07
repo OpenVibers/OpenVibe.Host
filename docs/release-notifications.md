@@ -130,7 +130,7 @@ All commands run on the production host. None of them prints a secret.
 ## Before a site pins openvibe-shared 1.17.0
 
 The tab's EventSource is subject to the site's Content-Security-Policy, so `connect-src` must allow
-`https://events.openvibe.network`. As of 2026-09-26, every site whose pages load release-watch under a CSP
+`https://openvibe.events`. As of 2026-09-26, every site whose pages load release-watch under a CSP
 allows it: Live and Community first, then, with their 1.17.1 pins, Network, Wiki, Blog, Codes, Search, Reviews,
 VIP, Tips, Host (Stage B dashboard), News, Deals, Coupons, Trade and the Tools apps. Chat, Media, Games,
 OpenRe.Stream and Sites send no CSP with those pages. A new site needs it too. Without it, the
@@ -142,7 +142,7 @@ moves the pin, or set `data-events="off"` on the `ov-release` meta tag.
 
 1. Subscribe the way a signed-out browser does, from any machine:
    ```
-   curl -N 'https://events.openvibe.network/realtime/stream?topics=host.release.published'
+   curl -N 'https://openvibe.events/realtime/stream?topics=host.release.published'
    ```
    The stream starts with `retry: 3000` and `: connected anonymous`, then sends a `: hb` comment every
    25 s.

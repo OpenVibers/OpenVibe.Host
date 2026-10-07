@@ -61,7 +61,7 @@ const ORIGIN = 'https://openvibe.host';
         assert.match(r.text, /href="\/shared\/showcase\.css\?v=[0-9a-f]{12}"/);
         assert.match(r.headers['content-security-policy'], /frame-ancestors 'none'/);
         // Release notifications: release-watch's EventSource on the Events realtime stream (openvibe-shared 1.17).
-        assert.match(r.headers['content-security-policy'], /connect-src 'self' https:\/\/openvibe\.network https:\/\/events\.openvibe\.network;/);
+        assert.match(r.headers['content-security-policy'], /connect-src 'self' https:\/\/openvibe\.network https:\/\/openvibe\.events;/);
         assert.strictEqual(r.headers['x-frame-options'], 'DENY');
         assert.strictEqual(r.headers['cache-control'], 'private, no-store');
         // The public front page is indexable, with a canonical URL; nothing behind sign-in is.
