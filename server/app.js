@@ -36,11 +36,12 @@ const { createDomains } = require('./domain/domains');
 const { createSiteConfig } = require('./domain/site-config');
 const { createSiteSources } = require('./domain/site-sources');
 const { createSsoClient } = require('openvibe-sdk/sso');
-const { createViewerResolver } = require('./auth/viewer');
+const { createViewerResolver, guard } = require('./auth/viewer');
 const { createHostSession } = require('./auth/sso');
 const { createTenantServer } = require('./http/tenant');
 const { createUploadGate } = require('./http/upload');
 const { createApi } = require('./http/api');
+const resourceIndex = require('./registry/resource-index');
 const { createDashboard } = require('./http/dashboard');
 const { createHostReadiness } = require('./observability');
 const { createWorker } = require('./worker');
@@ -275,6 +276,13 @@ async function createApp(opts = {}) {
             res.setHeader('Cache-Control', cache.assetHeaders(rel, { hashed: !!v && v === assetVersion(rel) }));
         },
     }));
+
+    // ── Resource index (ADR-048 section 3, plan T13 step 8) ──
+    // The resources Host owns (sites, deploys, domains) as common.resource-summary@1, for OpenVibe.Services'
+    // fan-out. Its own router, mounted here and not in http/api.js: it is the same path and shape every
+    // authority answers (Network's index), and it is first-party — the capability is host.resource.read.
+    app.use('/api/v1/resources', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }),
+        viewers.middleware('api'), resourceIndex.router({ guard: guard('host.resource.read') }));
 
     // ── API ─────────────────────────────────────────────────
     app.use('/api/v1', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }), createApi(ctx));

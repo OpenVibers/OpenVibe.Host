@@ -49,7 +49,7 @@ Stage A adds a few safety rules of its own:
 
 ## Depends on
 
-- OpenVibe.Contracts (`openvibe-contracts` v0.83.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, and v0.32.0 adds the takedown routes to `host.site.manage`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks.
+- OpenVibe.Contracts (`openvibe-contracts` v0.107.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, v0.32.0 added the takedown routes to `host.site.manage`, v0.83.0 added `host.site.config`, and v0.107.0 adds the planned `host.resource.read` and the git-source routes to `host.site.manage`/`host.deploy.create`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks, the `common.resource-summary@1`/`common.resource-list-result@1` schemas and the `contracts.resources` OVRN helpers (ADR-048).
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
 - OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.26.0 transactional outbox (openvibe-sdk/limits for the per-actor limits).
 - `openvibe-shared` v2.10.1 (Stage B): shared chrome (Host's own pages are composed with `openvibe-shared/shell`), legal pages, `/release.json`, `/metrics`, `/api/ready`.
@@ -58,8 +58,16 @@ Stage A adds a few safety rules of its own:
 ## Capabilities
 
 Implemented here (the service manifest's `capabilities`, Stage B's API, audience `openvibe.host`):
-`host.site.manage` (sites, members, takedowns), `host.deploy.create` (uploads, activation, rollback)
-and `host.domain.manage` (custom domains). See [Grants and registration](#grants-and-registration-for-the-lead).
+`host.site.manage` (sites, members, takedowns), `host.deploy.create` (uploads, activation, rollback),
+`host.domain.manage` (custom domains) and `host.site.config` (headers, redirects, SPA fallback). See
+[Grants and registration](#grants-and-registration-for-the-lead).
+
+`host.resource.read` (first-party) is the authority resource index Host serves for OpenVibe.Services'
+fan-out ([ADR-048](https://github.com/OpenVibers/OpenVibe.Contracts/blob/main/docs/adr/ADR-048-services-control-plane.md)
+section 3, plan T13 step 8): `GET /api/v1/resources` lists Host's sites, deploys and domains as a page of
+`common.resource-summary@1` and `GET /api/v1/resources/:ovrn` reads one by its OVRN, exactly as
+OpenVibe.Network's index does. Host ships it; OpenVibe.Contracts keeps the capability `planned` with no
+`implementedBy` routes until the deploy, and flips it afterwards.
 
 Called elsewhere, as the service principal `host` (the OAuth client `host`; `ovhost` reads the same
 credentials from `/etc/openvibe/host.env`):
@@ -346,10 +354,36 @@ People present their Network user JWT as a Bearer token. Services and apps prese
 | `POST /sites/:id/source/deploys?ref=…&commit_sha=…` (the upload body; always a preview) | `host.deploy.create` | deployer |
 | `POST/DELETE /projects/:id/takedown` · `POST/DELETE /sites/:id/takedown` | `host.site.manage` | Network staff only |
 | `GET/POST /sites/:id/domains` · `POST /domains/:id/verify` · `DELETE /domains/:id` | `host.domain.manage` | maintainer (reads: member) |
+| `GET /resources[?project=&kind=&cursor=&limit=]` · `GET /resources/:ovrn` (the resource index, ADR-048) | `host.resource.read` | first-party service only |
 
 Errors are RFC 9457 problems (`application/problem+json`, with the legacy `error` field). A refused upload answers 413/422 with `deploy_id` and the log lines; `503 upload.busy` (with `Retry-After`) when `HOST_MAX_CONCURRENT_UPLOADS` uploads are already being validated; `507 storage.host_full` while the disk has less than `HOST_MIN_FREE_BYTES` free. Network staff (`role: admin`) can read every project, site, deploy and log, delete sites, projects and domains, set quotas, and **take a site or project down** (451 on every host, content kept for review, members see the reason and cannot publish or delete around it); they cannot publish into a tenant's site.
 
-The four capability ids (`host.site.config` since v0.83.0) and the service manifest are released in `openvibe-contracts`, which Host pins, and the CI contract check is blocking; `test/host-contracts-events.test.js` holds the routes, guards and emitted events to the released manifests.
+The five capability ids (`host.site.config` since v0.83.0; `host.resource.read` planned since v0.107.0) and the service manifest are released in `openvibe-contracts`, which Host pins, and the CI contract check is blocking; `test/host-contracts-events.test.js` holds the routes, guards and emitted events to the released manifests.
+
+#### The resource index (ADR-048 section 3)
+
+`GET /api/v1/resources` lists the resources Host owns as a page of `common.resource-summary@1`
+(`common.resource-list-result@1`: `{ resources, next_cursor }`), and `GET /api/v1/resources/:ovrn` reads
+one by its computed OVRN. It is the same path, shape and paging every authority answers, so
+OpenVibe.Services can fan out over all of them and merge:
+
+| Kind | Rows | Name | State |
+|---|---|---|---|
+| `host.site` (`sit_`) | `host_sites` | the site's label (`<name>.openvibe.host`) | `active` / `deleted` |
+| `host.deploy` (`dpl_`) | `host_deploys` | — | `ready` / `failed` / `deleted` |
+| `host.domain` (`dom_`) | `host_domains` | the hostname it answers on | `pending` / `verified` / `failed` / `lapsed` |
+
+Every summary carries `service: "host"`, the `project_id` of the project that owns it, the `created_by`
+person as `owner` when it is a `usr_` subject, and its `ovrn` computed by
+`contracts.resources.nameOf` — `ovrn:host:<prj_…>:site/<sit_…>`, `:deploy/<dpl_…>`,
+`:domain/<dom_…>`. Host lists no projects (only Network lists projects): Host mints its own `prj_` ids
+until it adopts Network projects (ADR-014). `?project=prj_…` is the tenancy boundary — with it only
+that project's rows answer, and one of another project is never returned; without it the first-party
+caller sees every Host-owned resource. `?kind=` narrows to one kind, `?cursor=` is an opaque keyset
+position and `?limit=` is 1–1000 (default 100). A query that cannot be honoured is `400
+resources.bad_query`; an OVRN that names nothing is `404 resources.unknown_resource`. The index is
+first-party: only a service token holding `host.resource.read` is admitted (a person gets 403, no token
+401), and `test/resource-index.test.js` validates every summary and page against the released schemas.
 
 ### Activation and rollback
 
@@ -423,7 +457,8 @@ Server-rendered pages with the shared chrome (`openvibe-shared` v2.10.1 `shell.p
 - Grant `[host, events.event.publish, openvibe.events]`.
 - With `HOST_OBJECT_STORE=media`: grants `[host, media.object.upload, openvibe.media]`, `[host, media.object.read, openvibe.media]`, `[host, media.object.list, openvibe.media]` and `[host, media.object.delete, openvibe.media]`, covering the `host` namespace and its subtree (`host.*`), plus a `host` tenant in Media. Network-side; Host asks for the verbs as its scope.
 - Callers of Host get `[<client>, host.site.manage | host.deploy.create | host.domain.manage, openvibe.host]` as needed. None exist yet (Codes, the expected first caller, is not built).
-- Released in `openvibe-contracts` v0.83.0 (CI contract check blocking); v0.32.0 adds the takedown routes to `host.site.manage.implementedBy`.
+- The resource index is read the other way round: **OpenVibe.Services** (not built yet) calls `GET /api/v1/resources` on `svc:services` with `host.resource.read` for audience `openvibe.host`, without `X-OV-Subject` (the capability is first-party and answers the whole index).
+- Released in `openvibe-contracts` v0.107.0 (CI contract check blocking); v0.32.0 added the takedown routes to `host.site.manage.implementedBy` and v0.107.0 added the git-source routes. `host.resource.read` stays `planned` with an empty `implementedBy` until Opus flips it after the deploy.
 
 ### Deploying Stage B (for the operator)
 
@@ -466,6 +501,7 @@ The service runs on the host (loopback, since 2026-09-23) and the pending tenant
 - **Tenant sitemap/robots** (`test/host-sitemap.test.js`): a deploy that ships none gets a generated `sitemap.xml` (the manifest's HTML pages, `index.html` → the directory URL, the error page left out, on the host the request came in on — so a verified custom domain gets its own) and `robots.txt` (crawlers welcomed and the sitemap named; a sandbox site gets `Disallow: /` and stays `noindex`); a file the tenant uploaded at either path wins; correct content types and caching; HEAD works; no secret in the body.
 - **Preview deploys** (`test/host-preview.test.js`): `POST /sites/:id/deploys?preview=1` stores a deploy with `source=preview` and points the site at it without activating (the public site keeps serving its active deploy); `/preview/<deploy-id>/…` on the dashboard is served to a project member only — non-members and signed-out callers get a plain 404, a public tenant host never serves it, every response is `noindex, no-store`, and the response's CSP sandboxes the tenant content into an opaque origin (no `allow-same-origin`) so it can never act as `openvibe.host`; a preview is never pinged to IndexNow and never listed in the site's sitemap; it vanishes when it expires, when the site deploys or rolls back, or when it is deleted; and it serves only its own project's objects (a same-named file of another project is not reachable).
 - **Git deploys** (`test/host-git-source.test.js`): a maintainer connects a source, a deployer gets 403 and a non-member 404, a bad URL, provider or ref is 422 and a credential field is refused; an app deployer's ingest is a `source=git` deploy with its `host_deploy_git` row and the site's preview while the public host keeps serving the active deploy; activate flips the pointer and clears the preview; an invalid file (a failed deploy and `host.deploy.failed`), a ref mismatch, an unconnected site, a bad SHA and `activate=1` all leave `active_deploy_id` unchanged; `host_deploy_git` rows are immutable; source responses hold only the allowlisted fields.
+- **Resource index** (`test/resource-index.test.js`): no token 401, a person 403, a service token without `host.resource.read` 403 and with it 200; every summary and every page validates against `common.resource-summary@1` and `common.resource-list-result@1`; all three kinds (sites, deploys, domains) with their states, names, owners and OVRNs; `?project=` never returns another project's rows; `?kind=` narrows and an unknown kind is an empty page; the cursor pages the whole index with no duplicate, gap or reordering; `GET /:ovrn` reads the one resource whose computed OVRN it is (a wrong project, another service's OVRN, an unknown id and a non-OVRN are 404 `resources.unknown_resource`); a bad query is 400 `resources.bad_query`.
 - **Home-page size budget** (`test/perf-budget.test.js`): the server on a fresh database, the home page measured with `openvibe-shared/perf-budget` — html 15.9 KB (4.3 br), js 4 files 212.2 KB (49.9 br), css 1 file 3.1 KB (0.9 br), 0 external — within the committed budgets.
 - The isolation test also covers cross-origin reads from a tenant page (no CORS grant anywhere), ETag/Range existence oracles, delegated service tokens, app principals and the dashboard.
 
@@ -528,7 +564,7 @@ review is [docs/threat-review.md](docs/threat-review.md). The launch has not bee
 Part of the [OpenVibe network](https://openvibe.network). Built in the open by [OpenVibers](https://github.com/OpenVibers).
 
 <!-- versions:start -->
-- openvibe-contracts: v0.83.0
+- openvibe-contracts: v0.107.0
 - openvibe-sdk: v0.26.0
 - openvibe-shared: v2.10.1
 <!-- versions:end -->
