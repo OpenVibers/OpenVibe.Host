@@ -16,11 +16,11 @@
   "tenantDomain": "*.openvibe.host",
   "contracts": "openvibe-contracts v0.107.0",
   "sdk": "openvibe-sdk v0.26.0",
-  "shared": "openvibe-shared v2.12.0",
+  "shared": "openvibe-shared v2.13.0",
   "packages": [
     "openvibe-contracts v0.107.0",
     "openvibe-sdk v0.26.0",
-    "openvibe-shared v2.12.0"
+    "openvibe-shared v2.13.0"
   ],
   "capabilities": [
     "host.site.manage",

@@ -84,7 +84,7 @@ const DAY = 24 * 3600 * 1000;
     });
 
     await check('OpenVibe domains, the sites domain and non-hostnames can never be claimed', async () => {
-        for (const h of ['openvibe.live', 'evil.openvibe.network', 'x.openvibe.host', 'openvibe.host', 'openvibe.xyz', 'a.b.openvibe.media', 'events.openvibe.network', 'openre.stream', 'play.openvibe.games',
+        for (const h of ['openvibe.live', 'evil.openvibe.network', 'x.openvibe.host', 'openvibe.host', 'openvibe.xyz', 'a.b.openvibe.media', 'openvibe.events', 'openre.stream', 'play.openvibe.games',
             'localhost', '127.0.0.1', 'example', '-bad.example.org', 'a_b.example.org', 'ex ample.org', 'xn--.example.org']) {
             const r = await t.api('POST', `/api/v1/sites/${sa.id}/domains`, { as: alice, json: { hostname: h } });
             assert.strictEqual(r.status, 422, `${h} → ${r.status} ${r.text}`);
