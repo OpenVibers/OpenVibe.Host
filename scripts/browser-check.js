@@ -52,6 +52,8 @@ const KNOWN_ROUTES = {
     chat: ['/', '/rooms', '/updates'],
     wiki: ['/', '/updates'],
     blog: ['/', '/updates'],
+    codes: ['/', '/start', '/harnesses', '/improve'],
+    services: ['/', '/docs', '/oauth', '/policy'],
     // Billing's only public page (its root is the API).
     billing: { only: ['/policy'] },
 };
