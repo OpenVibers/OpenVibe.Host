@@ -101,7 +101,9 @@ runTests([
         assert.strictEqual(r.code, 0, r.out);
         assert.deepStrictEqual(runs[0].args, ['live']);
         assert.strictEqual(runs[0].env.SWITCH_DIR, '/opt/openvibe.live');
-        assert.strictEqual(runs[0].env.SWITCH_UNITS, 'openvibe-live.service');
+        // Live is socket-activated: its socket is stopped too (after the service), or the next request starts the old
+        // release again while the import runs.
+        assert.strictEqual(runs[0].env.SWITCH_UNITS, 'openvibe-live.service openvibe-live.socket');
     }),
 
     test('switch also stops the units matching unitsMatch', async () => {
@@ -112,7 +114,7 @@ runTests([
         const runs = installScripts(host);
         const r = await cli(host, 'data', 'switch', 'live');
         assert.strictEqual(r.code, 0, r.out);
-        assert.strictEqual(runs[0].env.SWITCH_UNITS, 'openvibe-live.service openvibe-live*.service');
+        assert.strictEqual(runs[0].env.SWITCH_UNITS, 'openvibe-live.service openvibe-live*.service openvibe-live.socket');
     }),
 
     test('without root both are refused and nothing runs (sudo would drop SWITCH_UNITS/SWITCH_DIR)', async () => {
@@ -139,7 +141,7 @@ runTests([
 
         const s = await cli(host, 'data', 'switch', 'live', '--sqlite', '/var/lib/openvibe-live/live.db', '--dry-run');
         assert.strictEqual(s.code, 0, s.out);
-        assert.match(s.out, /would run: SWITCH_UNITS="openvibe-live\.service" SWITCH_DIR="\/opt\/openvibe\.live" \/opt\/ovhost-install\/roles\/data\/switch-service\.sh "live" "\/var\/lib\/openvibe-live\/live\.db"/);
+        assert.match(s.out, /would run: SWITCH_UNITS="openvibe-live\.service openvibe-live\.socket" SWITCH_DIR="\/opt\/openvibe\.live" \/opt\/ovhost-install\/roles\/data\/switch-service\.sh "live" "\/var\/lib\/openvibe-live\/live\.db"/);
         assert.deepStrictEqual(runs, []);
     }),
 
