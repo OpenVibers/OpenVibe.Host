@@ -16,7 +16,7 @@
   "tenantDomain": "*.openvibe.host",
   "contracts": "openvibe-contracts v0.112.0",
   "sdk": "openvibe-sdk v0.35.0",
-  "shared": "openvibe-shared v2.15.0",
+  "shared": "openvibe-shared v2.17.0",
   "packages": [
     "openvibe-contracts v0.107.0",
     "openvibe-sdk v0.26.0",
@@ -66,5 +66,5 @@
     "Stage B git deploys, Phase 1: a site's Git source (repo + branch); the tenant's own CI posts each build, which lands as a source=git preview with immutable commit provenance and goes live only through activate (Host never clones, fetches, holds a credential or builds)",
     "per-actor limits on Stage B writes (openvibe-sdk/limits)"
   ],
-  "updated": "2026-10-08"
+  "updated": "2026-10-09"
 }
