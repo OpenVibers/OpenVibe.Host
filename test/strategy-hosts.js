@@ -151,7 +151,7 @@ async function liveHost(overrides = {}) {
     return host;
 }
 
-// ── OpenRe: release layout, sha12 ids, workers ───────────────────────────────
+// ── OpenRestream: release layout, sha12 ids, workers ───────────────────────────────
 
 function openreEntry(overrides = {}) {
     return {
@@ -178,7 +178,7 @@ const OPENRE_FILES = {
     'package.json': pkgJson('openre-stream', ['express', 'better-sqlite3']),
     'package-lock.json': '{"lockfileVersion":3,"v":1}',
     'server/index.js': 'api();',
-    'docs/README.md': '# OpenRe',
+    'docs/README.md': '# OpenRestream',
 };
 
 async function openreHost(overrides = {}) {

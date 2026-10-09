@@ -13,7 +13,7 @@
 # deploys (ovhost deploy), and makes the SQLite file read-only: it is the 7-day rollback (compatibility
 # register C-89: sudo ovhost rollback <svc> to the release before, which reads the file).
 #
-# A service that is not one unit in /opt/openvibe.<svc> (OpenRe: two units plus per-release transport workers, a
+# A service that is not one unit in /opt/openvibe.<svc> (OpenRestream: two units plus per-release transport workers, a
 # release layout) sets, in the environment:
 #   SWITCH_UNITS="a.service b.service 'worker@*.service'"   every unit to stop (the first one's environment runs the
 #                                                          import); a pattern stops every running instance

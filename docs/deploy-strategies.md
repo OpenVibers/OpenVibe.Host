@@ -1,7 +1,7 @@
 # Deploy strategies (roadmap WS-N task 11)
 
 `ovhost deploy <svc>` now covers the services that deployed with their own `deploy/scripts/deploy.sh`:
-Live (release layout), Tools, Sites, OpenRe and Network, and Games (which deployed by hand). Each service
+Live (release layout), Tools, Sites, OpenRestream and Network, and Games (which deployed by hand). Each service
 entry in the inventory names a **strategy**: an engine plus the defaults the script it replaces encoded.
 Every repository keeps `deploy/scripts/deploy.sh` as a thin wrapper that maps its old flags onto ovhost,
 with the old script body kept as `deploy/scripts/deploy-legacy.sh` for the fallback.
@@ -15,7 +15,7 @@ reached where an ovhost without `capabilities` answers, which no longer happens 
 | Service | Strategy | Replaces | Wrapper (`deploy/scripts/deploy.sh`) |
 |---|---|---|---|
 | live | `release-layout` | Live `deploy.sh` (release layout) | `--wait-idle`, `--restart`, `--rollback` → `ovhost rollback live`, `DRY_RUN=1` → `ovhost plan live`; `--force` refused (see below) |
-| openre | `release-layout` | OpenRe `deploy.sh release` + `api` | `deploy`, `release [<ref>]` → `--prepare-only`, `api [<sha>]` → `deploy --to <sha>`, `rollback`, `plan`; `workers`, `status`, `prune` stay in the legacy script |
+| openre | `release-layout` | OpenRestream `deploy.sh release` + `api` | `deploy`, `release [<ref>]` → `--prepare-only`, `api [<sha>]` → `deploy --to <sha>`, `rollback`, `plan`; `workers`, `status`, `prune` stay in the legacy script |
 | tools | `multi-app` | Tools `deploy.sh` | `--wait-idle`, `--restart`, `--force`, `--rollback`, `DRY_RUN=1` |
 | sites | `static-build` | Sites `deploy.sh` (after a manual pull) | always `ovhost deploy sites --restart` (rebuild every run, as before); `DRY_RUN=1` |
 | games | `pnpm-build` | the manual procedure | `--wait-idle`, `--restart`, `--force`, `--rollback`, `DRY_RUN=1` |
@@ -47,7 +47,7 @@ original arguments. So an old ovhost, a missing one, or an inventory that has no
 breaks a deploy. `OVHOST_LEGACY=1` forces the fallback; `OVHOST=<path>` picks another ovhost. Where the legacy
 script cannot do what was asked (Tools, Network and Games have no `--rollback`; none of them has `DRY_RUN`
 except Live), the wrapper refuses instead of doing something else. The Sites fallback pulls first (it restores
-`dist/` and runs `git pull --ff-only` as the checkout owner), then runs the pulled legacy script. OpenRe's
+`dist/` and runs `git pull --ff-only` as the checkout owner), then runs the pulled legacy script. OpenRestream's
 fallback runs `release` then `api` for `deploy`.
 
 Exit codes are ovhost's: `0` ok · `1` usage/precondition · `2` validation failed, nothing restarted · `3` not
@@ -103,7 +103,7 @@ mean. (In the fallback, `--force` goes to the legacy script as before.)
    reasons). After readiness a listener that still is not systemd's is reported (`✗ socket activation is not
    in effect`) and recorded (`socketHeld: false`).
 6. Prune to `release.keep`: never `current`, never the release just left, never one a worker unit instance
-   runs from (OpenRe's `openre-rtmp-ingest@<id>`).
+   runs from (OpenRestream's `openre-rtmp-ingest@<id>`).
 7. Record (`fromRelease`, `toRelease`), announce.
 
 `ovhost rollback <svc>` switches back to the release the release log says the current one replaced (or
@@ -120,10 +120,10 @@ overrides them.
 | `strategy` | `git-checkout`, `multi-app`, `static-build`, `pnpm-build` or `release-layout` | `git-checkout`; an entry with `layout: "release"` and no strategy stays unmanaged (deployed by its own script), as before |
 | `release.git` | the clone releases are made from (relative to `repo`, or absolute inside it) | `repo` |
 | `release.releases`, `release.current` | the releases directory and the link | `releases`, `current` |
-| `release.id` | `time-sha8` (`<UTC yyyymmdd-HHMMSS>-<sha8>`, Live; the old script used the host's local time, the same on a UTC host) or `sha12` (OpenRe; one release per commit, reused) | `time-sha8` |
+| `release.id` | `time-sha8` (`<UTC yyyymmdd-HHMMSS>-<sha8>`, Live; the old script used the host's local time, the same on a UTC host) or `sha12` (OpenRestream; one release per commit, reused) | `time-sha8` |
 | `release.links` | `{ name: target }` links made in every release | `{}` |
 | `release.reuseModules` | hard-link the current `node_modules` when dependencies did not change | `true` |
-| `release.chown` | `user[:group]` for each new release (OpenRe) | none |
+| `release.chown` | `user[:group]` for each new release (OpenRestream) | none |
 | `release.keep` | releases kept (2–50) | 5 |
 | `release.settleSeconds` | wait after a switch without restart before the ready check | 3 |
 | `release.socketPort` | the port pid 1 must hold | the service `port` |
@@ -172,13 +172,13 @@ itself (`/opt/openvibe.live/current`) is read the same way. `status`, `validate`
 | Sites: pull BEFORE running | ovhost fetches and merges first by construction |
 | Sites: `npm ci`, `node build.js`, vhosts, `nginx -t` then reload, never reload after a failed test | static-build defaults; `nginx.install` restores the previous files |
 | Sites: one announce per placeholder, stop at the first failure | `announce.releaseFiles` |
-| OpenRe: `release` (worktree, `npm ci`, chown ubuntu), `api` (switch, restart API + coordinator, 60 s ready, roll back) | release-layout with `release.id: sha12`, `reuseModules: false`, `chown`; `--prepare-only` |
-| OpenRe: never touch a worker; `prune` keeps what runs | `workerUnits` are never restarted; pruning skips releases a worker instance runs from |
+| OpenRestream: `release` (worktree, `npm ci`, chown ubuntu), `api` (switch, restart API + coordinator, 60 s ready, roll back) | release-layout with `release.id: sha12`, `reuseModules: false`, `chown`; `--prepare-only` |
+| OpenRestream: never touch a worker; `prune` keeps what runs | `workerUnits` are never restarted; pruning skips releases a worker instance runs from |
 | Network: pull, `npm install` on a lockfile change, unit file installed when it differs, restart, health | git-checkout with `installUnits` |
 | Games: `git pull`, `pnpm install --frozen-lockfile`, `pnpm build`, restart | pnpm-build (git as the owner, not `sudo git`) |
 
 Stricter than the scripts, on purpose: Tools and Network roll back automatically and check every dependency;
-Tools checks `/api/ready` (not `/api/health`) and the new sha; OpenRe refuses an API restart while an ingest
+Tools checks `/api/ready` (not `/api/health`) and the new sha; OpenRestream refuses an API restart while an ingest
 session is open (the script did not check; `--wait-idle` holds, `--force` goes ahead; if the restart provably
 never cuts a session, set its `drain.policy` to `report`); `--wait-idle` now also holds a `report`-policy
 service (Tools jobs, Games players, Events SSE) instead of being ignored; every attempt is in the release
@@ -194,7 +194,7 @@ log and a freeze refuses.
   2026-09-24; an in-place Live would be `strategy: git-checkout`.
 - **Live `--force`** (discard local tracked changes): ovhost never discards changes (see above).
 - **Network's "restart anyway" when nothing is new**: only with `--restart` now.
-- **OpenRe `workers`, `status`, `prune`**: they stay in the repository's script. Starting a worker
+- **OpenRestream `workers`, `status`, `prune`**: they stay in the repository's script. Starting a worker
   generation is not a deploy ovhost makes (it never starts, stops or restarts a worker unit); ovhost prunes
   on its own and keeps every release a worker runs from.
 - **Games `sudo git`**: ovhost runs git as the checkout owner. If earlier `sudo git pull`s left root-owned
@@ -238,7 +238,7 @@ read-only until step 5.
      entry only gains `installUnits`).
 5. **Pull the wrappers.** Tools, Sites, Network and Games get theirs with their next pull (the old Tools and
    Network scripts pull themselves, so the deploy that brings the wrapper is still run by the old script).
-   Live's arrives in the release that contains it; OpenRe's with `git -C /opt/openre.stream/repo pull`.
+   Live's arrives in the release that contains it; OpenRestream's with `git -C /opt/openre.stream/repo pull`.
 6. **Deploy through the wrapper**, one service at a time, lowest risk first: network, sites, games (quiet
    hour or `--wait-idle`), tools, openre (no ingest session, or `--wait-idle`), live (`--wait-idle`). Each
    wrapper prints `ovhost deploy <svc> …`; if it prints "running deploy-legacy.sh", read why.

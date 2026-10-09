@@ -9,7 +9,7 @@ Public listeners on 2026-09-26, all intended:
 | 22 | tcp | sshd |
 | 80, 443 | tcp | nginx |
 | 1935 | tcp | Live RTMP ingest (DNS-only `ingest.openvibe.live`) |
-| 1936 | tcp | OpenRe RTMP ingest |
+| 1936 | tcp | OpenRestream RTMP ingest |
 | 3478, 5349 | tcp + udp | coturn |
 | 49152–65535 | udp | coturn relay range (`min-port`/`max-port`) |
 | 9710–9789 | tcp | nginx JSMPEG ports (bound to the public address) |

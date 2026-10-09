@@ -24,7 +24,7 @@ root (`sudo ovhost data …`; `--dry-run` need not): the scripts need it, and an
   `VALKEY_PREFIX` — never a value.
 - **`data switch`** runs `roles/data/switch-service.sh <service> [<file>]`. It takes `SWITCH_UNITS` and
   `SWITCH_DIR` from the inventory entry (`units` plus `workerUnits`, a template worker shown as a glob
-  such as `openre-rtmp-ingest@*.service`, plus the `unitsMatch` glob when set; `repo`), so a release-layout service such as OpenRe needs no
+  such as `openre-rtmp-ingest@*.service`, plus the `unitsMatch` glob when set; `repo`), so a release-layout service such as OpenRestream needs no
   hand-set environment. `--sqlite <file>` names the SQLite file when it is not
   `/var/lib/openvibe-<service>/<service>.db` (Host: `/var/lib/openvibe-host-api/host.db`). Before running
   it, the service's postgres branch must be merged with green CI and its auto-deploy frozen

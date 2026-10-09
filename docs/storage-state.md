@@ -82,10 +82,10 @@ Sources:
    - Games `/healthz` (the inventory now uses `/api/ready`, 2026-09-23; Network, Media and Tools too).
 
    The inventory should point at `/api/ready` where one exists. Games has none.
-4. *(Fixed: the inventory has had AI and OpenRe entries since `f0dbd0c`, and both are in the scheduled
+4. *(Fixed: the inventory has had AI and OpenRestream entries since `f0dbd0c`, and both are in the scheduled
    `ovhost backup --all` with off-host copies, [backups.md](backups.md). Their drills are still unsupported.)*
    **Two services have no ovhost inventory entry, so no `ovhost backup` and no drill**: AI (`ai.db`) and
-   OpenRe.Stream (`openre.db`). Whether they are backed up any other way is unknown. Check the host's cron
+   OpenRestream (`openre.db`). Whether they are backed up any other way is unknown. Check the host's cron
    and timers.
 5. **The inventory's Tools backup list is incomplete.** It names the seven `analytics.db` files only.
    The job databases `apps/{img,audio,docs}/data/jobs.db` (table `tool_jobs`,
@@ -132,7 +132,7 @@ reviewed on 2026-09-23.
 | **Community** | `/var/lib/openvibe-community/community.db` (`StateDirectory`, `deploy/systemd/openvibe-community.service:26-27`). `/opt/openvibe.community/data/community.db` is the legacy location, and the inventory keeps whichever of the two exists. `COMMUNITY_DB_PATH`, default `./data/community.db` (`server/config.js:56`). | Yes: pastes (`PASTES_AUTHORITY=community` since 2026-09-22), comments, spaces, threads, Pulse | SQLite, the reviewed state. | `/api/ready` (`server/observability.js:29-66`). Required: `db` (`SELECT COUNT(*) FROM sqlite_master WHERE type='table'`, fails on 0). Optional: `network_jwks`, `media` (community mode) or `live` (live mode). Reports `pastes_authority`. | **Yes** | Drill passed 03:44 (manual) and 05:22. |
 | **Events** | `/var/lib/openvibe-events/events.db` (`deploy/systemd/openvibe-events.service:30-31`); `EVENTS_DB_PATH`, default `./data/events.db` (`server/config.js:67`). | Yes: the durable event store, subscriptions, deliveries, DLQ | SQLite, the reviewed state. `README.md:163`: "the plan's PostgreSQL + Redis fanout is a later step". No dated plan. | `/api/ready` (`server/app.js:41-66`). Required: `db` (`store.ping()` = `SELECT 1`), `network_jwks`, `delivery_worker` (unless `EVENTS_WORKER=off`). Optional: `dlq` (degraded at more than `EVENTS_DLQ_DEGRADED_AT`, default 100). | **Yes** | Drill passed 05:22. |
 | **Chat** | `/var/lib/openvibe-chat/chat.db` (`deploy/systemd/openvibe-chat.service:38-39`); `CHAT_DB_PATH`, default `./data/chat.db` (`server/config.js:34`). It also reads Live's `/opt/openvibe.live/data/sounds` (`:43`). | Yes, since 2026-09-23 02:03 UTC: the 12 chat tables (`table_authority = 'chat'`). Six staged tables are still Live's. | SQLite, the reviewed state. | `/ready` (loopback). Since `45f2b1f`: required `db` (`SELECT MAX(id) FROM chat_messages`, 503 on failure); optional `live_sync` (degraded when no clean Live sync pass for `LIVE_SYNC_STALE_MS`, 60 s, or one step is late). `mirror.pending` is still reported only. | **Yes** | Drill passed 05:22. |
-| **OpenRe.Stream** | `/var/lib/openre/openre.db` (all four units); default `./data/openre.db`. | Stream definitions, sessions and destinations for switched slots. **No slot is switched**, so Live is still the ingest authority for every stream. | SQLite, the reviewed state. `README.md:66` names PostgreSQL only as a future ADR-007 trigger. | `/api/ready` (`server/app.js:31-51`, own handler). Required: `db` (`SELECT 1`), `key` (Network public key). Reported but not required: workers, coordinator lease, store, events. Not checked: RTMP reachability, Media, Events. | **Yes** | **Not in the ovhost inventory: no `ovhost backup`, no drill** (finding 4). |
+| **OpenRestream** | `/var/lib/openre/openre.db` (all four units); default `./data/openre.db`. | Stream definitions, sessions and destinations for switched slots. **No slot is switched**, so Live is still the ingest authority for every stream. | SQLite, the reviewed state. `README.md:66` names PostgreSQL only as a future ADR-007 trigger. | `/api/ready` (`server/app.js:31-51`, own handler). Required: `db` (`SELECT 1`), `key` (Network public key). Reported but not required: workers, coordinator lease, store, events. Not checked: RTMP reachability, Media, Events. | **Yes** | **Not in the ovhost inventory: no `ovhost backup`, no drill** (finding 4). |
 | **Billing** | `/var/lib/openvibe-billing/billing.db` (`deploy/systemd/openvibe-billing.service:23-25`, `StateDirectoryMode=0700`); `BILLING_DB_PATH`, default `./data/billing.db` (`server/config.js:62`). The journal is append-only (triggers refuse UPDATE and DELETE, `README.md:45-50`). | **Not yet.** It is a shadow: `STATUS.json` `"authoritative": false`. Live holds the money until the cutover. | SQLite, the reviewed state. ADR-007's SERIALIZABLE and row-lock rule applies when money moves to PostgreSQL. No plan yet. | `/api/ready` (`server/app.js:54-60`, own handler). `SELECT 1 FROM settings WHERE id = 1` and Network public key loaded, otherwise 503 `service.not_ready`. `/api/health` reports frozen state and providers. | **Yes** | Drill passed 05:22. |
 | **Tips** | `/var/lib/openvibe-tips/tips.db` (`deploy/systemd/openvibe-tips.service:25`); `TIPS_DB_PATH` (`server/config.js:31`). | Yes: creator tip profiles, interactions, goals | SQLite, the reviewed state. | `/api/ready` (`server/app.js:74-79`, own handler): `SELECT 1 FROM settings WHERE id = 1` and key loaded. | **Yes** | Drill passed 05:23. |
 | **VIP** | `/var/lib/openvibe-vip/vip.db` (`deploy/systemd/openvibe-vip.service:25`); `VIP_DB_PATH` (`server/config.js:31`). | Yes: creators, plans, memberships, perks (checkout closed until the Billing cutover) | SQLite, the reviewed state. | `/api/ready` (`server/observability.js:20-48`). Required: `db` (`COUNT(*) FROM vip_creators >= 1`). Optional: `network_jwks`, `billing`. | **Yes** | Drill passed 05:23. |
@@ -152,11 +152,11 @@ reviewed on 2026-09-23.
 ## Deployed-state notes
 
 - **Loopback only**, not on their domains yet (operator notes): Tips, VIP, Search, Sources, News, Reviews,
-  Codes, AI and OpenRe's API. **Public**: Wiki and Blog (since ~03:00 UTC). **Staff console public**:
+  Codes, AI and OpenRestream's API. **Public**: Wiki and Blog (since ~03:00 UTC). **Staff console public**:
   Billing. Deals, Coupons and Trade passed drills against production, so they run on the host. Whether
   they are public is unknown: check nginx `sites-enabled`. Sites still has placeholders for
   openvibe.deals, .coupons and .trade.
-- Several `STATUS.json` files are stale against the operator notes and the drill log. Chat, Events, OpenRe
+- Several `STATUS.json` files are stale against the operator notes and the drill log. Chat, Events, OpenRestream
   and AI still say `"deployed": false`, and so do Tips, Search, Sources, News, Reviews, Deals, Coupons,
   Trade and Codes. `STATUS.json` stays each service's own record to fix. This page does not change it.
 
