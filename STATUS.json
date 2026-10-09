@@ -14,13 +14,13 @@
   "port": 4910,
   "domain": "openvibe.host",
   "tenantDomain": "*.openvibe.host",
-  "contracts": "openvibe-contracts v0.112.0",
+  "contracts": "openvibe-contracts v0.122.1",
   "sdk": "openvibe-sdk v0.35.0",
   "shared": "openvibe-shared v2.17.0",
   "packages": [
-    "openvibe-contracts v0.107.0",
-    "openvibe-sdk v0.26.0",
-    "openvibe-shared v2.13.0"
+    "openvibe-contracts v0.122.1",
+    "openvibe-sdk v0.35.0",
+    "openvibe-shared v2.17.0"
   ],
   "capabilities": [
     "host.site.manage",
