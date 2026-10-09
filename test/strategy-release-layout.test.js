@@ -376,7 +376,7 @@ runTests([
         host.sessions = 0;
         assert.strictEqual((await host.cli('deploy', 'openre')).code, 0);
         const n = host.restarts().length;
-        host.push({ 'docs/README.md': '# OpenRestream v2' }, 'docs');
+        host.push({ 'docs/README.md': '# OpenRe v2' }, 'docs');
         const d = await host.cli('deploy', 'openre');
         assert.strictEqual(d.code, 0, d.out);
         assert.strictEqual(host.restarts().length, n, 'no restart for docs');
