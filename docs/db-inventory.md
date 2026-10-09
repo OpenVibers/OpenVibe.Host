@@ -38,7 +38,7 @@ logical `.dump` feeds the drills ([backups.md](backups.md#postgresql-services)).
   keeps its string form, and PostgreSQL is the object `{ "engine": "postgresql", "database": "ov_host" }`.
 - the `protected` probe kind `postgresql-count` — `{ "kind": "postgresql-count", "database": "ov_openre",
   "sql": "SELECT count(*) …", "label": "…" }`: a read-only SELECT against a database in the cluster, run as
-  the postgres OS user. OpenRe's protected probe (its active ingest sessions) is one, on `ov_openre`. The
+  the postgres OS user. OpenRestream's protected probe (its active ingest sessions) is one, on `ov_openre`. The
   other kinds are `http-json-count`, `sqlite-count` and `sum` ([lib/probes.js](../lib/probes.js)).
 
 ---

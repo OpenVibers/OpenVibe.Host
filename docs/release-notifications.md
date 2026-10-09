@@ -133,7 +133,7 @@ The tab's EventSource is subject to the site's Content-Security-Policy, so `conn
 `https://openvibe.events`. As of 2026-09-26, every site whose pages load release-watch under a CSP
 allows it: Live and Community first, then, with their 1.17.1 pins, Network, Wiki, Blog, Codes, Search, Reviews,
 VIP, Tips, Host (Stage B dashboard), News, Deals, Coupons, Trade and the Tools apps. Chat, Media, Games,
-OpenRe.Stream and Sites send no CSP with those pages. A new site needs it too. Without it, the
+OpenRestream and Sites send no CSP with those pages. A new site needs it too. Without it, the
 browser refuses the stream and logs one CSP error per page load (the browser check counts it).
 release-watch then stops, with state `blocked`, and keeps polling. Add the origin in the same change that
 moves the pin, or set `data-events="off"` on the `ov-release` meta tag.

@@ -1,6 +1,6 @@
 'use strict';
 /**
- * OpenRe on ovhost: `workerUnits` (the transport worker templates) are listed by status and
+ * OpenRestream on ovhost: `workerUnits` (the transport worker templates) are listed by status and
  * validate and never started, stopped or restarted; the inventory refuses a worker unit in
  * `units`; a deploy of a git-layout service with worker units restarts only its units; and the
  * example inventory's openre drill starts openre-api alone with OPENRE_DRILL=1 and the side-effect
@@ -22,7 +22,7 @@ const WORKERS = [
     `openre-webrtc@${RELEASE}.service`,
 ];
 
-/** The standard fake host plus OpenRe as on openvibe-ovh: release layout, two units, worker instances. */
+/** The standard fake host plus OpenRestream as on openvibe-ovh: release layout, two units, worker instances. */
 async function openreHost({ workersRunning = true } = {}) {
     const host = scenario();
     const doc = JSON.parse(host.read('/etc/openvibe/host.json'));
@@ -91,7 +91,7 @@ async function openreHost({ workersRunning = true } = {}) {
 const stateChanges = (host) => host.calls.filter((c) => c.cmd === 'systemctl' && !['show', 'is-active', 'is-enabled', 'cat', 'status', 'list-units'].includes(c.args[0]));
 
 runTests([
-    test('the example inventory declares the OpenRe worker templates and a supported drill', () => {
+    test('the example inventory declares the OpenRestream worker templates and a supported drill', () => {
         const inv = normalise(EXAMPLE);
         const o = inv.services.openre;
         assert.deepStrictEqual(o.units, ['openre-api.service', 'openre-session-coordinator.service']);

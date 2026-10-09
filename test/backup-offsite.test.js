@@ -22,7 +22,7 @@ const KEY_HEX = crypto.createHash('sha256').update('test backup key').digest('he
 const S3_SECRET = `${SECRET}-s3`;
 const TENANT_BLOB = 'tenant object bytes\n';
 
-/** The standard fake host plus AI (two databases) and OpenRe (not deployed), a backup env and key. */
+/** The standard fake host plus AI (two databases) and OpenRestream (not deployed), a backup env and key. */
 function backupHost({ envMode = 0o600, keyMode = 0o600, envOwner = 'root', env = null } = {}) {
     const host = scenario();
     const doc = JSON.parse(host.read('/etc/openvibe/host.json'));

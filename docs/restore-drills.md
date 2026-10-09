@@ -202,13 +202,13 @@ Supported with declared overrides (the table above records which have passed on 
 - coupons
 - trade
 - codes
-- openre (not run yet). Only openre-api starts (`drill.command`), with `OPENRE_DRILL=1`. From OpenRe
+- openre (not run yet). Only openre-api starts (`drill.command`), with `OPENRE_DRILL=1`. From OpenRestream
   `5e86ea7` on, that makes it read-only: writes, `/play/` and sign-in answer 503. The coordinator
   and every transport worker refuse to start in a drill, and the event relay and Media calls are
   off. The API never runs a transport or the relay in any case. Empty `EVENTS_URL` and
   `OV_OAUTH_CLIENT_SECRET`, plus `MEDIA_URL` on the closed port, cover older releases. The workers
   stay out of every ovhost command: they are `workerUnits`, which are listed and never restarted.
-  Run it after the OpenRe release with `OPENRE_DRILL` is deployed (OpenRe `docs/cutover.md`
+  Run it after the OpenRestream release with `OPENRE_DRILL` is deployed (OpenRestream `docs/cutover.md`
   phase C).
 - live (not run yet). Needs OpenVibe.Live `8a58aea` or later; `drill.requires` refuses an older
   checkout. The production unit's ExecStart starts with `LIVE_DRILL=1`, `DB_PATH` on the copy and

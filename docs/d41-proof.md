@@ -56,7 +56,7 @@ For each of these units, `systemctl show` records `MainPID`, `InvocationID`, `Ac
 `ExecMainStartTimestamp`, `NRestarts`, `ActiveState` and `SubState`:
 
 - every unit and socket in the inventory except sources' own unit;
-- every `openvibe-*` and `openre-*` unit (for example OpenRe's transport worker instances);
+- every `openvibe-*` and `openre-*` unit (for example OpenRestream's transport worker instances);
 - `nginx.service`;
 - always, even if not loaded: `openvibe-live.socket`, `openvibe-live.service`,
   `openvibe-chat.service` and `openvibe-media.service`;

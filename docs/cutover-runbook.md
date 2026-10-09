@@ -29,13 +29,13 @@ State markers:
 | C | AI → OpenVibe.AI (Wave 13) | **DONE** 2026-09-23 ~15:40 UTC (`AI_SERVICE=remote`) | AI [`docs/migration.md`](https://github.com/OpenVibers/OpenVibe.AI/blob/main/docs/migration.md) | Unset `AI_SERVICE`, restart Live |
 | D | Events delivery signature v2 | **IN PROGRESS**: Events sends v2; consumer deploys unknown; v1 still sent | Events [`docs/replay-window-rollout.md`](https://github.com/OpenVibers/OpenVibe.Events/blob/main/docs/replay-window-rollout.md) | The consumer redeploys its previous release; replay the DLQ |
 | E | Money → OpenVibe.Billing | **BLOCKED (owner)**: PowerChat dashboard. Billing runs in shadow. | Billing [`docs/live-cutover.md`](https://github.com/OpenVibers/OpenVibe.Billing/blob/main/docs/live-cutover.md) | Depends on the step reached. After step 9 there is **no tool** |
-| F | RTMP ingest → OpenRe.Stream | **BLOCKED (owner)**: broadcaster windows and the per-slot rehearsal. DNS `ingest.openre.stream` is done, port 1936 is open (2026-09-23) and OpenRe is deployed. | OpenRe [`docs/cutover.md`](https://github.com/OpenVibers/OpenRe.Stream/blob/main/docs/cutover.md) (steps, checks and rollback; `scripts/cutover-preflight.js`) | Per slot `{"authority":"live"}` + `set-definition-state.js --state disabled`. All slots: unset `OPENRE_URL` |
+| F | RTMP ingest → OpenRestream | **BLOCKED (owner)**: broadcaster windows and the per-slot rehearsal. DNS `ingest.openre.stream` is done, port 1936 is open (2026-09-23) and OpenRestream is deployed. | OpenRestream [`docs/cutover.md`](https://github.com/OpenVibers/OpenRestream/blob/main/docs/cutover.md) (steps, checks and rollback; `scripts/cutover-preflight.js`) | Per slot `{"authority":"live"}` + `set-definition-state.js --state disabled`. All slots: unset `OPENRE_URL` |
 | G | Retire the shims | **NOT STARTED**. Dated in [compatibility-register.md](compatibility-register.md) | Network [`docs/retirement.md`](https://github.com/OpenVibers/OpenVibe.Network/blob/main/docs/retirement.md) | per entry |
 
 The remaining order is D → E → F → G.
 - D first: nothing depends on it, and v1 can stop only when every consumer requires v2.
 - E before F: the Billing switch restarts Live once, and it is best done before any stream depends on
-  OpenRe.
+  OpenRestream.
 - G follows each entry's date in the register.
 
 ## What the owner must do
@@ -52,9 +52,9 @@ These actions need the owner's accounts or physical presence. Nothing in this ru
    first, and Billing is frozen to hold deliveries. A 410 from Live makes PowerChat disable the endpoint
    (Billing `docs/live-cutover.md:131-134, 170-175`).
 2. **Cloudflare DNS, for step F.** Create an A record `ingest.openre.stream` pointing at the host's IP,
-   **DNS only (grey cloud)**. RTMP cannot go through Cloudflare's proxy (OpenRe `README.md:145`,
+   **DNS only (grey cloud)**. RTMP cannot go through Cloudflare's proxy (OpenRestream `README.md:145`,
    `deploy/nginx/openre.stream.conf:15-17`).
-3. **Port 1936/tcp, for step F.** Open it in the host firewall **and** at the provider edge (OpenRe
+3. **Port 1936/tcp, for step F.** Open it in the host firewall **and** at the provider edge (OpenRestream
    `README.md:145,160`). *Done 2026-09-23: 1936 answers from outside since 19:24 UTC.*
 3a. **DNS changes in a cutover (any step that moves a hostname).** A day before: lower the record's TTL to 60 s
    and write down the current records (`dig +noall +answer <name> A AAAA CNAME` into the step's notes). At the
@@ -117,11 +117,11 @@ These rules are learned from outages. `ovhost` encodes them (see [README](../REA
 
   (`deploy/scripts/deploy.sh:1-42`.) It has **no automatic rollback** and does not check `/api/ready`.
   `apps/gateway/deploy/scripts/deploy.sh` is the superseded per-app script. Do not use it.
-- **OpenRe.Stream**: `sudo bash /opt/openre.stream/repo/deploy/scripts/deploy.sh release|api|workers|status|prune`.
+- **OpenRestream**: `sudo bash /opt/openre.stream/repo/deploy/scripts/deploy.sh release|api|workers|status|prune`.
   - `api` restarts the API and coordinator only, polls `/api/ready` for 60 s, and rolls back on failure
     (exit 2).
   - `workers` starts a new generation. The old ones drain for up to 30 min.
-  - **Never `systemctl restart` a worker instance during a broadcast.** (OpenRe `README.md:147-160`.)
+  - **Never `systemctl restart` a worker instance during a broadcast.** (OpenRestream `README.md:147-160`.)
 - **Everything else** (Network, Community, Events, Chat, Billing, and the loopback services): pull,
   install if the lockfile changed, restart the unit, then poll `/api/ready`. Network's own
   `deploy.sh` and Sites' `deploy.sh` exist (Host `README.md`, rules table).
@@ -316,9 +316,9 @@ PowerChat delivery lands in exactly one ledger.
 
 Read the full list before choosing the day. VIP checkout stays closed until this cutover.
 
-## F. RTMP ingest → OpenRe.Stream: BLOCKED on the owner (rehearsal and broadcaster windows; DNS and port 1936 are done)
+## F. RTMP ingest → OpenRestream: BLOCKED on the owner (rehearsal and broadcaster windows; DNS and port 1936 are done)
 
-OpenRe is deployed. The API is `openre-api` on 127.0.0.1:4500. The other units are
+OpenRestream is deployed. The API is `openre-api` on 127.0.0.1:4500. The other units are
 `openre-session-coordinator`, `openre-rtmp-ingest@<sha>` and `openre-restream-worker@<sha>`. The database
 is `/var/lib/openre/openre.db`. RTMP is bound to 127.0.0.1:1936 (`OPENRE_RTMP_BIND`). A loopback rehearsal
 with an ffmpeg test pattern passed: the session went live→ended, a wrong key was refused, `openre.session.*`
@@ -326,14 +326,14 @@ reached Events, and the key never appeared in logs.
 
 Live carries the integration (`f0ca18b`). It is inert until `OPENRE_URL` is set. `ingest_authority`
 defaults to `live` on every slot (`server/openre/schema.js:5-7`), and only RTMP moves
-(`server/openre/authority.js:18`). WHIP, JSMPEG and SFU are **not ported** (OpenRe `README.md:207-209`).
+(`server/openre/authority.js:18`). WHIP, JSMPEG and SFU are **not ported** (OpenRestream `README.md:207-209`).
 
-**Once, before the first slot.** OpenRe's [`docs/cutover.md`](https://github.com/OpenVibers/OpenRe.Stream/blob/main/docs/cutover.md) supersedes the table below: it has the exact commands, the owner and agent steps (A1–A7), and a read-only preflight whose output on 2026-09-23 settles the "Unknown" rows (no subscription, no `OPENRE_*` in `live.env`).
+**Once, before the first slot.** OpenRestream's [`docs/cutover.md`](https://github.com/OpenVibers/OpenRestream/blob/main/docs/cutover.md) supersedes the table below: it has the exact commands, the owner and agent steps (A1–A7), and a read-only preflight whose output on 2026-09-23 settles the "Unknown" rows (no subscription, no `OPENRE_*` in `live.env`).
 
 | Step | State |
 |---|---|
 | 1. Network client `openre` and its grants; release the contract proposals | **DONE** (operator notes: principal `openre` in `openre.env`; openre capabilities released by contracts v0.19.0) |
-| 2. Deploy OpenRe; `curl 127.0.0.1:4500/api/ready` shows ready, with one ingest worker, one restream worker and a valid coordinator lease | **DONE** |
+| 2. Deploy OpenRestream; `curl 127.0.0.1:4500/api/ready` shows ready, with one ingest worker, one restream worker and a valid coordinator lease | **DONE** |
 | — Owner: DNS-only `ingest.openre.stream`; 1936/tcp open at the host and provider edge; RTMP bound publicly (`OPENRE_RTMP_BIND`) | **BLOCKED (owner)** |
 | 3. Events subscription `openre.session.*` → `http://127.0.0.1:3000/internal/openre-events`; its secret in Live as `OPENRE_EVENTS_SECRET` | Unknown. Check `GET /api/v1/subscriptions` on Events and `ovhost validate live`. |
 | 4. Live: `OPENRE_URL=http://127.0.0.1:4500`, `OPENRE_PUBLIC_URL`, then `deploy.sh --wait-idle`. With no slot switched this changes nothing. | Unknown. Check `GET /api/admin/openre/status`. |
@@ -356,8 +356,8 @@ defaults to `live` on every slot (`server/openre/schema.js:5-7`), and only RTMP 
   Live RTMP URL.
 - All slots: unset `OPENRE_URL` in `live.env` and restart Live (`README.md:205`,
   `server/openre/authority.js:47-49`).
-- Live's ingest code stays until the last protocol has run on OpenRe for two weeks (ADR-009 §Rollback).
-- Port 1935 moves to OpenRe (`OPENRE_RTMP_EXTRA_PORTS=1935`) only after Live stops listening
+- Live's ingest code stays until the last protocol has run on OpenRestream for two weeks (ADR-009 §Rollback).
+- Port 1935 moves to OpenRestream (`OPENRE_RTMP_EXTRA_PORTS=1935`) only after Live stops listening
   (`README.md:139-145`).
 
 ## G. Retiring the shims: NOT STARTED

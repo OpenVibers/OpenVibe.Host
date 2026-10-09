@@ -8,7 +8,7 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 | Recorder / media-worker checkpoint (Media) | open | needs a live ingest during a Media deploy |
 | Chat resume (Chat) | passed 2026-09-26, with a limit | [below](#chat-resume-chat-2026-09-26) |
 | Game shard (Games) | passed 2026-09-26 | [below](#game-shard-games-2026-09-26) |
-| Ingest worker (OpenRe) | after the cutover (WS-H) | |
+| Ingest worker (OpenRestream) | after the cutover (WS-H) | |
 
 The release-lifecycle acceptance suite ([release-acceptance.md](release-acceptance.md)) reads this table. The state of a row and the numbers quoted from its record are gates `6f`, `6g`, `6h` and `7e`: a row that says `passed` must still contain those numbers, and an `open` row stays open there.
 

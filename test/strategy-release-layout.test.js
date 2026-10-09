@@ -1,7 +1,7 @@
 'use strict';
 /**
- * The release-layout strategy (lib/release-layout.js) against the fake host, as Live and OpenRe run on
- * the real one: every rule of Live's deploy/scripts/deploy.sh (release layout) and OpenRe's
+ * The release-layout strategy (lib/release-layout.js) against the fake host, as Live and OpenRestream run on
+ * the real one: every rule of Live's deploy/scripts/deploy.sh (release layout) and OpenRestream's
  * deploy.sh release + api, driven through `ovhost plan|deploy|rollback`.
  */
 const assert = require('assert');
@@ -318,7 +318,7 @@ runTests([
         assert.strictEqual(legacy.services.x.managed, false, 'a release layout without the strategy stays with its own script');
     }),
 
-    // ── OpenRe ──
+    // ── OpenRestream ──
     test('openre: release <sha12> with npm ci and chown to ubuntu, API and coordinator restarted, workers never touched', async () => {
         const host = await openreHost();
         const first = host.firstRelease;
@@ -327,7 +327,7 @@ runTests([
         assert.strictEqual(r.code, 0, r.out);
         assert.strictEqual(host.current(), to.slice(0, 12));
         const npm = host.calls.filter((c) => c.cmd === 'npm');
-        assert.strictEqual(npm.length, 1, 'OpenRe installs into every release (reuseModules false)');
+        assert.strictEqual(npm.length, 1, 'OpenRestream installs into every release (reuseModules false)');
         assert.strictEqual(npm[0].cwd, `/opt/openre.stream/releases/${to.slice(0, 12)}`);
         assert.ok(host.calls.some((c) => c.cmd === 'chown' && c.args.join(' ') === `-R ubuntu:ubuntu /opt/openre.stream/releases/${to.slice(0, 12)}`));
         assert.strictEqual(host.files.get(`/opt/openre.stream/releases/${to.slice(0, 12)}/server/index.js`).owner, 'ubuntu');

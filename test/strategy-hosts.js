@@ -151,7 +151,7 @@ async function liveHost(overrides = {}) {
     return host;
 }
 
-// ── OpenRe: release layout, sha12 ids, workers ───────────────────────────────
+// ── OpenRestream: release layout, sha12 ids, workers ───────────────────────────────
 
 function openreEntry(overrides = {}) {
     return {

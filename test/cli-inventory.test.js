@@ -26,7 +26,7 @@ runTests([
         // Every service on the host is deployed by a strategy (WS-N task 11): Games by pnpm-build.
         assert.ok(Object.values(inv.services).every((s) => s.managed), 'every service is managed');
         assert.deepStrictEqual(Object.fromEntries(['live', 'tools', 'sites', 'games', 'openre', 'network'].map((id) => [id, inv.services[id].strategy])), { live: 'release-layout', tools: 'multi-app', sites: 'static-build', games: 'pnpm-build', openre: 'release-layout', network: 'git-checkout' });
-        // Live's and OpenRe's release layouts are root-owned clones (git as root); their services and drills run as ubuntu.
+        // Live's and OpenRestream's release layouts are root-owned clones (git as root); their services and drills run as ubuntu.
         for (const s of Object.values(inv.services)) assert.strictEqual(s.owner, ['live', 'openre'].includes(s.id) ? 'root' : 'ubuntu', `${s.id} checkout owner`);
         assert.strictEqual(inv.services.live.runAs, 'ubuntu');
         assert.strictEqual(inv.services.openre.runAs, 'ubuntu');
