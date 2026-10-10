@@ -111,6 +111,10 @@ function load(env = process.env) {
         projects: {
             maxPerOwner: int(env.HOST_MAX_PROJECTS_PER_OWNER, 10),
         },
+        // Public hosting is owner-gated (plan T20/O34: the owner's go-ahead, a DMCA designated agent and a Public
+        // Suffix List entry come first). Until HOST_PUBLIC_HOSTING=on only OpenVibe staff can create projects, and the
+        // front page says hosting is not open yet; everything else about the engine is unchanged.
+        publicHosting: String(env.HOST_PUBLIC_HOSTING || 'off').trim().toLowerCase() === 'on',
 
         // Per-project quotas (a row in host_quotas overrides them per project; only staff set it).
         quotas: {

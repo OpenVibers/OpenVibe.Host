@@ -50,6 +50,7 @@ async function boot(opts = {}) {
         OV_NETWORK_URL: network.url, OV_NETWORK_INTERNAL_URL: network.url,
         OV_OAUTH_CLIENT_ID: 'host', OV_OAUTH_CLIENT_SECRET: SECRET, COOKIE_SECURE: 'false',
         HOST_FORM_SECRET: 'test-form-secret', HOST_WORKER: 'off', HOST_MIN_FREE_BYTES: '0',
+        HOST_PUBLIC_HOSTING: 'on',   // the suites exercise the engine as launched; test/host-launch-switch.test.js covers off
         ...(opts.env || {}),
     };
     const configLib = require('../../server/config');

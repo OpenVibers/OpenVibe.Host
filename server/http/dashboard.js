@@ -72,10 +72,10 @@ function createDashboard(ctx) {
         // The signed-out front page is the public page of openvibe.host (sitemap.xml): indexable.
         // Everything behind sign-in stays noindex and private.
         if (req.viewer.kind !== 'user') {
-            return page(req, res, 200, null, pages.signedOut({ limits: limitsOf(config), limitsUrl: `${config.baseUrl}/limits.json` }), null,
+            return page(req, res, 200, null, pages.signedOut({ limits: limitsOf(config), limitsUrl: `${config.baseUrl}/limits.json`, launched: config.publicHosting }), null,
                 { indexable: !req.query || !Object.keys(req.query).length, styles: [showcase.STYLESHEET] });
         }
-        page(req, res, 200, 'Projects', pages.home({ projects: await projects.listFor(req.viewer), csrf: csrfToken(config, req.viewer) }), notice(req));
+        page(req, res, 200, 'Projects', pages.home({ projects: await projects.listFor(req.viewer), csrf: csrfToken(config, req.viewer), canCreate: config.publicHosting || Boolean(req.viewer.staff) }), notice(req));
     }));
 
     router.get('/projects/:id', view(async (req, res) => {

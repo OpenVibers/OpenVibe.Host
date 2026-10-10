@@ -66,6 +66,9 @@ function createProjects({ store, config, access, blobs, takedowns, log = console
     }
 
     async function create(viewer, input = {}) {
+        if (!config.publicHosting && !viewer.staff) {
+            throw new ApiError(403, 'host.not_launched', 'OpenVibe.Host is not open for hosting yet: it opens after a launch review, and only OpenVibe staff can create projects until then');
+        }
         const owner = principalOf(viewer);
         if (!owner || !ids.isSubjectId('user', owner)) {
             throw new ApiError(403, 'project.owner_must_be_user', 'a project is owned by a person (usr_…): an app or service must name the owner with X-OV-Subject');
