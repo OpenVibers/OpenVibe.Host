@@ -2,7 +2,7 @@
 /**
  * Host's authority resource index (ADR-048 section 3; capability host.resource.read):
  *
- *   GET /api/v1/resources[?project=&kind=&cursor=&limit=]  → common.resource-list-result@1
+ *   GET /api/v1/resources[?project=&kind=&owner=&cursor=&limit=]  → common.resource-list-result@1
  *   GET /api/v1/resources/:ovrn                            → common.resource-summary@1
  *
  * It pages the resources OpenVibe.Host owns — its tenant sites (sit_), the immutable deploys of those
@@ -38,6 +38,7 @@ const DEPLOY_KIND = 'host.deploy';
 const DOMAIN_KIND = 'host.domain';
 const KINDS = [SITE_KIND, DEPLOY_KIND, DOMAIN_KIND];
 const PROJECT_ID_RE = /^prj_[0-9A-HJKMNP-TV-Z]{26}$/;
+const OWNER_ID_RE = /^(usr|agt)_[0-9A-HJKMNP-TV-Z]{26}$/;
 const USER_SUBJECT_RE = /^usr_[0-9A-HJKMNP-TV-Z]{26}$/;
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 1000;
@@ -86,28 +87,29 @@ function named(summary) {
 /** A stable (kind, id) ordering, so a cursor can be a position in it. */
 const order = (x, y) => (x.kind < y.kind ? -1 : x.kind > y.kind ? 1 : x.id < y.id ? -1 : x.id > y.id ? 1 : 0);
 
-/** The summaries matching the filters: `project` scopes tenancy, `kind` picks one kind. Sorted by (kind, id). */
+/** The summaries matching the project, kind and owner filters, sorted by (kind, id). */
 // Scope: host.resource.read is first-party (resourceConstraints none), so its holder sees every project and
 // ?project= only narrows. If it is ever granted to a non-first-party principal, derive the scope from that
 // principal's grants here instead of trusting the query.
-async function collect(db, { project = null, kind = null } = {}) {
+async function collect(db, { project = null, kind = null, owner = null } = {}) {
+    // Only usr_ subjects become summary owners; an agt_ subject cannot match any Host summary.
+    if (owner && !USER_SUBJECT_RE.test(owner)) return [];
+    const clauses = [];
+    const values = [];
+    if (project) { clauses.push('project_id = ?'); values.push(project); }
+    if (owner) { clauses.push('created_by = ?'); values.push(owner); }
+    const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
     const out = [];
     if (!kind || kind === SITE_KIND) {
-        const rows = project
-            ? await db.prepare('SELECT * FROM host_sites WHERE project_id = ? ORDER BY id').all(project)
-            : await db.prepare('SELECT * FROM host_sites ORDER BY id').all();
+        const rows = await db.prepare(`SELECT * FROM host_sites${where} ORDER BY id`).all(...values);
         for (const r of rows) out.push(named(siteSummary(r)));
     }
     if (!kind || kind === DEPLOY_KIND) {
-        const rows = project
-            ? await db.prepare('SELECT * FROM host_deploys WHERE project_id = ? ORDER BY id').all(project)
-            : await db.prepare('SELECT * FROM host_deploys ORDER BY id').all();
+        const rows = await db.prepare(`SELECT * FROM host_deploys${where} ORDER BY id`).all(...values);
         for (const r of rows) out.push(named(deploySummary(r)));
     }
     if (!kind || kind === DOMAIN_KIND) {
-        const rows = project
-            ? await db.prepare('SELECT * FROM host_domains WHERE project_id = ? ORDER BY id').all(project)
-            : await db.prepare('SELECT * FROM host_domains ORDER BY id').all();
+        const rows = await db.prepare(`SELECT * FROM host_domains${where} ORDER BY id`).all(...values);
         for (const r of rows) out.push(named(domainSummary(r)));
     }
     return out.sort(order);
@@ -126,6 +128,8 @@ const afterCursor = (s, [kind, id]) => s.kind > kind || (s.kind === kind && s.id
 function filtersOf(query) {
     const project = typeof query.project === 'string' && query.project !== '' ? query.project : null;
     if (project && !PROJECT_ID_RE.test(project)) return { error: 'project must be a prj_ id' };
+    const owner = typeof query.owner === 'string' && query.owner !== '' ? query.owner : null;
+    if (query.owner != null && query.owner !== '' && (!owner || !OWNER_ID_RE.test(owner))) return { error: 'owner must be a usr_ or agt_ id' };
     const kind = typeof query.kind === 'string' && query.kind !== '' ? query.kind : null;
     let limit = DEFAULT_LIMIT;
     if (typeof query.limit === 'string' && query.limit !== '') {
@@ -137,7 +141,7 @@ function filtersOf(query) {
         cursor = decodeCursor(query.cursor);
         if (!cursor) return { error: 'cursor is not one this index issued' };
     }
-    return { project, kind, limit, cursor };
+    return { project, kind, owner, limit, cursor };
 }
 
 /** The OVRN type segment → the table and summary it belongs to. */

@@ -3,7 +3,7 @@
 // GET /api/v1/resources pages common.resource-summary@1 for the resources Host owns - its tenant sites
 // (host.site, sit_), the immutable deploys of those sites (host.deploy, dpl_) and their default and
 // custom domains (host.domain, dom_) - as common.resource-list-result@1, and GET /api/v1/resources/:ovrn
-// reads one by its computed ovrn. ?project=&kind=&cursor=&limit= are honoured; ?project= is the tenancy
+// reads one by its computed ovrn. ?project=&kind=&owner=&cursor=&limit= are honoured; ?project= is the tenancy
 // boundary, so a resource of another project is never returned, and Host lists no projects at all.
 // Every summary and every page is validated against the released schemas.
 const assert = require('assert');
@@ -13,13 +13,16 @@ const { boot, check, done } = require('./stageb/boot');
 (async () => {
     const t = await boot();
     const alice = t.user('alice');
+    const bob = t.user('bob');
     const prjA = (await t.project(alice, 'Resource A')).id;
     const prjB = (await t.project(alice, 'Resource B')).id;
+    const prjC = (await t.project(bob, 'Resource C')).id;
 
-    // Sites: two in A, one in B (each creation also mints the site's default domain).
+    // Sites: two in A, one in B and one owned by Bob in C (each mints a default domain).
     const siteA1 = await t.site(alice, prjA, 'ri-a-one');
     const siteA2 = await t.site(alice, prjA, 'ri-a-two');
     const siteB = await t.site(alice, prjB, 'ri-b-one');
+    const siteC = await t.site(bob, prjC, 'ri-c-one');
 
     // Deploys of A's first site: one ready, one refused (a failed deploy).
     const readyDeploy = await t.deploy(alice, siteA1.id, { 'index.html': 'v1' });
@@ -35,12 +38,12 @@ const { boot, check, done } = require('./stageb/boot');
 
     // The default domain each site create mints (its id is what the index lists).
     const defaultDomains = [];
-    for (const site of [siteA1, siteA2, siteB]) {
-        const seen = await t.api('GET', `/api/v1/sites/${site.id}`, { as: alice });
+    for (const [site, user] of [[siteA1, alice], [siteA2, alice], [siteB, alice], [siteC, bob]]) {
+        const seen = await t.api('GET', `/api/v1/sites/${site.id}`, { as: user });
         assert.strictEqual(seen.status, 200, seen.text);
         for (const d of seen.json().domains) if (d.kind === 'default') defaultDomains.push(d);
     }
-    assert.strictEqual(defaultDomains.length, 3);
+    assert.strictEqual(defaultDomains.length, 4);
 
     const resourcesOf = async (query, headers) => {
         const r = await t.api('GET', `/api/v1/resources${query}`, headers);
@@ -81,7 +84,7 @@ const { boot, check, done } = require('./stageb/boot');
         const expected = [
             { kind: 'host.deploy', id: readyDeploy.id }, { kind: 'host.deploy', id: failedDeploy.id },
             { kind: 'host.domain', id: customDomain.id },
-            { kind: 'host.site', id: siteA1.id }, { kind: 'host.site', id: siteA2.id }, { kind: 'host.site', id: siteB.id },
+            { kind: 'host.site', id: siteA1.id }, { kind: 'host.site', id: siteA2.id }, { kind: 'host.site', id: siteB.id }, { kind: 'host.site', id: siteC.id },
         ];
         const byId = new Map(page.resources.map((r) => [r.id, r]));
         for (const d of defaultDomains) expected.push({ kind: 'host.domain', id: d.id });
@@ -127,14 +130,43 @@ const { boot, check, done } = require('./stageb/boot');
 
     await check('?kind= narrows to one kind; an unknown kind is an empty page, not an error', async () => {
         const sites = await resourcesOf('?kind=host.site', auth);
-        assert.deepStrictEqual(sites.resources.map((r) => r.id).sort(), [siteA1.id, siteA2.id, siteB.id].sort());
+        assert.deepStrictEqual(sites.resources.map((r) => r.id).sort(), [siteA1.id, siteA2.id, siteB.id, siteC.id].sort());
         const deploys = await resourcesOf('?kind=host.deploy', auth);
         assert.deepStrictEqual(deploys.resources.map((r) => r.id).sort(), [readyDeploy.id, failedDeploy.id].sort());
         const domains = await resourcesOf('?kind=host.domain', auth);
-        assert.strictEqual(domains.resources.length, 4, "three default domains and A's custom one");
+        assert.strictEqual(domains.resources.length, 5, "four default domains and A's custom one");
         const scoped = await resourcesOf(`?project=${prjA}&kind=host.site`, auth);
         assert.deepStrictEqual(scoped.resources.map((r) => r.id).sort(), [siteA1.id, siteA2.id].sort(), 'kind narrows within the project');
         assert.deepStrictEqual((await resourcesOf('?kind=host.unknown', auth)).resources, []);
+    });
+
+    await check('?owner= filters every kind and combines with project, kind and cursor', async () => {
+        const all = (await resourcesOf('', auth)).resources;
+        const aliceRows = all.filter((r) => r.owner && r.owner.id === alice.subject);
+        const bobRows = all.filter((r) => r.owner && r.owner.id === bob.subject);
+        assert.deepStrictEqual(bobRows.map((r) => r.id).sort(), [siteC.id, defaultDomains.find((d) => d.site_id === siteC.id).id].sort());
+        const own = await resourcesOf(`?owner=${alice.subject}`, auth);
+        assert.deepStrictEqual(own.resources, aliceRows, 'only Alice-owned summaries in index order');
+        assert.deepStrictEqual((await resourcesOf(`?owner=${bob.subject}`, auth)).resources, bobRows, 'Bob owns a site and its default domain');
+        assert.deepStrictEqual((await resourcesOf(`?owner=${alice.subject}&kind=host.site&project=${prjA}`, auth)).resources,
+            aliceRows.filter((r) => r.kind === 'host.site' && r.project_id === prjA));
+        assert.deepStrictEqual((await resourcesOf(`?owner=${bob.subject}&project=${prjA}`, auth)).resources, []);
+        assert.deepStrictEqual((await resourcesOf(`?owner=${alice.subject}&project=${prjC}`, auth)).resources, []);
+        assert.deepStrictEqual((await resourcesOf(`?owner=${alice.subject.replace(/^usr_/, 'agt_')}`, auth)).resources, []);
+        assert.deepStrictEqual((await resourcesOf('?owner=', auth)).resources, all, 'empty owner means no filter');
+
+        const seen = [];
+        let cursor = null;
+        let pages = 0;
+        for (;;) {
+            const page = await resourcesOf(`?owner=${alice.subject}&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, auth);
+            assert.ok(page.resources.length <= 2);
+            seen.push(...page.resources);
+            if (page.next_cursor === null) break;
+            cursor = page.next_cursor;
+            if (++pages > 50) assert.fail('the owner cursor chain never ended');
+        }
+        assert.deepStrictEqual(seen, aliceRows, 'owner paging has no duplicates or gaps');
     });
 
     await check('the cursor pages the index without duplicates, gaps or reordering', async () => {
@@ -180,7 +212,7 @@ const { boot, check, done } = require('./stageb/boot');
     });
 
     await check('a query that cannot be honoured is 400 resources.bad_query', async () => {
-        const bad = [['?project=nope', 'project not a prj_ id'], ['?limit=0', 'limit below one'], ['?limit=abc', 'limit not a number'], ['?limit=99999', 'limit over the cap'], ['?cursor=***', 'cursor not one this index issued']];
+        const bad = [['?project=nope', 'project not a prj_ id'], ['?owner=svc:live', 'owner not a subject id'], ['?owner=usr_short', 'owner too short'], ['?limit=0', 'limit below one'], ['?limit=abc', 'limit not a number'], ['?limit=99999', 'limit over the cap'], ['?cursor=***', 'cursor not one this index issued']];
         for (const [q, why] of bad) {
             const r = await t.api('GET', `/api/v1/resources${q}`, auth);
             assert.strictEqual(r.status, 400, why);
