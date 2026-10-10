@@ -45,11 +45,11 @@ async function boot(opts = {}) {
     };
     const env = {
         NODE_ENV: 'test', PORT: '0', BASE_URL: `https://${DASHBOARD}`, TRUST_PROXY: '1',
-        HOST_DB_PATH: path.join(dir, 'host.db'), HOST_STORAGE_DIR: path.join(dir, 'objects'),
         HOST_SITES_DOMAIN: 'openvibe.host',
         OV_NETWORK_URL: network.url, OV_NETWORK_INTERNAL_URL: network.url,
         OV_OAUTH_CLIENT_ID: 'host', OV_OAUTH_CLIENT_SECRET: SECRET, COOKIE_SECURE: 'false',
         HOST_FORM_SECRET: 'test-form-secret', HOST_WORKER: 'off', HOST_MIN_FREE_BYTES: '0',
+        HOST_STORAGE_DIR: path.join(dir, 'objects'),
         HOST_PUBLIC_HOSTING: 'on',   // the suites exercise the engine as launched; test/host-launch-switch.test.js covers off
         ...(opts.env || {}),
     };

@@ -2,10 +2,10 @@
 /**
  * The example inventory's live and media drills (LIVE_DRILL, OpenVibe.Live 8a58aea; MEDIA_DRILL,
  * OpenVibe.Media 6e74eb0), run by `ovhost drill` on the fake host:
- *   - live: the production unit's ExecStart from its own checkout with LIVE_DRILL=1, the copy as
- *     DB_PATH and {tmp}/data as DATA_DIR (created before the start); DB-only reads compared, the
+ *   - live: the production unit's ExecStart from its own checkout with LIVE_DRILL=1, the scratch database as
+ *     DATABASE_URL and {tmp}/data as DATA_DIR (created before the start); DB-only reads compared, the
  *     values production changes while someone is live ignored; the socket and the service untouched.
- *   - media: MEDIA_DRILL=1, the copy as DB_PATH, every storage path but the thumbnail listing moved
+ *   - media: MEDIA_DRILL=1, the scratch database as DATABASE_URL, every storage path but the thumbnail listing moved
  *     under {tmp}/storage and never created; the /browse pages compared byte for byte.
  *   - a checkout without the switch is refused before anything is created (an older release would
  *     ignore LIVE_DRILL / MEDIA_DRILL and run its side effects).
@@ -17,7 +17,6 @@ const { scenario, test, runTests, SECRET } = require('./helpers');
 const { normalise } = require('../lib/inventory');
 
 const EXAMPLE = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'host.example.json'), 'utf8'));
-const LIVE_DB = '/opt/openvibe.live/data/live.db';
 
 const envOf = (text) => Object.fromEntries(text.trim().split('\n').filter((l) => !l.startsWith('#')).map((l) => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)]));
 const stateChanges = (host) => host.calls.filter((c) => c.cmd === 'systemctl' && !['show', 'is-active', 'is-enabled', 'cat', 'status', 'list-units'].includes(c.args[0]));
@@ -59,14 +58,12 @@ async function liveHost({ switchInCheckout = true, drillBodies = null } = {}) {
     unit.dropIns = ['/etc/systemd/system/openvibe-live.service.d/socket.conf'];
     host.alivePids.add(unit.mainPid);
     host.listeners.set(3000, [{ pid: unit.mainPid, process: 'node' }]);
-    host.put(LIVE_DB, 'sqlite-production', { owner: 'ubuntu', mode: 0o640 });
 
     const prod = liveBodies({ drill: false });
     host.http.set('http://127.0.0.1:3000/api/ready', () => ({ status: 200, body: { ready: true } }));
     for (const [p, body] of Object.entries(prod)) host.http.set(`http://127.0.0.1:3000${p}`, () => ({ status: 200, body }));
     const counts = { users: 393, channels: 180, managed_streams: 140, streams: 5120, follows: 910, chat_messages: 250000 };
-    host.sqliteHandler = (db, sql) => {
-        if (/integrity_check/.test(sql)) return [{ integrity_check: 'ok' }];
+    host.psqlHandler = (db, sql) => {
         const m = /FROM "([a-z_]+)"/.exec(sql);
         return [{ n: m ? counts[m[1]] ?? 0 : 0 }];
     };
@@ -138,7 +135,7 @@ runTests([
         const live = inv.services.live.drill;
         assert.strictEqual(live.supported, true);
         assert.strictEqual(live.port, 13000);
-        assert.deepStrictEqual(live.databases, { live: { engine: 'sqlite', env: 'DB_PATH', dir: false } });
+        assert.deepStrictEqual(live.databases, { live: { engine: 'postgresql', url: 'DATABASE_URL', directUrl: 'DATABASE_DIRECT_URL' } });
         assert.strictEqual(live.env.LIVE_DRILL, '1');
         assert.strictEqual(live.env.DATA_DIR, '{tmp}/data');
         assert.strictEqual(live.env.HOST, '127.0.0.1');
@@ -169,7 +166,7 @@ runTests([
             ['/api/themes', true], ['/api/emotes/global', true], ['/api/streams', true],
             ['/api/streams/recently-online?limit=20', true], ['/api/streams/channel/japaneseoldguy/live', true],
         ]);
-        assert.deepStrictEqual(rec.databases.map((d) => d.name), ['live'], 'rs-companion.db is not restored');
+        assert.deepStrictEqual(rec.databases.map((d) => d.name), ['live'], 'only the declared database is restored');
         assert.deepStrictEqual(rec.counts.map((c) => [c.table, c.match]), [['users', true], ['channels', true], ['managed_streams', true], ['streams', true], ['follows', true], ['chat_messages', true]]);
 
         assert.strictEqual(host.systemdRuns.length, 1);
@@ -179,9 +176,12 @@ runTests([
         assert.deepStrictEqual(run.envFiles, ['/etc/openvibe/live.env', `${rec.dir}/drill.env`]);
         for (const p of ['SocketBindAllow=tcp:13000', 'SocketBindDeny=any', 'IPAddressDeny=any', 'IPAddressAllow=localhost', 'ProtectSystem=strict', `ReadWritePaths=${rec.dir}`, 'Environment=NODE_ENV=production']) assert.ok(run.props.includes(p), p);
         assert.ok(!run.props.some((p) => /BindPaths=|ReadWritePaths=\/opt/.test(p)), 'no bind mounts; production\'s data directory is not writable');
-        assert.deepStrictEqual(envOf(host.drillEnv), {
+        const { DATABASE_URL, DATABASE_DIRECT_URL, ...envRest } = envOf(host.drillEnv);
+        assert.strictEqual(DATABASE_DIRECT_URL, DATABASE_URL);
+        assert.match(DATABASE_URL, /^postgresql:\/\//);
+        assert.deepStrictEqual(envRest, {
             PORT: '13000', HOST: '127.0.0.1', LIVE_DRILL: '1', DATA_DIR: `${rec.dir}/data`,
-            EVENTS_URL: '', OV_OAUTH_CLIENT_SECRET: '', MEDIA_URL: 'http://127.0.0.1:9', DB_PATH: `${rec.dir}/db/live.db`,
+            EVENTS_URL: '', OV_OAUTH_CLIENT_SECRET: '', MEDIA_URL: 'http://127.0.0.1:9', VALKEY_URL: 'redis://127.0.0.1:9/0',
         });
         assert.ok(host.dataDirAtStart, 'DATA_DIR exists before the instance starts');
 
@@ -190,7 +190,7 @@ runTests([
         assert.deepStrictEqual(stateChanges(host), [], 'no unit was started, stopped or restarted');
         assert.deepStrictEqual(host.socketViolations(), []);
         assert.strictEqual(host.units.get('openvibe-live.socket').active, 'active');
-        assert.strictEqual(host.read(LIVE_DB), 'sqlite-production');
+        assert.ok(host.pgDatabases.has('ov_live'), 'production database untouched');
         assert.ok(!(r.out + JSON.stringify(host.systemdRuns) + host.read('/var/lib/openvibe-host/drills/live.jsonl')).includes(SECRET));
     }),
 
@@ -231,7 +231,7 @@ runTests([
         assert.match(DATABASE_URL, new RegExp(`^postgresql://${scratch}:[0-9a-f]+@127\\.0\\.0\\.1:5432/${scratch}$`));
         assert.strictEqual(DATABASE_DIRECT_URL, DATABASE_URL);
         assert.strictEqual(rec.databases[0].integrity, 'pg_restore --list ok');
-        assert.deepStrictEqual(host.drillDirAtStart, ['db', 'drill.env', 'pg', 'pg/media.dump'], 'the dump copy and the override file; storage is never created');
+        assert.deepStrictEqual(host.drillDirAtStart, ['drill.env', 'pg', 'pg/media.dump'], 'the dump copy and the override file; storage is never created');
         assert.deepStrictEqual(stateChanges(host), []);
         assert.ok(host.pgDatabases.has('ov_media'), 'the production database is untouched');
         assert.ok(host.droppedDatabases.some((d) => d.name === scratch), 'the scratch database is dropped');

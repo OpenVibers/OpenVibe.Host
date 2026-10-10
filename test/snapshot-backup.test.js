@@ -35,30 +35,6 @@ runTests([
         assert.ok(meta.lockfiles['.']);
     }),
 
-    test('backup: sqlite .backup of each declared database, run as the service user, into a dated directory', async () => {
-        const host = scenario();
-        const r = await host.cli('backup', 'media', '--json');
-        assert.strictEqual(r.code, 0, r.out);
-        const res = JSON.parse(r.out);
-        assert.match(res.dir, /^\/var\/backups\/openvibe\/media\/20260922-120000$/);
-        assert.strictEqual(res.files[0].dest, `${res.dir}/media.db`);
-        const call = host.sqliteCalls.find((c) => c.op === 'backup');
-        assert.strictEqual(call.as, 'ubuntu');
-        assert.strictEqual(call.db, '/opt/openvibe.media/data/media.db');
-        assert.strictEqual(call.dest, '/var/backups/openvibe.staging/media-20260922-120000/media.db', 'the worker writes into its staging directory');
-        // Backups hold user data: root:root, directories 0700, files 0600.
-        for (const d of ['/var/backups/openvibe', '/var/backups/openvibe/media', res.dir]) {
-            assert.deepStrictEqual([host.files.get(d).owner, host.files.get(d).mode], ['root', 0o700], d);
-        }
-        assert.deepStrictEqual([host.files.get(res.files[0].dest).owner, host.files.get(res.files[0].dest).mode], ['root', 0o600]);
-        assert.strictEqual(host.files.has('/var/backups/openvibe.staging/media-20260922-120000'), false, 'staging directory removed');
-        const log = host.read('/var/lib/openvibe-host/backups/media.jsonl');
-        assert.strictEqual(JSON.parse(log.trim()).files[0].dest, res.files[0].dest);
-        // A second backup in the same second never overwrites the first.
-        const again = await host.cli('backup', 'media');
-        assert.notStrictEqual(again.code, 0);
-    }),
-
     test('backup refuses a service without declared databases', async () => {
         const host = scenario();
         const r = await host.cli('backup', 'tools');

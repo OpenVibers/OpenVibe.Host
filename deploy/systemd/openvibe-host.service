@@ -34,7 +34,6 @@ LockPersonality=true
 # root-owned state directory (release logs, locks, snapshots).
 StateDirectory=openvibe-host-api
 StateDirectoryMode=0750
-Environment=HOST_DB_PATH=/var/lib/openvibe-host-api/host.db
 Environment=HOST_STORAGE_DIR=/var/lib/openvibe-host-api/objects
 
 [Install]

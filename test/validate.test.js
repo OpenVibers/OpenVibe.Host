@@ -9,11 +9,12 @@ function noSecrets(text) {
 }
 
 runTests([
-    test('a release-layout service is checked by its current release, not as a git checkout, and is never managed', async () => {
+    test('a release-layout service is checked by its current release and strategy clone', async () => {
         const host = scenario();
         const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
-        raw.services.rel = { repo: '/opt/rel.stream', layout: 'release', units: [], lifecycle: lifecycleDoc() };
+        raw.services.rel = { repo: '/opt/rel.stream', strategy: 'release-layout', units: [], lifecycle: lifecycleDoc() };
         host.put('/etc/openvibe/host.json', JSON.stringify(raw), { mode: 0o640 });
+        host.createRepo('/opt/rel.stream/repo');
         host.put('/opt/rel.stream/releases/655b98a10aaa/package.json', '{}');
         await host.exec.symlink('/opt/rel.stream/releases/655b98a10aaa', '/opt/rel.stream/current');
         let res = JSON.parse((await host.cli('validate', 'rel', '--json')).out);
@@ -21,7 +22,7 @@ runTests([
         assert.ok(res.findings.some((f) => f.area === 'checkout' && /current -> \/opt\/rel\.stream\/releases\/655b98a10aaa/.test(f.message)));
         const st = await host.cli('status', '--json');
         assert.match(st.out, /655b98a10aaa/);
-        assert.match(st.out, /"managed":\s*false/);
+        assert.match(st.out, /"managed":\s*true/);
         // current must name a release under releases/, owned by root or the checkout owner.
         host.put('/opt/elsewhere/package.json', '{}');
         host.files.delete('/opt/rel.stream/current');

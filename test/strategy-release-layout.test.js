@@ -30,7 +30,6 @@ runTests([
         assert.ok(host.calls.some((c) => c.cmd === 'cp' && c.args[0] === '-al' && c.args[1].endsWith(`${first}/node_modules`)), 'cp -al of node_modules');
         assert.ok(!host.calls.some((c) => c.cmd === 'npm'), 'no install without a dependency change');
         assert.strictEqual(await host.exec.readlink(`/opt/openvibe.live/releases/${now}/data`), '../../shared/data');
-        assert.strictEqual(host.read(`/opt/openvibe.live/current/data/live.db`), 'sqlite', 'shared data reached through the new release');
         // Live's syntax check: every changed .js file, in the new release, before anything restarts.
         const check = host.nodeChecks().find((c) => c.args[0] === '--check');
         assert.ok(check && check.args[1] === `/opt/openvibe.live/releases/${now}/server/index.js`);
@@ -265,11 +264,11 @@ runTests([
         host.push({ 'server/db/schema.sql': 'CREATE TABLE b(y);' }, 'schema');
         const r = await host.cli('deploy', 'live');
         assert.strictEqual(r.code, 0, r.out);
-        const b = host.calls.findIndex((c) => c.cmd === 'sqlite-backup');
+        const b = host.calls.findIndex((c) => c.cmd === 'pg_dump');
         const mv = host.calls.findIndex((c) => c.cmd === 'mv' && c.args.includes('/opt/openvibe.live/current'));
         const restart = host.calls.findIndex((c) => c.cmd === 'systemctl' && c.args[0] === 'restart');
         assert.ok(b >= 0 && b < mv && mv < restart, 'backup, then switch, then restart');
-        assert.strictEqual(host.sqliteCalls.find((c) => c.op === 'backup').as, 'ubuntu');
+        assert.strictEqual(host.dumps.find((c) => c.database === 'ov_live').as, 'postgres');
     }),
 
     test('live: plan shows the new release, node_modules reuse, the socket and the restart; changes nothing', async () => {
@@ -314,8 +313,7 @@ runTests([
         assert.throws(() => normalise({ services: { x: { repo: '/opt/x', owner: 'root', strategy: 'release-layout', release: { links: { data: '../../../../etc' } } } } }), /must point inside/);
         assert.throws(() => normalise({ services: { x: { repo: '/opt/x', owner: 'root', strategy: 'tarball' } } }), /strategy must be one of/);
         assert.throws(() => normalise({ services: { x: { repo: '/opt/x', owner: 'root', strategy: 'git-checkout', layout: 'release' } } }), /needs strategy "release-layout"/);
-        const legacy = normalise({ services: { x: { repo: '/opt/x', owner: 'root', layout: 'release' } } });
-        assert.strictEqual(legacy.services.x.managed, false, 'a release layout without the strategy stays with its own script');
+        assert.throws(() => normalise({ services: { x: { repo: '/opt/x', owner: 'root', layout: 'release' } } }), /needs strategy "release-layout"/);
     }),
 
     // ── OpenRestream ──
@@ -335,8 +333,10 @@ runTests([
         assert.ok(!host.calls.some((c) => c.cmd === 'systemctl' && /openre-(rtmp-ingest|restream-worker|jsmpeg)@/.test(String(c.args[1])) && c.args[0] !== 'show'), 'no worker unit is started, stopped or restarted');
         assert.ok((await host.releaseIds()).includes(first), 'the release the workers run from is kept');
         // A second deploy prunes to keep (2), but never the release a worker instance runs from.
+        host.advance(1000);
         host.push({ 'server/index.js': 'api3();' }, 'api3');
         assert.strictEqual((await host.cli('deploy', 'openre')).code, 0);
+        host.advance(1000);
         host.push({ 'server/index.js': 'api4();' }, 'api4');
         assert.strictEqual((await host.cli('deploy', 'openre')).code, 0);
         const ids = await host.releaseIds();

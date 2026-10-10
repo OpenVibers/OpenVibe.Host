@@ -46,17 +46,6 @@ groups:
         labels: { severity: page }
         annotations:
           summary: "No successful nightly backup for more than 30 hours (or no backup metrics at all)"
-      # A service whose databases are gone (the 2026-09 SQLite→PostgreSQL switch archived the .db files
-      # and dropped the path from the inventory) is reported `skipped` by backup --all. openvibe_backup_last_run_ok
-      # stays 1 (a skip is not a failure) and no other backup alert fires, so production can sit with no backups
-      # at all. 30 h is longer than the 24 h between runs, so ONE skipped run never reaches `for` and TWO
-      # consecutive ones always do.
-      - alert: OpenVibeBackupSkipped
-        expr: openvibe_backup_services{status="skipped"} > 0
-        for: 30h
-        labels: { severity: ticket }
-        annotations:
-          summary: "A service has been skipped by two nightly backups in a row ({{ with query \"openvibe_backup_services{status='skipped'}\" }}{{ . | first | value }}{{ end }} service(s)): its databases are gone, so it has no backups"
       # Production drift (OpenVibe.Network registry/deploy-drift.js, hourly against GitHub; WS-S task 7).
       # max_over_time: Network restarts drop the series for a minute, which reset `for` and made the alert
       # resolve and fire again every few hours (2026-09-28). Documentation-only drift is not counted.

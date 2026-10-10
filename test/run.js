@@ -2,7 +2,7 @@
 /**
  * Runs every test in test/ — the files named *.test.js — each in its own process, and fails if any
  * of them fails. Every test drives ovhost against the in-memory fake host (test/fake-host.js):
- * no systemctl, git, npm, nginx, curl or SQLite call reaches the real machine.
+ * no systemctl, git, npm, nginx or curl call reaches the real machine.
  *
  *   npm test                   # everything
  *   npm test -- deploy certs   # only files whose name contains one of the words

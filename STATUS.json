@@ -56,7 +56,7 @@
     "deploy strategies: git-checkout, multi-app, static-build, pnpm-build, release-layout",
     "protected-session probes and drain policies (--wait-idle)",
     "certificate inventory and transactional nginx vhost install",
-    "scheduled SQLite backups with retention and encrypted off-host copies",
+    "scheduled PostgreSQL backup verification, logical dumps, retention and encrypted off-host copies",
     "restore drills",
     "release notifications (host.release.published), incidents, maintenance windows and freezes",
     "Prometheus alerts relay to Network",

@@ -43,7 +43,7 @@ runTests([
         host.addUnit('openvibe-tools-docs.service', { runningSha: host.repo.head });
         // A timer's oneshot job the glob also matches (production's openvibe-toolsjob.service): never restarted or waited on.
         host.addUnit('openvibe-toolsjob.service', { type: 'oneshot', active: 'inactive', sub: 'dead' });
-        const to = host.push({ 'apps/img/package.json': JSON.stringify({ name: 'tools-img', version: '1.0.1', dependencies: { express: '^1', 'better-sqlite3': '^1', 'openvibe-contracts': '^1', 'openvibe-sdk': '^1', sharp: '^1' } }), 'apps/_shared/guard/index.js': 'guard2();' }, 'img: sharp');
+        const to = host.push({ 'apps/img/package.json': JSON.stringify({ name: 'tools-img', version: '1.0.1', dependencies: { express: '^1', 'openvibe-sdk': '^1', 'openvibe-contracts': '^1', 'openvibe-sdk': '^1', sharp: '^1' } }), 'apps/_shared/guard/index.js': 'guard2();' }, 'img: sharp');
         const r = await host.cli('deploy', 'tools');
         assert.strictEqual(r.code, 0, r.out);
         assert.strictEqual(host.repo.head, to);
@@ -146,10 +146,10 @@ runTests([
         const host = toolsHost();
         const from = host.repo.head;
         host.push({ 'apps/img/server/index.js': 'img2();' }, 'img');
-        host.onNode = (args, opts) => (/jobs/.test(args[1]) && opts.cwd.endsWith('apps/img') ? { code: 1, stderr: "Error: The module 'better_sqlite3.node' was compiled against a different Node.js version" } : undefined);
+        host.onNode = (args, opts) => (/jobs/.test(args[1]) && opts.cwd.endsWith('apps/img') ? { code: 1, stderr: "Error: The module 'sharp.node' was compiled against a different Node.js version" } : undefined);
         const r = await host.cli('deploy', 'tools');
         assert.strictEqual(r.code, 2, r.out);
-        assert.match(r.out, /preflight failed: jobs runtime loads failed in apps\/img: Error: The module 'better_sqlite3\.node'/);
+        assert.match(r.out, /preflight failed: jobs runtime loads failed in apps\/img: Error: The module 'sharp\.node'/);
         assert.match(r.out, /checkout restored/);
         assert.strictEqual(host.repo.head, from);
         assert.deepStrictEqual(host.restarts(), []);
@@ -188,7 +188,7 @@ runTests([
         const host2 = toolsHost();
         host2.push({ 'apps/img/server/index.js': 'img2();' }, 'img');
         let polls = 0;
-        host2.sqliteHandler = () => { polls += 1; return [{ n: polls < 3 ? 1 : 0 }]; };
+        host2.psqlHandler = () => { polls += 1; return [{ n: polls < 3 ? 1 : 0 }]; };
         const w = await host2.cli('deploy', 'tools', '--wait-idle');
         assert.strictEqual(w.code, 0, w.out);
         assert.match(w.out, /--wait-idle: holding the restart/);
@@ -453,7 +453,7 @@ runTests([
         host.onNode = () => ({ code: 1, stderr: 'Error: Could not locate the bindings file' });
         const r = await host.cli('deploy', 'games');
         assert.strictEqual(r.code, 2, r.out);
-        assert.match(r.out, /better-sqlite3 loads under this Node failed in apps\/server/);
+        assert.match(r.out, /database SDK loads under this Node failed in apps\/server/);
         assert.strictEqual(host.repo.head, from);
         assert.deepStrictEqual(host.restarts(), []);
         assert.strictEqual(host.builds, 2, 'built for the new sha, rebuilt for the restored one');
@@ -536,7 +536,7 @@ runTests([
         assert.match(c.out, /^strategy=pnpm-build$/m);
         assert.match(c.out, /^managed=yes$/m);
         const unknown = await host.cli('capabilities', 'nope');
-        assert.strictEqual(unknown.code, 1, 'an unknown service: the wrapper falls back');
+        assert.strictEqual(unknown.code, 1, 'an unknown service is an error');
         const json = JSON.parse((await host.cli('capabilities', 'games', '--json')).out);
         assert.strictEqual(json.strategy, 'pnpm-build');
         const bare = await host.cli('capabilities', '--inventory', '/nope.json');

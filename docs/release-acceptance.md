@@ -88,7 +88,7 @@ against the 2 s the deploy took to report ready).
 | Gate | What | Evidence | Budget | Where the number comes from |
 |---|---|---|---|---|
 | 1a | a styles-only release is switched without restarting Live, streams live | Host `test/strategy-release-layout.test.js` | Live restarts (dropped streams) ≤ 0 | asserted: the test asserts host.restarts() is [] and the record says restarted: false |
-| 1b | the same through Live's own deploy script on a simulated host | Live `test/deploy-sim.test.js` | Live restarts ≤ 0 | asserted: the test compares the process id before and after the switch |
+| 1b | the same through Live's deploy wrapper on a simulated host | Live `test/deploy-sim.test.js` | Live restarts ≤ 0 | asserted: the test compares the process id before and after the switch |
 | 1c | a tab broadcasting (live camera/mic) or playing a stream is never reloaded | Shared `test/release.test.js` | reloads while capturing or playing ≤ 0 | asserted: asserts [reloads, metrics] = [0, { deferred: { capture: 1 } }] with a live track, and the same for a playing &lt;video&gt; |
 | 1d | a style change is applied in place: only the changed stylesheet moves | Shared `test/release-update.test.js` | reloads + prompts for a styles-only release ≤ 0 | asserted: asserts [p.reloads, p.toasts.length] = [0, 0] after the update |
 | 1e | Live's manifest declares style components, so its open tabs take styles in place | `<base>/release.json` (--base) | style components in /release.json ≥ 1 | GET <base>/release.json |

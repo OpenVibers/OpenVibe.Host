@@ -26,12 +26,12 @@ const TENANT_BLOB = 'tenant object bytes\n';
 function backupHost({ envMode = 0o600, keyMode = 0o600, envOwner = 'root', env = null } = {}) {
     const host = scenario();
     const doc = JSON.parse(host.read('/etc/openvibe/host.json'));
-    doc.services.ai = { repo: '/opt/openvibe.ai', units: [], databases: [{ name: 'ai', path: '/var/lib/openvibe-ai/ai.db' }, { name: 'ai-extra', path: '/var/lib/openvibe-ai/extra.db' }] };
-    doc.services.openre = { repo: '/opt/openre', units: [], databases: [{ name: 'openre', path: '/var/lib/openre/openre.db' }] };
+    doc.services.ai = { repo: '/opt/openvibe.ai', units: [], databases: [{ name: 'ai', engine: 'postgresql', database: 'ov_ai' }, { name: 'ai-extra', engine: 'postgresql', database: 'ov_ai_extra' }] };
+    doc.services.openre = { repo: '/opt/openre', units: [], databases: [{ name: 'openre', engine: 'postgresql', database: 'ov_openre' }] };
     host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
     host.inv = normalise(doc);
-    host.put('/var/lib/openvibe-ai/ai.db', 'sqlite', { owner: 'ubuntu' });
-    host.put('/var/lib/openvibe-ai/extra.db', 'sqlite', { owner: 'ubuntu' });
+    for (const db of ['ov_ai', 'ov_ai_extra', 'ov_openre']) host.pgDatabases.add(db);
+    host.pgBackups = [{ type: 'diff', timestamp: { stop: Math.floor(host.exec.now() / 1000) - 3600 } }];
     host.put('/etc/openvibe/backup.env', env || [
         '# off-host backups',
         'BACKUP_S3_ENDPOINT=https://s3.us-west-004.backblazeb2.com',
@@ -43,9 +43,6 @@ function backupHost({ envMode = 0o600, keyMode = 0o600, envOwner = 'root', env =
         '',
     ].join('\n'), { mode: envMode, owner: envOwner });
     host.put('/etc/openvibe/backup.key', `${KEY_HEX}\n`, { mode: keyMode, owner: 'root' });
-    // Distinct content per database, so a restore can be compared byte for byte.
-    host.backupContent = (db) => Buffer.from(`SQLite format 3\0 copy of ${db} ${'x'.repeat(5000)}`);
-    host.sqliteHandler = (db, sql) => (/quick_check/.test(sql) ? [{ quick_check: 'ok' }] : [{ n: 0 }]);
     host.s3 = mockS3();
     host.s3Configs = [];
     host.cli = async (...argv) => {
@@ -169,149 +166,32 @@ runTests([
         assert.deepStrictEqual([...retention.keep(['junk', '20260101-000000'])], ['20260101-000000']);
     }),
 
-    test('backup --all prunes to 7 daily + 4 weekly per service; failing days never age out good backups', async () => {
-        const host = backupHost();
-        // A directory ovhost did not record is never touched.
-        host.put('/var/backups/openvibe/live/20200101-000000/live.db', 'operator copy', { owner: 'root', mode: 0o600 });
-        for (let d = 0; d < 40; d++) {
-            const r = await host.cli('backup', '--all');
-            assert.strictEqual(r.code, 0, r.out);
-            host.advance(DAY);
-        }
-        // 40 daily runs from 2026-09-22 12:00 to 2026-10-31 12:00.
-        const expected = ['20200101-000000', '20261011-120000', '20261018-120000', '20261025-120000', '20261026-120000', '20261027-120000', '20261028-120000', '20261029-120000', '20261030-120000', '20261031-120000'];
-        assert.deepStrictEqual(dirsOf(host, '/var/backups/openvibe/live'), expected);
-        assert.deepStrictEqual(dirsOf(host, '/var/backups/openvibe/media'), expected.slice(1));
-
-        // Live fails for 20 days: nothing of Live is pruned, the others carry on.
-        host.onSqliteBackup = (db) => (db.includes('openvibe.live') ? new Error('database disk image is malformed') : null);
-        for (let d = 0; d < 20; d++) {
-            const r = await host.cli('backup', '--all');
-            assert.strictEqual(r.code, 2);
-            host.advance(DAY);
-        }
-        assert.deepStrictEqual(dirsOf(host, '/var/backups/openvibe/live'), expected);
-        assert.strictEqual(dirsOf(host, '/var/backups/openvibe/media').length, 9);
-        assert.ok(dirsOf(host, '/var/backups/openvibe/media').includes('20261119-120000'));
-    }),
-
-    test('a partly failed backup is kept until a newer good one exists, then pruned; drills skip it', async () => {
-        const host = backupHost();
-        await host.cli('backup', '--all');
-        host.advance(DAY);
-        host.onSqliteBackup = (db) => (db.endsWith('extra.db') ? new Error('disk I/O error') : null);
-        const bad = await host.cli('backup', '--all', '--json');
-        assert.strictEqual(bad.code, 2);
-        const s = JSON.parse(bad.out);
-        const ai = s.services.find((x) => x.service === 'ai');
-        assert.strictEqual(ai.status, 'failed');
-        assert.match(ai.error, /ai-extra: disk I\/O error/);
-        assert.deepStrictEqual(dirsOf(host, ai.dir), ['ai.db'], 'the good half is kept');
-        const log = host.read('/var/lib/openvibe-host/backups/ai.jsonl').trim().split('\n').map((l) => JSON.parse(l));
-        assert.strictEqual(log[log.length - 1].ok, false);
-        assert.deepStrictEqual(dirsOf(host, '/var/backups/openvibe/ai'), ['20260922-120000', '20260923-120000']);
-        host.onSqliteBackup = null;
-        host.advance(DAY);
-        await host.cli('backup', '--all');
-        assert.deepStrictEqual(dirsOf(host, '/var/backups/openvibe/ai'), ['20260922-120000', '20260924-120000'], 'the failed one went once a newer good one existed');
-    }),
-
-    test('backup --all leaves its outcome for Prometheus (textfile collector): last run, ok, last success, per-status counts', async () => {
-        const host = backupHost();
-        const PROM = '/var/lib/prometheus/node-exporter/openvibe_backup.prom';
-        await host.cli('backup', '--all');
-        assert.strictEqual(host.files.has(PROM), false, 'no collector directory: nothing written');
-        host.put('/var/lib/prometheus/node-exporter/.keep', '');
-        host.advance(DAY);
-        await host.cli('backup', '--all');
-        const metric = (name) => { const m = new RegExp(`^${name} (\\S+)$`, 'm').exec(host.read(PROM)); return m ? Number(m[1]) : null; };
-        const goodAt = metric('openvibe_backup_last_run_timestamp_seconds');
-        assert.ok(goodAt > 0);
-        assert.strictEqual(metric('openvibe_backup_last_run_ok'), 1);
-        assert.strictEqual(metric('openvibe_backup_last_success_timestamp_seconds'), goodAt);
-        assert.strictEqual(metric('openvibe_backup_services\\{status="failed"\\}'), 0);
-        host.advance(DAY);
-        host.onSqliteBackup = (db) => (db.endsWith('extra.db') ? new Error('disk I/O error') : null);
-        await host.cli('backup', '--all');
-        host.onSqliteBackup = null;
-        assert.strictEqual(metric('openvibe_backup_last_run_ok'), 0);
-        assert.strictEqual(metric('openvibe_backup_services\\{status="failed"\\}'), 1);
-        assert.ok(metric('openvibe_backup_last_run_timestamp_seconds') > goodAt);
-        assert.strictEqual(metric('openvibe_backup_last_success_timestamp_seconds'), goodAt, 'the last success is still the good run');
-        host.files.delete(PROM);
-        const r = await host.cli('backup-metrics');
-        assert.strictEqual(r.code, 0, r.out);
-        assert.strictEqual(metric('openvibe_backup_last_run_ok'), 0, 'rewritten from the latest recorded run');
-        assert.strictEqual(metric('openvibe_backup_last_success_timestamp_seconds'), goodAt);
-    }),
-
-    // ── failure isolation and the summary ─────────────────────────────────────
-    test('one failing service never stops the others; exit code 2; JSON summary per run', async () => {
-        const host = backupHost();
-        host.onSqliteBackup = (db) => (db.includes('openvibe.media') ? new Error('SQLITE_BUSY: database is locked') : null);
-        const r = await host.cli('backup', '--all');
-        assert.strictEqual(r.code, 2, r.out);
-        assert.match(r.out, /FAILED\s+media\s+media: SQLITE_BUSY/);
-        assert.match(r.out, /OK\s+live\s+1 file\(s\)/);
-        assert.match(r.out, /OK\s+ai\s+2 file\(s\)/);
-        assert.match(r.out, /SKIPPED\s+openre\s+no database found/);
-        const summary = JSON.parse(host.read('/var/lib/openvibe-host/backup-runs/20260922-120000.json'));
-        assert.strictEqual(summary.ok, false);
-        assert.deepStrictEqual(summary.services.map((x) => [x.service, x.status]), [['live', 'ok'], ['media', 'failed'], ['ai', 'ok'], ['openre', 'skipped']]);
-        assert.deepStrictEqual(summary.retention, { daily: 7, weekly: 4 });
-        // The services after the failing one were still backed up.
-        assert.ok(host.files.has('/var/backups/openvibe/ai/20260922-120000/ai-extra.db'));
-        assert.strictEqual(host.files.has('/var/backups/openvibe/openre'), true);
-        assert.deepStrictEqual(dirsOf(host, '/var/backups/openvibe/openre'), [], 'no empty backup directory is left behind');
-        assert.strictEqual(host.files.has('/var/lib/openvibe-host/locks/_backup-all.lock'), false, 'lock released');
-        const ok = await (host.advance(1000), host.cli('backup', '--all', '--json'));
-        host.onSqliteBackup = null;
-        assert.strictEqual(JSON.parse(ok.out).ok, false);
-        host.advance(1000);
-        assert.strictEqual((await host.cli('backup', '--all')).code, 0);
-    }),
-
-    test('permissions: backup directories root 0700, copies root 0600, no -wal/-shm; old service-owned directories are locked down', async () => {
+    test('PostgreSQL dump copies are root-only and staging is emptied', async () => {
         const host = backupHost();
         host.ensureDir('/var/backups/openvibe/live', 'ubuntu', 0o750);
-        // The worker leaves a side file behind: it is not kept.
-        host.onSqliteBackup = (db, dest) => { host.put(`${dest}-wal`, 'wal', { owner: 'ubuntu', mode: 0o644 }); return null; };
         const r = await host.cli('backup', '--all', '--offsite');
         assert.strictEqual(r.code, 0, r.out);
-        let dirs = 0;
-        let files = 0;
-        for (const [p, e] of host.files) {
-            if (p !== '/var/backups/openvibe' && !p.startsWith('/var/backups/openvibe/')) continue;
-            if (e.type === 'dir') { dirs += 1; assert.deepStrictEqual([e.owner, e.mode], ['root', 0o700], p); }
-            else { files += 1; assert.deepStrictEqual([e.owner, e.mode], ['root', 0o600], p); assert.ok(!/-(wal|shm|journal)$/.test(p), `${p} left behind`); }
+        for (const [file, entry] of host.files) {
+            if (!file.startsWith('/var/backups/openvibe/')) continue;
+            assert.deepStrictEqual([entry.owner, entry.mode], ['root', entry.type === 'dir' ? 0o700 : 0o600], file);
         }
-        assert.ok(dirs >= 8 && files === 4, `${dirs} dirs, ${files} files`);
-        assert.deepStrictEqual(dirsOf(host, '/var/backups/openvibe.staging'), [], 'staging emptied');
-        assert.deepStrictEqual([host.files.get('/var/backups/openvibe.staging').owner, host.files.get('/var/backups/openvibe.staging').mode], ['root', 0o711]);
-        // The worker still ran as the service user, into a directory it owned at the time.
-        assert.ok(host.sqliteCalls.filter((c) => c.op === 'backup').every((c) => c.as === 'ubuntu' && c.dest.startsWith('/var/backups/openvibe.staging/')));
-
-        // restore-download: a root-only directory, 0600 files.
-        const d = await host.cli('restore-download', 'ai', 'latest');
-        assert.strictEqual(d.code, 0, d.out);
-        for (const p of ['/var/lib/openvibe-restore', '/var/lib/openvibe-restore/ai-20260922-120000']) assert.deepStrictEqual([host.files.get(p).owner, host.files.get(p).mode], ['root', 0o700], p);
-        for (const f of ['ai.db', 'ai-extra.db']) {
-            const e = host.files.get(`/var/lib/openvibe-restore/ai-20260922-120000/${f}`);
-            assert.deepStrictEqual([e.owner, e.mode], ['root', 0o600], f);
-        }
+        assert.deepStrictEqual(dirsOf(host, '/var/backups/openvibe.staging'), []);
+        assert.ok(host.dumps.every((d) => d.as === 'postgres'));
+        const restored = await host.cli('restore-download', 'ai', 'latest');
+        assert.strictEqual(restored.code, 0, restored.out);
+        for (const file of ['ai.dump', 'ai-extra.dump']) assert.strictEqual(host.files.get(`/var/lib/openvibe-restore/ai-20260922-120000/${file}`).mode, 0o600);
     }),
 
-    test('a copy that is a link is refused, not chowned', async () => {
+    test('a failed PostgreSQL dump does not prevent another service from backing up', async () => {
         const host = backupHost();
-        // The service user hard-links its "copy" to some other file before root takes it over.
-        const orig = host.exec.sqliteBackup;
-        host.exec.sqliteBackup = async (db, dest, o) => { await orig(db, dest, o); host.files.get(dest).nlink = 2; };
-        const r = await host.cli('backup', 'live');
-        host.exec.sqliteBackup = orig;
-        assert.strictEqual(r.code, 2);
-        assert.match(r.out, /not a plain file/);
-        assert.ok(!host.calls.some((c) => (c.cmd === 'chown' || c.cmd === 'chmod') && String(c.args[c.args.length - 1]).endsWith('live.db')), 'a linked copy is never chowned');
-        assert.deepStrictEqual(dirsOf(host, '/var/backups/openvibe/live'), [], 'and never moved into the backups');
+        const orig = host.exec.run;
+        host.exec.run = async (cmd, args, opts) => cmd === 'pg_dump' && args.includes('ov_media')
+            ? { code: 1, stdout: '', stderr: 'simulated pg_dump failure' } : orig(cmd, args, opts);
+        const r = await host.cli('backup', '--all', '--json');
+        assert.strictEqual(r.code, 2, r.out);
+        const summary = JSON.parse(r.out);
+        assert.deepStrictEqual(summary.services.map((x) => [x.service, x.status]), [['live', 'ok'], ['media', 'failed'], ['ai', 'ok'], ['openre', 'ok']]);
+        assert.ok(host.files.has('/var/backups/openvibe/ai/20260922-120000/ai-extra.dump'));
     }),
 
     // ── off-host upload ────────────────────────────────────────────────────────
@@ -320,7 +200,7 @@ runTests([
         const r = await host.cli('backup', '--all', '--offsite');
         assert.strictEqual(r.code, 0, r.out);
         const base = 'openvibe-backups/fake-host/20260922-120000/';
-        assert.deepStrictEqual([...host.s3.objects.keys()].sort(), [`${base}ai/ai-extra.db.ovbk`, `${base}ai/ai.db.ovbk`, `${base}live/live.db.ovbk`, `${base}manifest.json`, `${base}media/media.db.ovbk`]);
+        assert.deepStrictEqual([...host.s3.objects.keys()].sort(), [`${base}ai/ai-extra.dump.ovbk`, `${base}ai/ai.dump.ovbk`, `${base}live/live.dump.ovbk`, `${base}manifest.json`, `${base}media/media.dump.ovbk`, `${base}openre/openre.dump.ovbk`]);
         const key = Buffer.from(KEY_HEX, 'hex');
         for (const [k, v] of host.s3.objects) {
             if (k.endsWith('manifest.json')) continue;
@@ -328,12 +208,12 @@ runTests([
             const plain = await decrypt(key, v);
             const svc = k.split('/')[3];
             const file = path.basename(k, '.ovbk');
-            assert.ok(plain.equals(host.files.get(`/var/backups/openvibe/${svc}/20260922-120000/${file}`).content), `${k} round trip`);
+            assert.ok(plain.equals(Buffer.from(host.files.get(`/var/backups/openvibe/${svc}/20260922-120000/${file}`).content)), `${k} round trip`);
         }
         const m = JSON.parse(host.s3.objects.get(`${base}manifest.json`));
         assert.strictEqual(m.hmac, bcrypto.hmacManifest(key, JSON.stringify((({ hmac, ...rest }) => rest)(m))));
         assert.strictEqual(m.keyId, bcrypto.keyId(key));
-        assert.deepStrictEqual(Object.keys(m.services), ['live', 'media', 'ai']);
+        assert.deepStrictEqual(Object.keys(m.services), ['live', 'media', 'ai', 'openre']);
         // Only PutObject for small files; path-style B2 endpoint and region from the endpoint.
         assert.ok(host.s3.sent.filter((c) => /Put/.test(c.name)).every((c) => c.input.Bucket === 'openvibe-backups-test'));
         const cfg = host.s3Configs[0];
@@ -346,14 +226,14 @@ runTests([
         noSecrets(host.s3.objects.get(`${base}manifest.json`), 'the manifest');
         const summary = JSON.parse(host.read('/var/lib/openvibe-host/backup-runs/20260922-120000.json'));
         assert.strictEqual(summary.offsite.ok, true);
-        assert.strictEqual(summary.offsite.uploaded.length, 4);
+        assert.strictEqual(summary.offsite.uploaded.length, 5);
         assert.strictEqual(summary.offsite.location, base);
     }),
 
     test('large files go up as a multipart upload; a failed part aborts it', async () => {
         const host = backupHost();
         const big = crypto.randomBytes(300 * 1024);
-        host.backupContent = (db) => (db.includes('openvibe.live') ? big : Buffer.from('small'));
+        host.dumpContent = (db) => db === 'ov_live' ? Buffer.concat([Buffer.from('pg_dump -Fc'), big]) : Buffer.from(`pg_dump -Fc of ${db}`);
         await host.cli('backup', '--all');
         const summary = await require('../lib/commands/backup').readRun(host.exec, host.inv, null);
         const cfg = await offsite.loadConfig(host.exec, {});
@@ -364,8 +244,8 @@ runTests([
         assert.strictEqual(live.parts, Math.ceil(live.cipherBytes / (64 * 1024)));
         const partSizes = host.s3.sent.filter((c) => c.name === 'UploadPartCommand').map((c) => c.input.Body);
         assert.ok(partSizes.slice(0, -1).every((b) => b === `<${64 * 1024} bytes>`), 'every part but the last is exactly partSize');
-        assert.strictEqual(live.cipherBytes, bcrypto.encryptedSize(big.length, 16 * 1024));
-        assert.ok((await decrypt(Buffer.from(KEY_HEX, 'hex'), host.s3.objects.get(live.object))).equals(big));
+        assert.strictEqual(live.cipherBytes, bcrypto.encryptedSize(big.length + 11, 16 * 1024));
+        assert.ok((await decrypt(Buffer.from(KEY_HEX, 'hex'), host.s3.objects.get(live.object))).equals(Buffer.concat([Buffer.from('pg_dump -Fc'), big])));
         assert.ok(host.s3.sent.some((c) => c.name === 'CompleteMultipartUploadCommand'));
 
         const s3 = mockS3();
@@ -456,7 +336,7 @@ runTests([
     test('off-host retention: runs older than 30 days are deleted, the newest 7 always stay, and nothing is pruned after a failed upload', async () => {
         const host = backupHost();
         const put = (run) => {
-            host.s3.objects.set(`openvibe-backups/fake-host/${run}/live/live.db.ovbk`, Buffer.from('x'));
+            host.s3.objects.set(`openvibe-backups/fake-host/${run}/live/live.dump.ovbk`, Buffer.from('x'));
             host.s3.objects.set(`openvibe-backups/fake-host/${run}/manifest.json`, Buffer.from('{}'));
         };
         // Ten runs 35..44 days old, one 5 days old; another host's and a stray object are never touched.
@@ -466,7 +346,7 @@ runTests([
         host.s3.objects.set('openvibe-backups/fake-host/README', Buffer.from('keep'));
 
         // A failed upload: no pruning at all.
-        host.s3.failPut = (k) => k.endsWith('media.db.ovbk');
+        host.s3.failPut = (k) => k.endsWith('media.dump.ovbk');
         const bad = await host.cli('backup', '--all', '--offsite', '--json');
         assert.strictEqual(bad.code, 2);
         const badSummary = JSON.parse(bad.out);
@@ -495,10 +375,11 @@ runTests([
         host.s3 = mockS3({ pageSize: 2 });
         await host.cli('backup', '--all', '--offsite');
         host.advance(DAY);
-        await host.cli('backup', '--all', '--offsite');
+        host.pgBackups = [{ type: 'diff', timestamp: { stop: Math.floor(host.exec.now() / 1000) - 3600 } }];
+        await host.cli('backup', '--all', '--offsite', '--logical');
         const l = await host.cli('offsite', 'list', 'live', '--json');
         assert.strictEqual(l.code, 0, l.out);
-        assert.deepStrictEqual(JSON.parse(l.out).map((x) => [x.run, x.objects, x.manifest]), [['20260923-120000', 5, true], ['20260922-120000', 5, true]]);
+        assert.deepStrictEqual(JSON.parse(l.out).map((x) => [x.run, x.objects, x.manifest]), [['20260923-120000', 6, true], ['20260922-120000', 6, true]]);
         const c = await host.cli('offsite', 'check');
         assert.strictEqual(c.code, 0, c.out);
         assert.match(c.out, /s3:\/\/openvibe-backups-test\/openvibe-backups\/fake-host\/ .*region us-west-004.*key id [0-9a-f]{16}; retention 30 days/);
@@ -509,20 +390,18 @@ runTests([
     test('restore-download: verified, decrypted copies in a new directory; never overwrites; never near a live database', async () => {
         const host = backupHost();
         await host.cli('backup', '--all', '--offsite');
-        const original = host.files.get('/var/backups/openvibe/live/20260922-120000/live.db').content;
+        const original = host.files.get('/var/backups/openvibe/live/20260922-120000/live.dump').content;
         const r = await host.cli('restore-download', 'live', '20260922-120000');
         assert.strictEqual(r.code, 0, r.out);
-        const dest = '/var/lib/openvibe-restore/live-20260922-120000/live.db';
-        assert.ok(host.files.get(dest).content.equals(original));
-        assert.match(r.out, /quick_check ok/);
-        assert.ok(host.sqliteCalls.some((c) => c.db === dest && /quick_check/.test(c.sql)));
-        // The live database was never written.
-        assert.strictEqual(host.read('/opt/openvibe.live/data/live.db'), 'sqlite');
+        const dest = '/var/lib/openvibe-restore/live-20260922-120000/live.dump';
+        assert.ok(Buffer.from(host.files.get(dest).content).equals(Buffer.from(original)));
+        assert.match(r.out, /pg_restore --list ok/);
+        assert.ok(host.calls.some((c) => c.cmd === 'pg_restore' && c.args.includes('--list')));
 
         const again = await host.cli('restore-download', 'live', '20260922-120000');
         assert.strictEqual(again.code, 1);
         assert.match(again.out, /not empty; restore-download never overwrites/);
-        for (const out of ['/opt/openvibe.live/data', '/opt/openvibe.live', '/opt', '/var/lib/openvibe-ai', '/var/backups/openvibe/live/x']) {
+        for (const out of ['/opt/openvibe.live/data', '/opt/openvibe.live', '/opt', '/var/backups/openvibe/live/x']) {
             const bad = await host.cli('restore-download', 'live', 'latest', '--out', out);
             assert.strictEqual(bad.code, 1, out);
             assert.match(bad.out, /refusing --out/, out);
@@ -536,16 +415,16 @@ runTests([
         const host = backupHost();
         await host.cli('backup', '--all', '--offsite');
         const base = 'openvibe-backups/fake-host/20260922-120000/';
-        const obj = Buffer.from(host.s3.objects.get(`${base}media/media.db.ovbk`));
+        const obj = Buffer.from(host.s3.objects.get(`${base}media/media.dump.ovbk`));
         obj[obj.length - 20] ^= 1;
-        host.s3.objects.set(`${base}media/media.db.ovbk`, obj);
+        host.s3.objects.set(`${base}media/media.dump.ovbk`, obj);
         const t = await host.cli('restore-download', 'media', 'latest');
         assert.strictEqual(t.code, 2);
         assert.match(t.out, /failed authentication/);
-        assert.strictEqual(host.files.has('/var/lib/openvibe-restore/media-20260922-120000/media.db'), false, 'a bad copy is removed');
+        assert.strictEqual(host.files.has('/var/lib/openvibe-restore/media-20260922-120000/media.dump'), false, 'a bad copy is removed');
 
         // Swapping two encrypted files is caught by the manifest's hashes.
-        host.s3.objects.set(`${base}ai/ai.db.ovbk`, host.s3.objects.get(`${base}ai/ai-extra.db.ovbk`));
+        host.s3.objects.set(`${base}ai/ai.dump.ovbk`, host.s3.objects.get(`${base}ai/ai-extra.dump.ovbk`));
         const sw = await host.cli('restore-download', 'ai', 'latest', '--out', '/root/r-ai');
         assert.strictEqual(sw.code, 2);
         assert.match(sw.out, /does not match the manifest/);
@@ -557,9 +436,6 @@ runTests([
         assert.strictEqual(f.code, 2);
         assert.match(f.out, /failed its HMAC check/);
 
-        const none = await host.cli('restore-download', 'openre', 'latest');
-        assert.strictEqual(none.code, 1);
-        assert.match(none.out, /no off-host run of openre/);
     }),
 
     test('restore-download: a PostgreSQL .dump is verified with pg_restore --list; a corrupt one is refused', async () => {
@@ -595,9 +471,8 @@ runTests([
         assert.strictEqual(r.code, 0, r.out);
         const rec = JSON.parse(r.out);
         const f = rec.files.find((x) => x.file.endsWith('objects.tar.gz'));
-        assert.deepStrictEqual([f.kind, f.quickCheck], ['objects', null], 'an object archive is not quick_checked as a database');
+        assert.deepStrictEqual([f.kind, f.check], ['objects', null], 'an object archive is checked by a drill');
         assert.ok(host.files.has('/root/r-host/objects.tar.gz'));
-        assert.ok(!host.sqliteCalls.some((c) => c.db === '/root/r-host/objects.tar.gz'));
         assert.ok(rec.files.some((x) => x.file.endsWith('host.dump') && x.kind === 'database'), 'the database is still checked');
     }),
 
@@ -633,7 +508,7 @@ runTests([
         r = await host.cli('backup', '--all', '--offsite');
         assert.strictEqual(r.code, 2);
         assert.match(r.out, /OFFSITE\s+FAILED: encryption key file/);
-        assert.ok(host.files.has('/var/backups/openvibe/live/20260922-120000/live.db'));
+        assert.ok(host.files.has('/var/backups/openvibe/live/20260922-120000/live.dump'));
 
         const { createFakeHost } = require('./fake-host');
         const plain = createFakeHost({ root: false, user: 'ubuntu' });

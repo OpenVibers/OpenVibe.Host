@@ -28,14 +28,7 @@ visibility `internal`, its own payload). Browsers never receive that one.
 - A `static-build` service with `announce.releaseFiles` (Sites) sends one notification per
   `dist/<domain>/release.json`, with that placeholder's service, release and `https://<domain>` origin,
   and stops at the first failure.
-- Since WS-N task 11 each repository's `deploy/scripts/deploy.sh` is a wrapper around `ovhost deploy <svc>`
-  ([deploy-strategies.md](deploy-strategies.md)), so the deploy announces. Their fallback scripts
-  (`deploy/scripts/deploy-legacy.sh`) still call `ovhost announce <service>` at the end:
-  - Live, Tools, Games: `ovhost announce live|tools|games`.
-  - Sites: one call per placeholder with `--release` and `--origin`.
-
-  They do nothing if `ovhost` is missing or has no `announce`, and a failed announcement never fails the
-  deploy.
+- Repository deploy wrappers call `ovhost deploy <service>`, which announces a deployed release.
 
 `ovhost announce <service> [--release <id>] [--commit <sha>] [--origin <url>] [--force] [--dry-run] [--events-env <file>] [--json]`
 
@@ -106,7 +99,7 @@ All commands run on the production host. None of them prints a secret.
    the Network admin, `GET https://openvibe.network/api/admin/grants?client=host`, where it shows as
    active. Or check the database directly:
    ```
-   cd /opt/openvibe.network && sudo sqlite3 data/network.db "SELECT capability, audience, revoked_at FROM principal_grants WHERE client_id='host'"
+   sudo -u postgres psql ov_network -c "SELECT capability, audience, revoked_at FROM principal_grants WHERE client_id='host'"
    ```
    Expect `events.event.publish|openvibe.events|` (not revoked). If it is missing, grant it in the
    admin: `POST /api/admin/grants { client_id: "host", capability: "events.event.publish", reason: "release notifications (WS-P 9)" }`.

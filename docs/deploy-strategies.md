@@ -4,18 +4,14 @@
 Live (release layout), Tools, Sites, OpenRestream and Network, and Games (which deployed by hand). Each service
 entry in the inventory names a **strategy**: an engine plus the defaults the script it replaces encoded.
 Every repository keeps `deploy/scripts/deploy.sh` as a thin wrapper that maps its old flags onto ovhost,
-with the old script body kept as `deploy/scripts/deploy-legacy.sh` for the fallback.
+and invokes ovhost directly.
 
-**State (2026-09-28):** in production since the 2026-09-27 cutover (the checklist below was run then).
-Every service, including the six here, deploys with `sudo ovhost deploy <svc>` and rolls back with `sudo ovhost rollback
-<svc>`; the strategies are tested against the fake host (`test/strategy-release-layout.test.js`,
-`test/strategy-in-place.test.js`) and in each repository (the wrapper tests). The wrappers' legacy fallback is only
-reached where an ovhost without `capabilities` answers, which no longer happens on the production host.
+Production deploys and rollbacks use `ovhost deploy <svc>` and `ovhost rollback <svc>`. The strategy tests exercise each implementation against the fake host.
 
 | Service | Strategy | Replaces | Wrapper (`deploy/scripts/deploy.sh`) |
 |---|---|---|---|
 | live | `release-layout` | Live `deploy.sh` (release layout) | `--wait-idle`, `--restart`, `--rollback` → `ovhost rollback live`, `DRY_RUN=1` → `ovhost plan live`; `--force` refused (see below) |
-| openre | `release-layout` | OpenRestream `deploy.sh release` + `api` | `deploy`, `release [<ref>]` → `--prepare-only`, `api [<sha>]` → `deploy --to <sha>`, `rollback`, `plan`; `workers`, `status`, `prune` stay in the legacy script |
+| openre | `release-layout` | OpenRestream `deploy.sh release` + `api` | `deploy`, `release [<ref>]` → `--prepare-only`, `api [<sha>]` → `deploy --to <sha>`, `rollback`, `plan` |
 | tools | `multi-app` | Tools `deploy.sh` | `--wait-idle`, `--restart`, `--force`, `--rollback`, `DRY_RUN=1` |
 | sites | `static-build` | Sites `deploy.sh` (after a manual pull) | always `ovhost deploy sites --restart` (rebuild every run, as before); `DRY_RUN=1` |
 | games | `pnpm-build` | the manual procedure | `--wait-idle`, `--restart`, `--force`, `--rollback`, `DRY_RUN=1` |
@@ -23,41 +19,9 @@ reached where an ovhost without `capabilities` answers, which no longer happens 
 
 Every other service keeps the default strategy, `git-checkout`, which is what `ovhost deploy` did before.
 
-## The wrappers and their fallback
+## Deploy wrappers
 
-Each wrapper first asks `ovhost capabilities <svc>` (run as root: `sudo` when the wrapper is not root). It
-hands over to ovhost only when every line it needs is there:
-
-```
-ovhost=0.3.0
-deploy-api=1
-strategies=git-checkout,multi-app,static-build,pnpm-build,release-layout
-commands=plan,deploy,rollback,announce,capabilities
-deploy-flags=--wait-idle,--force,--restart,--to,--install-units,--ready-timeout,--prepare-only,--no-announce
-service=live
-strategy=release-layout
-managed=yes
-layout=release
-```
-
-`deploy-api` is at least 1, `strategy=` is the one the wrapper was written for, and `managed=yes`.
-Otherwise it prints why (`ovhost not found`, `no 'capabilities' (too old)`, `deploy-api is 0`, `the host
-inventory does not deploy live with strategy release-layout (none)`, …) and runs `deploy-legacy.sh` with the
-original arguments. So an old ovhost, a missing one, or an inventory that has not been changed yet never
-breaks a deploy. `OVHOST_LEGACY=1` forces the fallback; `OVHOST=<path>` picks another ovhost. Where the legacy
-script cannot do what was asked (Tools, Network and Games have no `--rollback`; none of them has `DRY_RUN`
-except Live), the wrapper refuses instead of doing something else. The Sites fallback pulls first (it restores
-`dist/` and runs `git pull --ff-only` as the checkout owner), then runs the pulled legacy script. OpenRestream's
-fallback runs `release` then `api` for `deploy`.
-
-Exit codes are ovhost's: `0` ok · `1` usage/precondition · `2` validation failed, nothing restarted · `3` not
-ready, rolled back and serving · `4` rollback failed, **manual intervention** · `5` protected sessions active
-· `6` frozen.
-
-**Live `--force`.** The old script's `--force` meant "discard local tracked changes" (legacy in-place layout
-only). ovhost never discards changes, and its `--force` drops live streams and passes a freeze. The Live
-wrapper therefore refuses `--force`; run `sudo ovhost deploy live --force` yourself when that is what you
-mean. (In the fallback, `--force` goes to the legacy script as before.)
+Repository wrappers call `ovhost plan`, `ovhost deploy`, or `ovhost rollback` for their service. If ovhost is missing, the wrapper exits with an error. The `capabilities` command remains available for installed wrappers that still query it.
 
 ## The two engines
 
@@ -117,7 +81,7 @@ overrides them.
 
 | Field | Meaning | Default |
 |---|---|---|
-| `strategy` | `git-checkout`, `multi-app`, `static-build`, `pnpm-build` or `release-layout` | `git-checkout`; an entry with `layout: "release"` and no strategy stays unmanaged (deployed by its own script), as before |
+| `strategy` | `git-checkout`, `multi-app`, `static-build`, `pnpm-build` or `release-layout` | `git-checkout`; `layout: "release"` requires `release-layout` |
 | `release.git` | the clone releases are made from (relative to `repo`, or absolute inside it) | `repo` |
 | `release.releases`, `release.current` | the releases directory and the link | `releases`, `current` |
 | `release.id` | `time-sha8` (`<UTC yyyymmdd-HHMMSS>-<sha8>`, Live; the old script used the host's local time, the same on a UTC host) or `sha12` (OpenRestream; one release per commit, reused) | `time-sha8` |
@@ -190,129 +154,13 @@ log and a freeze refuses.
   operator's environment): `sudo` does not pass `ADMIN_TOKEN`, so it said "chat notification skipped" in
   practice, and Live posts its own deploy notice when it boots on new commits (`server/chat/deploy-notice.js`,
   through Events).
-- **Live's in-place (legacy) layout branch** of `deploy.sh`: production runs the release layout since
-  2026-09-24; an in-place Live would be `strategy: git-checkout`.
 - **Live `--force`** (discard local tracked changes): ovhost never discards changes (see above).
 - **Network's "restart anyway" when nothing is new**: only with `--restart` now.
 - **OpenRestream `workers`, `status`, `prune`**: they stay in the repository's script. Starting a worker
   generation is not a deploy ovhost makes (it never starts, stops or restarts a worker unit); ovhost prunes
   on its own and keeps every release a worker runs from.
 - **Games `sudo git`**: ovhost runs git as the checkout owner. If earlier `sudo git pull`s left root-owned
-  objects in `.git`, fix the ownership once (checklist below).
-
-## Production cutover checklist (for the operator)
-
-Run on 2026-09-27 (the cutover); kept as the record of what was done and as the procedure for a new host. Each step is
-read-only until step 5.
-
-1. **Update ovhost.** `cd /usr/local/lib/openvibe-host && sudo git pull --ff-only && sudo npm ci --omit=dev
-   --no-audit --no-fund`, then `ovhost --version` (0.3.0) and `sudo ovhost capabilities` (`deploy-api=1`).
-   Until step 3 every wrapper still falls back (the inventory has no strategies).
-2. **Check the checkouts.**
-   - `sudo find /opt/openvibe.games/.git ! -user ubuntu | head`: if anything is listed,
-     `sudo chown -R ubuntu:ubuntu /opt/openvibe.games/.git` (earlier `sudo git` pulls).
-   - `sudo -u ubuntu bash -lc 'command -v pnpm && pnpm --version'`: ovhost runs pnpm as ubuntu with the
-     PATH it was started with; if pnpm lives elsewhere, set `install.command`/`build` to its absolute path.
-   - `ls -ld /opt/openvibe.live/repo /opt/openre.stream/repo` (root-owned clones, `owner: root`).
-   - `sudo ss -Hltnp 'sport = :3000'` shows `"systemd",pid=1` (else the first Live deploy rebinds the socket).
-3. **Edit the inventory.** `sudo cp /etc/openvibe/host.json /etc/openvibe/host.json.pre-ws-n-11`, apply the
-   [proposed diff](#proposed-production-inventory-diff), then `sudo ovhost show live openre tools sites games
-   network` and `sudo ovhost validate <svc>` for each (no new errors).
-4. **Compare each plan with the old script** (`sudo ovhost plan <svc>` only fetches):
-   - live: `sudo ovhost plan live` against `cd /opt/openvibe.live/current && sudo DRY_RUN=1 bash
-     deploy/scripts/deploy-legacy.sh` (the old script; `deploy.sh` before the wrapper is deployed): same target sha and change classes (restart yes/no),
-     `node_modules` hard-linked vs `npm ci` the same way, `socket held by systemd on :3000`,
-     `strategy release-layout (release layout, keep 5)`.
-   - openre: `sudo ovhost plan openre` against `sudo bash /opt/openre.stream/repo/deploy/scripts/deploy.sh
-     status`: current release = the `current` link, restart = `openre-api.service,
-     openre-session-coordinator.service` only, ingest sessions counted.
-   - tools: `sudo ovhost plan tools`: the installs match the apps whose `package.json`/lockfile changed
-     (`git -C /opt/openvibe.tools diff --name-only HEAD origin/main -- 'apps/*/package*.json'`), no
-     `apps/_shared` line, the restart lists every `systemctl list-unit-files 'openvibe-tools*'` unit (no
-     "not in the inventory" warning), the preflight lists the jobs and guard checks.
-   - sites: `sudo ovhost plan sites --restart`: build output restored, `npm ci`, `node build.js`, repo vhosts,
-     one notification per placeholder, no tracked changes.
-   - games: `sudo ovhost plan games`: tracked changes none (dist-types restored), `install (always)`, build,
-     preflight better-sqlite3, restart `openvibe-games.service`, players online counted (drain report).
-   - network: `sudo ovhost plan network`: nothing unexpected (Network already deploys with ovhost; the
-     entry only gains `installUnits`).
-5. **Pull the wrappers.** Tools, Sites, Network and Games get theirs with their next pull (the old Tools and
-   Network scripts pull themselves, so the deploy that brings the wrapper is still run by the old script).
-   Live's arrives in the release that contains it; OpenRestream's with `git -C /opt/openre.stream/repo pull`.
-6. **Deploy through the wrapper**, one service at a time, lowest risk first: network, sites, games (quiet
-   hour or `--wait-idle`), tools, openre (no ingest session, or `--wait-idle`), live (`--wait-idle`). Each
-   wrapper prints `ovhost deploy <svc> …`; if it prints "running deploy-legacy.sh", read why.
-7. **Verify.** `sudo ovhost releases <svc>` (strategy, from/to, result), `sudo ovhost status`, and for Live
-   `sudo ss -Hltnp 'sport = :3000'` still shows `"systemd",pid=1`.
-8. **Undo** (any step): `OVHOST_LEGACY=1 sudo deploy/scripts/deploy.sh` runs the old script for one deploy;
-   restoring `/etc/openvibe/host.json.pre-ws-n-11` (or removing a `strategy`) makes the wrapper fall back
-   for good.
-
-## Proposed production inventory diff
-
-`/etc/openvibe/host.json` is not changed by this work. These are the fields each entry needs (merge them
-into the existing entries; `host.example.json` in this repository has the full entries). JSON has no
-comments: the `//` notes below are for reading only.
-
-```jsonc
-"live": {
-  "repo": "/opt/openvibe.live",                  // the release root (".../current" is read the same way)
-  "owner": "root",                               // git runs as root in the root-owned clone
-  "runAs": "ubuntu",
-  "strategy": "release-layout",
-  "release": { "git": "repo", "id": "time-sha8", "links": { "data": "../../shared/data" }, "keep": 5 },
-  // MUST be the release-layout units: the in-place ones (deploy/systemd/*.service) run from
-  // /opt/openvibe.live, and installing them would point Live at the stale checkout.
-  "unitSources": {
-    "openvibe-live.service": "deploy/systemd/release/openvibe-live.service",
-    "openvibe-live.socket": "deploy/systemd/release/openvibe-live.socket",
-    "openvibe-live.service.d/socket.conf": "deploy/systemd/release/openvibe-live.service.d/socket.conf"
-  },
-  "ready": { "url": "http://127.0.0.1:3000/api/ready", "timeoutSeconds": 90, "release": true },
-  "preflight": { "syntaxCheck": true }
-  // unchanged: units, socketUnit, port, noRestartPaths, protected, drain (refuse, 28800 s), databases,
-  // backupOnChange, nginx (repoVhost is never installed by a deploy; the plan names a change)
-},
-"openre": {
-  "repo": "/opt/openre.stream",                  // the release root; the clone is /opt/openre.stream/repo
-  "strategy": "release-layout",                  // replaces "layout": "release"
-  "owner": "root",
-  "runAs": "ubuntu",
-  "release": { "git": "repo", "id": "sha12", "reuseModules": false, "chown": "ubuntu:ubuntu", "keep": 5 },
-  "ready": { "url": "http://127.0.0.1:4500/api/ready", "timeoutSeconds": 60 }
-  // unchanged: units (API + coordinator), workerUnits, protected (ingest sessions), drain
-},
-"tools": {
-  "strategy": "multi-app",                       // skipPackages apps/_*, removeUntrackedLockfiles
-  "unitsMatch": "openvibe-tools*.service",
-  "ready": { "url": "http://127.0.0.1:4001/api/ready", "headers": { "Host": "openvibe.tools" },
-             "timeoutSeconds": 60, "release": true, "allUnits": true },
-  "preflight": {
-    "dirs": ["data"],
-    "checks": [
-      { "label": "jobs runtime loads", "packages": ["apps/img", "apps/audio", "apps/docs"],
-        "argv": ["node", "-e", "const D=require('better-sqlite3'); new D(':memory:').close(); require('openvibe-contracts'); require('openvibe-sdk'); require('../_shared/jobs')"] },
-      { "label": "guard loads", "packages": "*",
-        "argv": ["node", "-e", "const D=require('better-sqlite3'); new D(':memory:').close(); require('../_shared/guard')"] }
-    ]
-  }
-},
-"sites": {
-  "strategy": "static-build"                     // npm ci, node build.js, generated dist/, repo vhosts
-                                                 // behind nginx -t, one announce per dist/*/release.json
-},
-"games": {
-  // remove "managed": false and "unmanagedReason"
-  "strategy": "pnpm-build",
-  "generated": ["apps/client/dist-types/", "apps/server/dist-types/"],
-  "preflight": { "checks": [ { "label": "better-sqlite3 loads under this Node", "packages": ["apps/server"],
-                               "argv": ["node", "-e", "new (require('better-sqlite3'))(':memory:').close()"] } ] }
-  // unchanged: units, ready, protected (players online), drain (report), databases, drill
-},
-"network": {
-  "installUnits": true                           // the unit file is installed whenever it differs
-}
-```
+  objects in `.git`, fix the ownership once.
 
 ## The deploy controller: `ovhost reconcile` (roadmap WS-X11 phase 1, D72)
 

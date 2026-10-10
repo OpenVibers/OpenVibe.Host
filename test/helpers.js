@@ -1,7 +1,7 @@
 'use strict';
 /**
  * A standard fake host with the shapes of the real estate: Live (socket-activated, /api/streams),
- * Media (recordings counted in SQLite), Tools (several packages and units), Sites (static build +
+ * Media (recordings counted in PostgreSQL), Tools (several packages and units), Sites (static build +
  * nginx vhosts, no units) and Events (SSE, drain policy "report").
  */
 const path = require('path');
@@ -48,7 +48,7 @@ function inventoryDoc() {
                 noRestartPaths: ['public/', 'docs/', '*.md'],
                 protected: { kind: 'http-json-count', url: 'http://127.0.0.1:3000/api/streams', array: 'streams', where: { is_live: true }, label: 'live streams' },
                 drain: { policy: 'refuse', waitMaxSeconds: 600, pollSeconds: 60, quietChecks: 2 },
-                databases: [{ name: 'live', path: '/opt/openvibe.live/data/live.db' }],
+                databases: [{ name: 'live', engine: 'postgresql', database: 'ov_live' }],
                 backupOnChange: ['server/db/schema.sql'],
                 nginx: { vhost: 'openvibe.live.conf', variant: 'websocket', wsPaths: ['/ws/'] },
                 lifecycle: lifecycleDoc(),
@@ -60,8 +60,8 @@ function inventoryDoc() {
                 env: { required: 'from-example' },
                 port: 4100,
                 ready: { url: 'http://127.0.0.1:4100/healthz', timeoutSeconds: 30 },
-                protected: { kind: 'sqlite-count', db: '/opt/openvibe.media/data/media.db', sql: 'SELECT count(*) AS n FROM vods WHERE is_recording = 1', label: 'recordings in progress' },
-                databases: [{ name: 'media', path: '/opt/openvibe.media/data/media.db' }],
+                protected: { kind: 'postgresql-count', database: 'ov_media', sql: 'SELECT count(*) AS n FROM vods WHERE is_recording = 1', label: 'recordings in progress' },
+                databases: [{ name: 'media', engine: 'postgresql', database: 'ov_media' }],
                 lifecycle: lifecycleDoc({ liveness: { endpoint: '/healthz', means: 'the process answers HTTP and reads its database' }, shutdown: { signal: 'SIGTERM', deadlineSeconds: 70, drains: ['recordings stopped', 'HTTP server closed'] } }),
             },
             tools: {
@@ -126,7 +126,7 @@ function scenario() {
     }
 
     service('live', {
-        'package.json': pkgJson('openvibe-live', ['express', 'better-sqlite3', 'openvibe-shared']),
+        'package.json': pkgJson('openvibe-live', ['express', 'openvibe-sdk', 'openvibe-shared']),
         'package-lock.json': '{"lockfileVersion":3,"v":1}',
         'server/index.js': 'console.log(1);',
         'server/db/schema.sql': 'CREATE TABLE a(x);',
@@ -137,16 +137,14 @@ function scenario() {
     host.addUnit('openvibe-live.socket', { sub: 'listening', partOf: ['openvibe-live.service'], mainPid: 0 });
     host.put('/etc/systemd/system/openvibe-live.service', '[Service]\nExecStart=node server/index.js\nEnvironment=NODE_ENV=production\n');
     host.put('/etc/openvibe/live.env', `JWT_SECRET=${SECRET}\nBASE_URL=https://openvibe.live\nPAYPAL_CLIENT_SECRET="${SECRET}-paypal"\nOV_OAUTH_CLIENT_SECRET=${SECRET}-oauth\n`, { mode: 0o600 });
-    host.put('/opt/openvibe.live/data/live.db', 'sqlite', { owner: 'ubuntu' });
 
     service('media', {
-        'package.json': pkgJson('openvibe-media', ['express', 'better-sqlite3']),
+        'package.json': pkgJson('openvibe-media', ['express', 'openvibe-sdk']),
         'package-lock.json': '{"lockfileVersion":3,"v":1}',
         'server/index.js': 'media();',
         '.env.example': 'PORT=4100\nMEDIA_B2_APP_KEY=\nMEDIA_R2_SECRET_ACCESS_KEY=\n',
     }, ['.']);
     host.put('/etc/openvibe/media.env', `PORT=4100\nMEDIA_B2_APP_KEY=${SECRET}-b2\nMEDIA_R2_SECRET_ACCESS_KEY=${SECRET}-r2\n`, { mode: 0o600 });
-    host.put('/opt/openvibe.media/data/media.db', 'sqlite', { owner: 'ubuntu' });
 
     service('tools', {
         'apps/gateway/package.json': pkgJson('tools-gateway', ['express', 'openvibe-shared']),
@@ -185,7 +183,10 @@ function scenario() {
     host.http.set('http://127.0.0.1:4100/healthz', readyFor('openvibe-media.service'));
     host.http.set('http://127.0.0.1:4001/api/health', readyFor('openvibe-tools.service'));
     host.http.set('http://127.0.0.1:4300/api/ready', readyFor('openvibe-events.service'));
-    host.sqliteHandler = (db, sql) => (/is_recording/.test(sql) ? [{ n: host.recording }] : [{ n: 0 }]);
+    host.psqlHandler = (db, sql) => (/is_recording/.test(sql) ? [{ n: host.recording }] : undefined);
+    host.pgDatabases.add('ov_live');
+    host.pgDatabases.add('ov_media');
+    host.pgBackups = [{ type: 'diff', timestamp: { stop: Math.floor(host.exec.now() / 1000) - 3600 } }];
 
     host.repo = (id) => repoFor[id];
     host.ctx = () => ({ exec: host.exec, inv, log: (s) => host.logs.push(s) });

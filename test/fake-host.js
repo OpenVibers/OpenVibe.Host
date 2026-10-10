@@ -1,7 +1,7 @@
 'use strict';
 /**
  * A fake host implementing the executor interface (lib/executor.js) in memory: a filesystem, git
- * repositories, systemd units, npm, nginx, ss, HTTP endpoints, SQLite and PostgreSQL. Nothing here
+ * repositories, systemd units, npm, nginx, ss, HTTP endpoints and PostgreSQL. Nothing here
  * touches the real machine. Every run() call is recorded in `calls` so tests can assert what would
  * have been executed (and as whom).
  *
@@ -31,8 +31,6 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         nginxTest: () => ({ code: 0, stderr: 'nginx: configuration file /etc/nginx/nginx.conf test is successful' }),
         npm: null, // (cwd, argv, as) -> undefined | { code, stderr } ; default installs package.json deps
         npmRewritesLockfile: true,
-        sqliteHandler: () => [{ n: 0 }],
-        sqliteCalls: [],
         // ── PostgreSQL ──
         // The cluster's databases and roles, the archiver's failed WAL count, the stanza's backups
         // and its status. A test drives them directly (host.pgDatabases.add('ov_trade')) or through
@@ -748,20 +746,6 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             // free-space figure. Mirror that so a space check before the directory exists is caught.
             if (!get(p)) { const err = new Error(`ENOENT: no such file or directory, statfs '${p}'`); err.code = 'ENOENT'; throw err; }
             return { free: host.statfsFree, size: host.statfsSize };
-        },
-        async sqlite(db, sql, { as } = {}) {
-            host.sqliteCalls.push({ op: 'query', db, sql, as });
-            calls.push({ cmd: 'sqlite', args: [db, sql], as: as || null, privileged: false, cwd: null });
-            return host.sqliteHandler(db, sql, as);
-        },
-        async sqliteBackup(db, dest, { as } = {}) {
-            host.sqliteCalls.push({ op: 'backup', db, dest, as });
-            calls.push({ cmd: 'sqlite-backup', args: [db, dest], as: as || null, privileged: false, cwd: null });
-            if (files.has(path.resolve(dest))) throw new Error(`refusing to overwrite ${dest}`);
-            const parent = files.get(path.dirname(path.resolve(dest)));
-            if (as && parent && parent.owner !== as) throw new Error(`cannot open ${dest}: permission denied (directory owned by ${parent.owner}, worker runs as ${as})`);
-            if (host.onSqliteBackup) { const r = host.onSqliteBackup(db, dest, as); if (r instanceof Error) throw r; }
-            put(dest, host.backupContent ? host.backupContent(db) : `backup of ${db}`, { owner: as || user, mode: 0o600 });
         },
         async listeners(port) { return listeners.get(port) || []; },
         async kill(pid, signal = 'SIGTERM') {

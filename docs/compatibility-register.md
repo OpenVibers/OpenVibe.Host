@@ -134,22 +134,6 @@ estate now carries a service token with the one capability it performs (Contract
 | C-84 | **Live deploy notice over the Chat bridge** (`chat-remote.js` `deployNotice`) next to the `live.release.deployed` event (Live `e73a92d`). | Live `server/chat/deploy-notice.js`, `server/chat/chat-remote.js` | Chat + Live | *done 2026-09-23*: Chat subscribes to `live.release.deployed` (Chat `ed90461`, table `deploy_releases` keyed by head) and folds by `subject.id`; the 22:14 UTC deploy produced one card via both paths (`duplicate:release`), and since Live `5324f40` (22:18 UTC deploy: `first_via = events`, folded) the bridge hop runs only while Live's Events publishing is off | 2026-10-14 | Keep the bridge call |
 | C-85 | **Live's own go-live follower push** (`server/streaming/golive-notify.js`) next to Network's `live.stream.started` consumer (subscription since 2026-09-23 19:55 UTC; Live `GET /internal/followers`). A shared per-streamer rate limit in Network stops double notifications. | Live `golive-notify.js` + call sites in `routes.js`, `rtmp-server.js`, `whip-handler.js`, `openre/mirror.js`; Network `server/notifications/stream-live.js` | Live + Network | *documented* (Network commit 2a95548): Network's log shows `outcome: notified` for real go-lives; then delete Live's push and retire Network's `POST /internal/events/stream-live`. | 2026-10-07 | Unsubscribe Network from `live.stream.started` |
 
-## PostgreSQL switches (ADR-035, roadmap WS-X2)
-
-Each service that moves keeps its SQLite file read-only for the 7-day N-1 window, as the rollback (the previous release reads it). One row per service, added at its switch.
-
-| # | What | Where | Owner | Removal condition | Target | Rollback lever until then |
-|---|---|---|---|---|---|---|
-| C-89 | **Closed 2026-09-29 (plan T1):** the SQLite files of the 19 services that moved to PostgreSQL on 2026-09-28 (post-switch files and pre-switch backups: tips, wiki, blog, news, deals, coupons, trade, reviews, search, sources, codes, vip, ai, host, events, community, billing, media, openre), Community's pre-c24/pre-live-comments backups and Billing's `live-snapshot-202609230121.db` are archived off-host (`ovhost archive` `20260929-124813`: 44 files, 805 MB encrypted; a restore of `codes.db` verified byte for byte) and deleted from the host. The rollback is `ovhost archive restore 20260929-124813 <path> --out <dir>` plus a release older than the switch. | the archive | Host | — | done | `ovhost archive restore` |
-
-**Archive step unblocked (2026-09-28).** `ovhost archive push` refuses a path the inventory declares as a
-live SQLite database (`lib/archive.js`: it refuses a file that is any non-postgresql `databases[].path`).
-Until the switch, that rule covered these frozen `.db` files, so the "archive both files, then delete"
-step of C-89 could not run. The 19 services above now declare `engine: postgresql` with no `path`, so their
-sqlite entries no longer name a file and archive push accepts the frozen `.db` files. The archive-then-delete
-step of each C-89 row can proceed once its 7-day window closes; the removal condition and target of every
-row stand unchanged.
-
 ## Kept by design (not shims)
 
 These match the search terms but are permanent. They are listed so the next review does not re-open them.

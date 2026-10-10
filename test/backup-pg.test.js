@@ -2,7 +2,7 @@
 /**
  * The PostgreSQL side of `ovhost backup`: every run verifies pgBackRest (a fresh stanza, and a WAL
  * archiver failed_count that has not risen), and a per-service pg_dump -Fc only on a slower cadence
- * (the weekly one, or --logical). SQLite services must be untouched. Against the fake host; no
+ * (the weekly one, or --logical). All declared databases use PostgreSQL. Against the fake host; no
  * pg_dump, pgbackrest or psql ever runs for real.
  */
 const assert = require('assert');
@@ -57,7 +57,7 @@ runTests([
         assert.strictEqual(rec.verified.stop, new Date((Math.floor(host.exec.now() / 1000) - 3600) * 1000).toISOString());
         // No prior record: a logical dump was due on the first run.
         assert.ok(rec.dir);
-        assert.strictEqual(host.dumps.length, 1);
+        assert.strictEqual(host.dumps.length, 3);
         assert.ok(host.files.has(`${rec.dir}/trade.dump`));
 
         const prom = host.read(PROM);
@@ -148,7 +148,7 @@ runTests([
         assert.strictEqual(host.dumps.length, 2);
     }),
 
-    test('staging ownership: postgres owns the directory while pg_dump runs; SQLite stays the service user', async () => {
+    test('staging ownership: postgres owns the directory while pg_dump runs; all dumps use postgres', async () => {
         const host = pgHost();
         const stages = [];
         const mkdir = host.exec.mkdir;
@@ -159,7 +159,7 @@ runTests([
         assert.strictEqual(host.dumps[0].as, 'postgres');
 
         await host.cli('backup', 'live');
-        assert.strictEqual(stages[1][1], 'ubuntu', 'a SQLite service keeps the service user');
+        assert.strictEqual(stages[1][1], 'postgres', 'every database dump uses postgres');
         assert.strictEqual(stages[1][0], 'live-20260922-120000');
 
         // Root takes every copy back once the staging directory is back to root:root.
@@ -167,7 +167,7 @@ runTests([
         assert.deepStrictEqual([copy.owner, copy.mode], ['root', 0o600]);
     }),
 
-    test('backup --all: SQLite and PostgreSQL services in one run; verified differs from ok and failed', async () => {
+    test('backup --all: PostgreSQL services in one run; verified differs from ok and failed', async () => {
         const host = pgHost();
         seedDump(host, 3 * DAY); // the weekly dump is not due: trade is verification-only this run
         const r = await host.cli('backup', '--all', '--json');
@@ -187,6 +187,6 @@ runTests([
         assert.strictEqual(bad.code, 2);
         const s2 = JSON.parse(bad.out);
         assert.strictEqual(s2.ok, false);
-        assert.deepStrictEqual(s2.services.map((x) => [x.service, x.status]), [['live', 'ok'], ['media', 'ok'], ['trade', 'failed']]);
+        assert.deepStrictEqual(s2.services.map((x) => [x.service, x.status]), [['live', 'failed'], ['media', 'failed'], ['trade', 'failed']]);
     }),
 ]);

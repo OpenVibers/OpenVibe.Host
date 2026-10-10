@@ -2,7 +2,7 @@
 /**
  * Truthful readiness for GET /api/ready (openvibe-shared/ready, Track O).
  *
- *   db              required  a real query on Host's SQLite (the charter tables answer)
+ *   db              required  a real query on Host's PostgreSQL database (the charter tables answer)
  *   storage         required  the object store directory is writable (uploads and serving need it)
  *   network_jwks    optional  the Network signing key has loaded; without it tenant sites still
  *                             serve, but nobody can sign in and service tokens are refused (503)

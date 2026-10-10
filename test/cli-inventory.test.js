@@ -21,7 +21,7 @@ runTests([
         assert.strictEqual(inv.services.live.socketUnit, 'openvibe-live.socket');
         assert.ok(!inv.services.live.units.includes('openvibe-live.socket'));
         assert.strictEqual(inv.services.live.protected.url, 'http://127.0.0.1:3000/api/streams');
-        // Media on PostgreSQL (ADR-035): recordings in progress come from its /api/ready, not from a SQLite file.
+        // Media on PostgreSQL (ADR-035): recordings in progress come from its /api/ready, through PostgreSQL.
         assert.deepStrictEqual([inv.services.media.protected.kind, inv.services.media.protected.field], ['http-json-count', 'recordings_in_progress']);
         // Every service on the host is deployed by a strategy (WS-N task 11): Games by pnpm-build.
         assert.ok(Object.values(inv.services).every((s) => s.managed), 'every service is managed');
@@ -69,7 +69,7 @@ runTests([
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', nginx: { vhost: '../../etc/passwd' } } } }), /file name/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', nginx: { skipVhosts: ['../../etc/passwd'] } } } }), /vhost file names/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', ready: { url: 'http://evil.example/ready' } } } }), /loopback/);
-        assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', protected: { kind: 'sqlite-count', db: '/d.db', sql: 'DELETE FROM vods' } } } }), /SELECT/);
+        assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', protected: { kind: 'postgresql-count', database: 'ov_x', sql: 'DELETE FROM vods' } } } }), /SELECT/);
         assert.throws(() => normalise({ services: { 'X Y': { ...base, repo: '/opt/x' } } }), /service id/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', unitSources: { 'a.service': '../../etc/shadow' } } } }), /inside the checkout/);
     }),
