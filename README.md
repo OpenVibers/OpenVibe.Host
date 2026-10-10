@@ -52,7 +52,7 @@ Stage A adds a few safety rules of its own:
 - OpenVibe.Contracts (`openvibe-contracts` v0.107.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, v0.32.0 added the takedown routes to `host.site.manage`, v0.83.0 added `host.site.config`, and v0.107.0 adds the planned `host.resource.read` and the git-source routes to `host.site.manage`/`host.deploy.create`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks, the `common.resource-summary@1`/`common.resource-list-result@1` schemas and the `contracts.resources` OVRN helpers (ADR-048).
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
 - OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.35.0 transactional outbox (openvibe-sdk/limits for the per-actor limits).
-- `openvibe-shared` v2.20.3 (Stage B): shared chrome (Host's own pages are composed with `openvibe-shared/shell`), legal pages, `/release.json`, `/metrics`, `/api/ready`.
+- `openvibe-shared` v2.20.4 (Stage B): shared chrome (Host's own pages are composed with `openvibe-shared/shell`), legal pages, `/release.json`, `/metrics`, `/api/ready`.
 - OpenVibe.Media (Stage B, opt-in): with `HOST_OBJECT_STORE=media`, deploy objects are written through to Media's Object API v2 (`openvibe-sdk/media`) and local disk becomes the read cache; unset keeps them on local disk (see [Storage](#storage)).
 
 ## Capabilities
@@ -441,7 +441,7 @@ These tenant events have subject `deploy` and visibility `internal`; `host.deplo
 
 ### Dashboard
 
-Server-rendered pages with the shared chrome (`openvibe-shared` v2.20.3 `shell.page`: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
+Server-rendered pages with the shared chrome (`openvibe-shared` v2.20.4 `shell.page`: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
 
 ### Observability
 
@@ -566,5 +566,5 @@ Part of the [OpenVibe network](https://openvibe.network). Built in the open by [
 <!-- versions:start -->
 - openvibe-contracts: v0.127.0
 - openvibe-sdk: v0.35.0
-- openvibe-shared: v2.20.3
+- openvibe-shared: v2.20.4
 <!-- versions:end -->
