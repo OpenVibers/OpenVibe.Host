@@ -22,16 +22,24 @@ const limitValue = (n, unit) => (n === 0 ? 'none' : unit === 'bytes' ? bytes(n) 
 /**
  * The signed-out front page: the public page of openvibe.host, built with openvibe-shared/showcase. The limits table
  * is limitsOf(config), the same object /limits.json serves, so the page never promises more than Host enforces.
+ * Until public hosting is launched (config.publicHosting) the page says so and invites no one to publish.
  */
-function signedOut({ limits, limitsUrl } = {}) {
-    return showcase.hero({
+function signedOut({ limits, limitsUrl, launched = false } = {}) {
+    return showcase.hero(launched ? {
         eyebrow: 'OpenVibe.Host · alpha',
         title: 'Publish a static site.', accent: 'Roll back in one step.',
         lede: 'Upload a folder or a .tar.gz of HTML, CSS, JavaScript, images and fonts. Every deploy is kept as an immutable, content-addressed artifact; the active one is served at <site>.openvibe.host and on custom domains you verify.',
         actions: [{ label: 'Sign in with OpenVibe', href: '/auth/login?next=%2F', primary: true }, { label: 'See the limits', href: '#limits' }],
         note: 'Alpha. Static files only: there is no build step and no server-side code, and nothing you upload is ever executed. Hosted bots, mods and apps are not available.',
+    } : {
+        eyebrow: 'OpenVibe.Host · not open yet',
+        title: 'Static sites, every deploy kept.', accent: 'Opening after review.',
+        lede: 'The hosting engine is built and tested: upload a folder or a .tar.gz, every deploy is kept as an immutable, content-addressed artifact, and the active one is served at <site>.openvibe.host and on custom domains you verify. It is not open to the public yet.',
+        actions: [{ label: 'What it will do', href: '#what-you-get', primary: true }, { label: 'See the limits', href: '#limits' }],
+        note: 'Public hosting opens after a launch review: abuse handling and a designated DMCA agent come first. Until then only OpenVibe staff can create projects.',
     }) + showcase.features({
-        title: 'What you get',
+        id: 'what-you-get',
+        title: launched ? 'What you get' : 'What it will do',
         items: [
             { icon: 'ov:upload', title: 'Upload from the browser or the API', text: 'A folder or an archive from the dashboard, or POST it to /api/v1. Archives are checked in memory and never extracted.' },
             { icon: 'ov:history', title: 'Every deploy kept', text: 'Deploys never change once made. Activate an earlier one to roll back, from the dashboard or the API.' },
@@ -39,7 +47,7 @@ function signedOut({ limits, limitsUrl } = {}) {
             { icon: 'ov:account', title: 'Projects for a team', text: 'Owners add maintainers and members per project. Sandbox projects have smaller quotas and stay out of search.' },
         ],
     }) + showcase.steps({
-        title: 'Get a site online',
+        title: launched ? 'Get a site online' : 'How it will work',
         items: [
             { title: 'Sign in', text: 'With your OpenVibe account.' },
             { title: 'Create a project', text: 'Production, or a sandbox to try things out.' },
@@ -56,12 +64,12 @@ function signedOut({ limits, limitsUrl } = {}) {
     }) : '');
 }
 
-function home({ projects, csrf }) {
+function home({ projects, csrf, canCreate = true }) {
     const rows = projects.map((p) => `<tr><td><a href="/projects/${esc(p.id)}">${esc(p.name)}</a></td><td>${esc(p.environment)}</td><td>${esc(p.role || '')}</td><td>${when(p.created_at)}</td></tr>`).join('');
     return `<h1>Your projects</h1>
 ${projects.length ? `<table><thead><tr><th>Project</th><th>Environment</th><th>Your role</th><th>Created</th></tr></thead><tbody>${rows}</tbody></table>` : '<p>You have no projects yet.</p>'}
 <h2>New project</h2>
-${form('/projects', csrf, `<label>Name <input name="name" required maxlength="80"></label>
+${!canCreate ? '<p>OpenVibe.Host is not open for hosting yet. It opens after a launch review (abuse handling and a designated DMCA agent first); until then only OpenVibe staff can create projects.</p>' : form('/projects', csrf, `<label>Name <input name="name" required maxlength="80"></label>
 <label>Environment <select name="environment"><option value="production">production</option><option value="sandbox">sandbox (smaller quotas, noindex, no custom domains)</option></select></label>
 <button type="submit">Create project</button>`)}`;
 }
