@@ -1,6 +1,6 @@
 'use strict';
 /**
- * The two-engine inventory (ADR-035): a `databases[]` entry is SQLite (the default, a file) or
+ * The PostgreSQL inventory: a `databases[]` entry is
  * PostgreSQL (a database in the cluster, named — its object carries NO `path`). The same engine
  * choice reaches the drill block ({ url, directUrl }), nginx tenants (read over psql, not a file)
  * and the protected `postgresql-count` probe. These are the normalised shapes the rest of ovhost
@@ -60,15 +60,9 @@ runTests([
         for (const database of ['trade', 'ov-Trade', 'public']) {
             assert.throws(() => first(withDatabases([{ engine: 'postgresql', database }])), /database must match/, database);
         }
-        // An engine that is neither.
-        assert.throws(() => first(withDatabases([{ engine: 'mysql', database: 'ov_trade' }])), /engine must be sqlite or postgresql/);
-        // A SQLite entry cannot name a database, and must have a path.
-        assert.throws(() => first(withDatabases([{ path: '/x/live.db', database: 'ov_live' }])), /a sqlite database is a path, not a database name/);
-        assert.throws(() => first(withDatabases([{ name: 'live' }])), /path must be an absolute path/);
-    }),
-
-    test('the SQLite default is unchanged', () => {
-        assert.deepStrictEqual(first(withDatabases([{ name: 'live', path: '/x/live.db' }])), { name: 'live', engine: 'sqlite', path: '/x/live.db' });
+        for (const entry of [{ engine: 'mysql', database: 'ov_trade' }, { path: '/x/live.db', database: 'ov_live' }, { name: 'live' }]) {
+            assert.throws(() => first(withDatabases([entry])), /engine must be "postgresql"; use/);
+        }
     }),
 
     test('drill.databases for a PostgreSQL database is { engine, url, directUrl }', () => {
@@ -76,7 +70,7 @@ runTests([
         assert.deepStrictEqual(d.databases.trade, { engine: 'postgresql', url: 'DATABASE_URL', directUrl: 'DATABASE_DIRECT_URL' });
     }),
 
-    test('drill.databases rejects the SQLite shape and bad env var names for a PostgreSQL database', () => {
+    test('drill.databases rejects a file database shape and bad env var names for a PostgreSQL database', () => {
         const drill = (databases) => pgDrill({ databases });
         assert.throws(() => normalise(drill({ trade: 'DATABASE_URL' })), /for a postgresql database/);
         assert.throws(() => normalise(drill({ trade: { url: 'DATABASE_URL' } })), /directUrl must be an env var name/);
@@ -92,16 +86,15 @@ runTests([
         assert.throws(() => normalise(pgDrill({ countsTolerance: 1.5 })), /countsTolerance must be a whole number of rows/);
     }),
 
-    test('nginx.tenants.database accepts a path (SQLite) or a PostgreSQL database object', () => {
+    test('nginx.tenants.database accepts a PostgreSQL database object', () => {
         const tenants = (database) => normalise({ services: { host: { ...base, nginx: { tenants: { database } } } } }).services.host.nginx.tenants.database;
-        assert.deepStrictEqual(tenants('/var/lib/openvibe-host-api/host.db'), { engine: 'sqlite', path: '/var/lib/openvibe-host-api/host.db' });
         assert.deepStrictEqual(tenants({ engine: 'postgresql', database: 'ov_host' }), { engine: 'postgresql', database: 'ov_host' });
     }),
 
     test('nginx.tenants.database rejects anything else', () => {
         const tenants = (database) => normalise({ services: { host: { ...base, nginx: { tenants: { database } } } } });
         for (const database of [{ engine: 'mysql', database: 'ov_host' }, { engine: 'postgresql', database: 'host' }, { database: 'ov_host' }, 42, []]) {
-            assert.throws(() => tenants(database), /nginx\.tenants\.database must be a path or/, JSON.stringify(database));
+            assert.throws(() => tenants(database), /nginx\.tenants\.database must be/, JSON.stringify(database));
         }
     }),
 

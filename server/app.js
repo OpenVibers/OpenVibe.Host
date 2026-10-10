@@ -69,7 +69,7 @@ const DASHBOARD_CSP = {
 const DASHBOARD_CSP_HEADER = Object.entries(DASHBOARD_CSP).map(([k, v]) => `${k} ${v.join(' ')}`).join('; ');
 
 /**
- * opts: config, store | dbPath, now (clock), fetchImpl, auth (an openvibe-sdk/sso client),
+ * opts: config, store, now (clock), fetchImpl, auth (an openvibe-sdk/sso client),
  *       resolver ({ resolveTxt }), log
  */
 async function createApp(opts = {}) {

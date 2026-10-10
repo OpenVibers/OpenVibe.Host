@@ -15,7 +15,7 @@ const { app, ctx } = await createApp();
 const { config } = ctx;
 
 const server = app.listen(config.port, config.host, () => {
-    console.log(`[Host] ${config.nodeEnv} on http://${config.host}:${config.port} → dashboard ${config.baseUrl}, sites *.${config.sitesDomain} (db ${config.dbPath}, objects ${ctx.blobs.root})`);
+    console.log(`[Host] ${config.nodeEnv} on http://${config.host}:${config.port} → dashboard ${config.baseUrl}, sites *.${config.sitesDomain} (db ${config.db.url ? 'PostgreSQL' : 'embedded PGlite'}, objects ${ctx.blobs.root})`);
     console.log(`[Host] events relay ${ctx.outbox.enabled ? `on → ${config.events.url}` : 'off (events wait in event_outbox)'}; worker ${config.worker.enabled ? 'on' : 'off'}`);
 });
 server.keepAliveTimeout = 65_000;

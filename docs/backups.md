@@ -2,9 +2,7 @@
 
 `ovhost backup --all --offsite` runs once a day from a systemd timer. It backs up every database
 the inventory declares, keeps a week of daily and a month of weekly copies on the host, and uploads
-an encrypted copy of each run to S3-compatible object storage (Backblaze B2). A SQLite database is
-copied; a PostgreSQL service is covered by the cluster's pgBackRest backups, which every run verifies,
-with a per-service logical dump on a slower cadence. This page covers what it does, how to install it,
+an encrypted copy of each run to S3-compatible object storage (Backblaze B2). The cluster is covered by pgBackRest, which every run verifies, with a per-service logical dump on a slower cadence. This page covers what it does, how to install it,
 and how to restore from the off-host copy.
 
 Restore drills (a second instance started from a backup and compared with production) are in
@@ -13,81 +11,11 @@ Restore drills (a second instance started from a backup and compared with produc
 
 ## What is backed up
 
-`ovhost backup --all` backs up every service in the inventory (`/etc/openvibe/host.json`) that has
-a `databases` or `objects` list. `databases[]` items are one of two **engines** ([db-inventory.md](db-inventory.md)):
-SQLite, a file the service user's worker copies; and PostgreSQL, a database in the host's cluster
-(ADR-035) that ovhost verifies through pgBackRest and periodically dumps. With `host.example.json`:
-
-| Service | Engine | Databases |
-|---|---|---|
-| network | SQLite | `network.db` |
-| chat | SQLite | `chat.db` |
-| tools | SQLite | seven `apps/*/data/analytics.db`, and `jobs.db` for img, audio and docs |
-| games | SQLite | `world.db` |
-| live | SQLite | `live.db` (includes the money ledger while `BILLING_AUTHORITY=live`), `rs-companion.db`. `data/analytics.db` is left out on purpose ([storage-state.md](storage-state.md): analytics, hard-coded path, not canonical). |
-| tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, host, events, community, billing, media, openre | PostgreSQL | one database each in the cluster, named `ov_<name>` (for example `ov_trade`); there is no local file. The media files themselves are in B2/R2, not covered here. |
-
-The 19 PostgreSQL services each run the every-night pgBackRest verification and a scheduled logical
-dump; the five SQLite services keep the online copy described below. [PostgreSQL
-services](#postgresql-services) covers what that means.
-
-A database that does not exist yet (a service that is not deployed) is reported as `skipped` and
-does not fail the run. Adding a database to the inventory is all it takes to include it.
-
-**Object directories.** A service may also declare `objects`: a list of `{ name, path }` directories
-whose files are content-addressed, each named by its own sha256. OpenVibe.Host's tenant object store
-(`HOST_STORAGE_DIR=/var/lib/openvibe-host-api/objects`) is the first. `ovhost backup` archives each
-directory as `<name>.tar.gz` (root:root 0600, like every other copy); the off-host code encrypts and
-uploads it with the rest, and a [drill](restore-drills.md) extracts it into its own scratch directory
-and checks every blob's sha256.
+Every inventory database is PostgreSQL. `ovhost backup --all` verifies the cluster's pgBackRest backups and WAL archiver on every run. It makes a per-service `pg_dump -Fc` when the last good logical dump is over seven days old or when `--logical` is given. Declared content-addressed object directories are archived as `.tar.gz` files. Restore drills use the logical dumps and object archives.
 
 ## One run
 
-For each service, one after another:
-
-1. **Copy.** The SQLite online backup API (`better-sqlite3` `.backup()`) makes a consistent copy while
-   the service keeps running. The copy is made by a worker running **as the service user**: root never
-   opens a service database, because a root-owned `-wal`/`-shm` file would stop the service from
-   writing its own database.
-2. **Check.** The worker switches the copy to `journal_mode=DELETE`, which checkpoints it and removes
-   its `-wal`/`-shm`, and runs `PRAGMA quick_check`. A copy that does not answer `ok` fails.
-3. **Take over.** The worker writes into `/var/backups/openvibe.staging/<service>-<stamp>/`, which
-   belongs to the service user. Root then takes that directory back (`root:root 0700`), so the service
-   user can no longer reach it. Root checks that each copy is a plain file with one link, and makes it
-   `root:root 0600`. It then renames the directory to `/var/backups/openvibe/<service>/<stamp>/`.
-4. **Record.** The backup is appended to `/var/lib/openvibe-host/backups/<service>.jsonl`, with
-   `ok: false` when any database failed.
-5. **Prune** (see [Retention](#retention)).
-
-Steps 1-3 are the **SQLite** path. A PostgreSQL service does not copy a file at all: every run first
-verifies pgBackRest, and a logical dump is taken only when the last good one is old enough (see
-[PostgreSQL services](#postgresql-services)). `drill` uses the same `.dump` artifacts.
-
-**Permissions.** Backups hold user data. Every directory under `/var/backups/openvibe` is
-`root:root 0700` and every copy is `root:root 0600`, with no `-wal`/`-shm` next to it. Directories left
-by older versions (`ubuntu`, 0750) are locked down on the next run. The staging parent
-`/var/backups/openvibe.staging` is `root:root 0711`, and each run removes its own staging directory.
-
-**Failures.** A failing database never stops the other databases of the service, and a failing
-service never stops the other services. The run's exit code is `2` when anything failed and `0`
-otherwise. If a service fails halfway (one of two databases), the good copy is kept but the backup is
-marked `ok: false`. Such a backup is never picked by a drill, and it is pruned once a newer good backup
-exists. A PostgreSQL service whose pgBackRest verification fails is reported `failed`, **never
-`skipped`**: a broken backup layer is a failure, not an absent database.
-
-**Summary.** Each run writes `/var/lib/openvibe-host/backup-runs/<run>.json` (`root`, 0640). It holds
-per-service status, files, sizes, errors, what was pruned, and the off-host result: objects, bytes,
-failures, and the key id. A PostgreSQL service that only verified pgBackRest is reported `verified`.
-The summary never holds a secret. The run id is the start time in UTC, for example `20260924-033412`.
-
-```
-sudo ovhost backup --all                 # local only
-sudo ovhost backup --all --offsite       # what the timer runs
-sudo ovhost backup --all --json          # the summary on stdout
-sudo ovhost backup --all --logical       # force the logical PostgreSQL dumps too
-sudo ovhost backup --all --keep-daily 14 --keep-weekly 8
-sudo ovhost backup --all --no-prune
-```
+Run `sudo ovhost backup --all --offsite`. A failed pgBackRest or WAL check is recorded as a failure. A run with no dump due and no object directories records successful verification without creating an artifact directory. Backup artifacts are root-owned, with 0700 directories and 0600 files; `pg_dump` writes into a postgres-owned staging directory before root takes ownership. The off-site uploader encrypts artifacts before upload.
 
 ## PostgreSQL services
 
@@ -120,7 +48,7 @@ layout, one file per database:
 /var/backups/openvibe/<service>/<stamp>/<name>.dump      # pg_dump -Fc, owned root:root 0600
 ```
 
-The off-site code then encrypts and uploads each `.dump` exactly as it does a `.db` copy, so a `.dump`
+The off-site code encrypts and uploads each `.dump`, so the archive
 reaches the bucket as `<service>/<name>.dump.ovbk` and is restored by `restore-download` unchanged.
 `pg_restore --list` proves a `.dump` is a readable archive.
 
@@ -137,11 +65,7 @@ node_exporter's textfile collector:
 - `DataBackupStale` fires when `openvibe_pgbackrest_last_backup_age_seconds` is over **30 hours**, or the
   metric is absent (no run has written it). It is the cluster staleness alert; the per-service
   `openvibe_backup_pg_verified` says which service's verification failed.
-- `OpenVibeBackupSkipped` fires when a service has been `skipped` for **30 hours** — two nightly runs in a
-  row. A service whose databases are gone (for example one whose SQLite file was archived after the
-  2026-09 switch to PostgreSQL) is `skipped`, `openvibe_backup_last_run_ok` stays `1` and nothing else
-  fires, so this is what catches "production with no backups". The rules live in
-  [`deploy/prometheus/openvibe-rules.yml`](../deploy/prometheus/openvibe-rules.yml).
+The rules live in [`deploy/prometheus/openvibe-rules.yml`](../deploy/prometheus/openvibe-rules.yml).
 
 ### pgBackRest is the durability layer
 
@@ -174,7 +98,6 @@ To leave deletion to a bucket lifecycle rule instead, set `BACKUP_OFFSITE_PRUNE=
 ### Layout
 
 ```
-s3://<BACKUP_S3_BUCKET>/<BACKUP_S3_PREFIX>/<host>/<run>/<service>/<name>.db.ovbk     # a SQLite copy
 s3://<BACKUP_S3_BUCKET>/<BACKUP_S3_PREFIX>/<host>/<run>/<service>/<name>.dump.ovbk   # a PostgreSQL dump
 s3://<BACKUP_S3_BUCKET>/<BACKUP_S3_PREFIX>/<host>/<run>/manifest.json
 ```
@@ -312,8 +235,7 @@ sudo jq '{ok, services: [.services[] | {service, status, error}], offsite: {ok: 
 
 The monitoring stack alerts on it (all in `deploy/prometheus/openvibe-rules.yml`):
 `OpenVibeBackupFailed` pages when the last run failed, `OpenVibeBackupMissed` when no run has succeeded
-for 30 hours, `OpenVibeBackupSkipped` when a service has no databases left to back up, and
-`DataBackupStale` when pgBackRest itself is stale. The unit also fails (exit 2) and the summary says
+for 30 hours, and `DataBackupStale` when pgBackRest itself is stale. The unit also fails (exit 2) and the summary says
 `"ok": false`.
 
 ### Bucket (Backblaze B2)
@@ -365,38 +287,14 @@ For each file, the command:
 - checks the manifest's HMAC;
 - streams the object through GCM decryption;
 - checks both SHA-256 hashes against the manifest;
-- runs `PRAGMA quick_check` on the result of a `.db` copy, or `pg_restore --list` on a `.dump`.
+- runs `pg_restore --list` on each `.dump`.
 
 Any failure removes that file and exits non-zero. The output lists each file with its size, its hash,
 its check and the production path it came from.
 
-### 3. Put it in place (manual, one service at a time)
+### 3. Restore a service database
 
-Take a fresh local backup of the current state first, even a broken one, so the restore can be undone.
-Then stop the service, move its current database aside, install the copy as the service user's file,
-and start the service again. For Live, check protected sessions first (`ovhost status live`). The
-socket unit stays up, and only the service unit stops.
-
-```
-sudo ovhost backup live                                   # the state you are about to replace
-sudo systemctl stop openvibe-live.service                 # never the .socket unit
-cd /opt/openvibe.live/data
-sudo mv live.db live.db.replaced-$(date -u +%Y%m%d-%H%M%S)
-sudo rm -f live.db-wal live.db-shm                        # only after the service has stopped
-sudo install -o ubuntu -g ubuntu -m 0640 /var/lib/openvibe-restore/live-20260924-033412/live.db live.db
-sudo systemctl start openvibe-live.service
-curl -s 127.0.0.1:3000/api/ready | jq .status
-```
-
-- Use the production path from the restore output (`was …`). The owner and mode must match the other
-  files in that directory (`ls -l`).
-- For services with a `StateDirectory` (`/var/lib/openvibe-*`), the directory is owned by the service
-  user.
-- Remove `/var/lib/openvibe-restore/<service>-<run>` when you are done: it holds user data.
-- **Money.** `live.db` holds the ledger while `BILLING_AUTHORITY=live`. A restore loses every
-  transaction made after the backup. Before any money action resumes, reconcile against the payment
-  provider for the gap (see [cutover-runbook.md](cutover-runbook.md)). Consider setting the owner-only
-  `money_writes_frozen` flag first.
+Use `pg_restore` from the downloaded `.dump` into a new PostgreSQL database, then point the service's `DATABASE_URL` and `DATABASE_DIRECT_URL` at it. Check the application before changing production settings. `ovhost drill` automates a scratch restore and comparison without changing the production database.
 
 ### Disaster recovery: a new host
 
@@ -427,27 +325,7 @@ sudo ovhost drill community --backup /var/lib/openvibe-restore/drill-community
 sudo rm -rf /var/lib/openvibe-restore/drill-community
 ```
 
-The drill:
-- restores each database. A SQLite copy goes into the sandbox as the service user (`install -o <user>
-  -m 0600`) and is checked with `integrity_check`; a PostgreSQL `.dump` is restored with `pg_restore`
-  into a scratch database created for the drill ([restore-drills.md](restore-drills.md));
-- starts a sandboxed second instance and compares it with production;
-- stops it and cleans up (a PostgreSQL drill always drops its scratch database and role).
-
-Record the result in [restore-drills.md](restore-drills.md) and note "off-host" in the Backup column.
-
-For a service without a drill (ai), or for live and media until the release with their drill
-switch is deployed (`LIVE_DRILL`, `MEDIA_DRILL`; `drill.requires` refuses an older checkout), download the
-copy and check it by hand:
-
-```
-sudo ovhost restore-download live latest --out /var/lib/openvibe-restore/check-live
-sudo sqlite3 -readonly /var/lib/openvibe-restore/check-live/live.db 'PRAGMA integrity_check; SELECT count(*) FROM users;'
-sudo rm -rf /var/lib/openvibe-restore/check-live
-```
-
-(`sqlite3` is the Debian package of the same name. `restore-download` has already run `quick_check`;
-this adds a full `integrity_check` and a look at the data.)
+The drill verifies each PostgreSQL dump with `pg_restore --list`, restores it into a scratch database, compares the second instance with production, and drops the scratch database and role. For a service without a supported drill, verify the downloaded `.dump` with `pg_restore --list` before a manual scratch restore.
 
 Do this at least once after installing, and again after any change to the key or the bucket.
 
@@ -455,7 +333,7 @@ Do this at least once after installing, and again after any change to the key or
 
 | Command | What it does | Exit |
 |---|---|---|
-| `ovhost backup --all [--offsite] [--logical] [--no-prune] [--keep-daily n] [--keep-weekly n]` | back up every service with databases or object directories (verify pgBackRest, dump SQLite, dump PostgreSQL when due or `--logical`, archive object directories); prune; summary; optionally upload | 0 all ok · 1 lock/usage · 2 any failure |
+| `ovhost backup --all [--offsite] [--logical] [--no-prune] [--keep-daily n] [--keep-weekly n]` | back up every service with databases or object directories (verify pgBackRest, dump PostgreSQL when due or `--logical`, archive object directories); prune; summary; optionally upload | 0 all ok · 1 lock/usage · 2 any failure |
 | `ovhost offsite push [--run <run>]` | upload a run (default: the latest) again, for example after a failed upload | 0 · 1 config · 2 failure |
 | `ovhost offsite list [<service>] [--from-host <h>]` | runs off-host, newest first | 0 · 1 config · 2 bucket error |
 | `ovhost offsite check` | config, key and bucket access; uploads nothing | 0 · 1 config · 2 bucket error |

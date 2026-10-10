@@ -120,7 +120,7 @@ runTests([
         assert.deepStrictEqual(host.restarts(), []);
     }),
 
-    test('refuses to restart Media while a recording is in progress (read-only query as the service user)', async () => {
+    test('refuses to restart Media while a recording is in progress (read-only PostgreSQL query)', async () => {
         const host = scenario();
         const from = host.repo('media').head;
         push(host, 'media', { 'server/index.js': 'media2();' });
@@ -130,9 +130,8 @@ runTests([
         assert.match(r.out, /1 recordings in progress — refusing/);
         assert.strictEqual(host.repo('media').head, from);
         assert.deepStrictEqual(host.restarts(), []);
-        const q = host.sqliteCalls.find((c) => c.op === 'query');
-        assert.strictEqual(q.as, 'ubuntu');
-        assert.strictEqual(q.db, '/opt/openvibe.media/data/media.db');
+        const q = host.psqlCalls.find((c) => c.database === 'ov_media');
+        assert.strictEqual(q.as, 'postgres');
         assert.match(q.sql, /^SELECT count\(\*\) AS n FROM vods WHERE is_recording = 1$/);
     }),
 
@@ -263,18 +262,18 @@ runTests([
         assert.deepStrictEqual(host.restarts(), ['openvibe-events.service']);
     }),
 
-    test('a schema change backs up the declared databases (as the service user) before the restart', async () => {
+    test('a schema change backs up the declared PostgreSQL database before the restart', async () => {
         const host = scenario();
         push(host, 'live', { 'server/db/schema.sql': 'CREATE TABLE b(y);' });
         const r = await host.cli('deploy', 'live');
         assert.strictEqual(r.code, 0, r.out);
-        const b = host.sqliteCalls.find((c) => c.op === 'backup');
+        const b = host.dumps.find((c) => c.database === 'ov_live');
         assert.ok(b, 'backup taken');
-        assert.strictEqual(b.as, 'ubuntu');
-        assert.match(b.dest, /^\/var\/backups\/openvibe\.staging\/live-\d{8}-\d{6}\/live\.db$/, 'the worker writes to its staging directory');
-        const dir = [...host.files.keys()].find((k) => /^\/var\/backups\/openvibe\/live\/\d{8}-\d{6}\/live\.db$/.test(k));
+        assert.strictEqual(b.as, 'postgres');
+        assert.match(b.dest, /^\/var\/backups\/openvibe\.staging\/live-\d{8}-\d{6}\/live\.dump$/);
+        const dir = [...host.files.keys()].find((k) => /^\/var\/backups\/openvibe\/live\/\d{8}-\d{6}\/live\.dump$/.test(k));
         assert.ok(dir, 'the copy ends up under /var/backups/openvibe/live/<stamp>/');
-        const backupIdx = host.calls.findIndex((c) => c.cmd === 'sqlite-backup');
+        const backupIdx = host.calls.findIndex((c) => c.cmd === 'pg_dump');
         const restartIdx = host.calls.findIndex((c) => c.cmd === 'systemctl' && c.args[0] === 'restart');
         assert.ok(backupIdx < restartIdx, 'backup before restart');
     }),

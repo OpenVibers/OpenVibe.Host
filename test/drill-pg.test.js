@@ -1,7 +1,7 @@
 'use strict';
 /**
  * ovhost drill for a PostgreSQL service (lib/dbengine.js): the artifact is a `.dump` in the backup,
- * not a SQLite file. The drill copies it into <tmp>/pg owned by postgres, verifies it with
+ * a PostgreSQL dump. The drill copies it into <tmp>/pg owned by postgres, verifies it with
  * `pg_restore --list`, creates a scratch database and login role, restores into them, points
  * drill.env at the scratch database (and at a closed Valkey), and always drops both again in a
  * finally. Covered: the generated URLs and their password, the refusal when an override is missing,
@@ -177,7 +177,7 @@ runTests([
         assert.deepStrictEqual(cp.args, ['-o', 'postgres', '-m', '0600', '-T', '--', `${host.backupDir}/trade.dump`, `${tmp}/pg/trade.dump`]);
         assert.strictEqual(cp.privileged, true);
 
-        // The Markdown row names pg_restore --list, not pragma integrity_check.
+        // The Markdown row reports the dump archive check.
         assert.match(r.out, /`pg_restore --list` \(trade\) = ok/);
         assert.strictEqual(rec.markdown, r.out.split('\n').pop());
     }),

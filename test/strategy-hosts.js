@@ -28,6 +28,8 @@ function base(services) {
 function finish(host, doc) {
     host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
     host.inv = normalise(doc);
+    for (const svc of Object.values(host.inv.services)) for (const db of svc.databases) host.pgDatabases.add(db.database);
+    host.pgBackups = [{ type: 'diff', timestamp: { stop: Math.floor(host.exec.now() / 1000) - 3600 } }];
     host.ensureDir('/etc/nginx/sites-available');
     host.ensureDir('/etc/nginx/sites-enabled');
     host.badShas = new Set();
@@ -69,7 +71,7 @@ function liveEntry(overrides = {}) {
         noRestartPaths: ['public/', 'docs/', '**/*.md'],
         protected: { kind: 'http-json-count', url: 'http://127.0.0.1:3000/api/streams', array: 'streams', where: { is_live: true }, label: 'live streams' },
         drain: { policy: 'refuse', waitMaxSeconds: 600, pollSeconds: 60, quietChecks: 2 },
-        databases: [{ name: 'live', path: '/opt/openvibe.live/shared/data/live.db' }],
+        databases: [{ name: 'live', engine: 'postgresql', database: 'ov_live' }],
         backupOnChange: ['server/db/schema.sql'],
         preflight: { syntaxCheck: true },
         nginx: { vhost: 'openvibe.live.conf', repoVhost: 'deploy/nginx/openvibe.live.conf', variant: 'websocket' },
@@ -121,7 +123,7 @@ async function releaseLayoutHost({ id, entry, files, initialId, unitFiles = {}, 
 }
 
 const LIVE_FILES = {
-    'package.json': pkgJson('openvibe-live', ['express', 'better-sqlite3']),
+    'package.json': pkgJson('openvibe-live', ['express', 'openvibe-sdk']),
     'package-lock.json': '{"lockfileVersion":3,"v":1}',
     'server/index.js': 'console.log(1);',
     'server/db/schema.sql': 'CREATE TABLE a(x);',
@@ -138,7 +140,6 @@ async function liveHost(overrides = {}) {
     host.addUnit('openvibe-live.socket', { sub: 'listening', mainPid: 0 });
     host.listeners.set(3000, [{ pid: 1, process: 'systemd' }]);
     host.put('/etc/openvibe/live.env', `JWT_SECRET=${SECRET}\n`, { mode: 0o600 });
-    host.put('/opt/openvibe.live/shared/data/live.db', 'sqlite', { owner: 'ubuntu' });
     host.liveStreams = [];
     host.http.set('http://127.0.0.1:3000/api/ready', host.readyFor('openvibe-live.service'));
     host.http.set('http://127.0.0.1:3000/api/streams', () => ({ status: 200, body: { streams: host.liveStreams } }));
@@ -166,8 +167,8 @@ function openreEntry(overrides = {}) {
         port: 4500,
         ready: { url: 'http://127.0.0.1:4500/api/ready', timeoutSeconds: 60 },
         noRestartPaths: ['docs/', 'test/', '**/*.md'],
-        databases: [{ name: 'openre', path: '/var/lib/openre/openre.db' }],
-        protected: { kind: 'sqlite-count', db: '/var/lib/openre/openre.db', sql: "SELECT count(*) AS n FROM ingest_sessions WHERE state IN ('starting', 'live', 'ending')", label: 'ingest sessions' },
+        databases: [{ name: 'openre', engine: 'postgresql', database: 'ov_openre' }],
+        protected: { kind: 'postgresql-count', database: 'ov_openre', sql: "SELECT count(*) AS n FROM ingest_sessions WHERE state IN ('starting', 'live', 'ending')", label: 'ingest sessions' },
         drain: { policy: 'refuse' },
         lifecycle: lifecycleDoc(),
         ...overrides,
@@ -175,7 +176,7 @@ function openreEntry(overrides = {}) {
 }
 
 const OPENRE_FILES = {
-    'package.json': pkgJson('openre-stream', ['express', 'better-sqlite3']),
+    'package.json': pkgJson('openre-stream', ['express', 'openvibe-sdk']),
     'package-lock.json': '{"lockfileVersion":3,"v":1}',
     'server/index.js': 'api();',
     'docs/README.md': '# OpenRe',
@@ -184,12 +185,11 @@ const OPENRE_FILES = {
 async function openreHost(overrides = {}) {
     const host = await releaseLayoutHost({ id: 'openre', entry: openreEntry(overrides), files: OPENRE_FILES, initialId: (sha) => sha.slice(0, 12) });
     host.put('/etc/openvibe/openre.env', `OV_OAUTH_CLIENT_SECRET=${SECRET}\n`, { mode: 0o600 });
-    host.put('/var/lib/openre/openre.db', 'sqlite', { owner: 'ubuntu' });
     host.addUnit(`openre-rtmp-ingest@${host.firstRelease}.service`, { mainPid: 3102 });
     host.addUnit(`openre-restream-worker@${host.firstRelease}.service`, { mainPid: 3103 });
     host.addUnit(`openre-jsmpeg@${host.firstRelease}.service`, { mainPid: 3105 });
     host.sessions = 0;
-    host.sqliteHandler = () => [{ n: host.sessions }];
+    host.psqlHandler = () => [{ n: host.sessions }];
     host.http.set('http://127.0.0.1:4500/api/ready', host.readyFor('openre-api.service'));
     host.calls.length = 0;
     return host;
@@ -233,11 +233,11 @@ function toolsEntry(overrides = {}) {
         preflight: {
             dirs: ['data'],
             checks: [
-                { label: 'jobs runtime loads', packages: ['apps/img'], argv: ['node', '-e', "const D=require('better-sqlite3'); new D(':memory:').close(); require('openvibe-contracts'); require('openvibe-sdk'); require('../_shared/jobs')"] },
-                { label: 'guard loads', packages: '*', argv: ['node', '-e', "const D=require('better-sqlite3'); new D(':memory:').close(); require('../_shared/guard')"] },
+                { label: 'jobs runtime loads', packages: ['apps/img'], argv: ['node', '-e', "require('openvibe-sdk/db'); require('openvibe-contracts'); require('openvibe-sdk'); require('../_shared/jobs')"] },
+                { label: 'guard loads', packages: '*', argv: ['node', '-e', "require('openvibe-sdk/db'); require('../_shared/guard')"] },
             ],
         },
-        protected: { kind: 'sum', label: 'running tool jobs', probes: [{ kind: 'sqlite-count', db: '/opt/openvibe.tools/apps/img/data/jobs.db', sql: "SELECT count(*) AS n FROM tool_jobs WHERE state = 'running'" }] },
+        protected: { kind: 'sum', label: 'running tool jobs', probes: [{ kind: 'postgresql-count', database: 'ov_tools', sql: "SELECT count(*) AS n FROM tool_jobs WHERE state = 'running'" }] },
         drain: { policy: 'report', waitMaxSeconds: 900, pollSeconds: 60, quietChecks: 2 },
         lifecycle: lifecycleDoc(),
         ...overrides,
@@ -245,13 +245,13 @@ function toolsEntry(overrides = {}) {
 }
 
 const TOOLS_FILES = {
-    'apps/gateway/package.json': pkgJson('tools-gateway', ['express', 'better-sqlite3']),
+    'apps/gateway/package.json': pkgJson('tools-gateway', ['express', 'openvibe-sdk']),
     'apps/gateway/package-lock.json': '{"v":1}',
     'apps/gateway/server/index.js': 'gw();',
-    'apps/img/package.json': pkgJson('tools-img', ['express', 'better-sqlite3', 'openvibe-contracts', 'openvibe-sdk']),
+    'apps/img/package.json': pkgJson('tools-img', ['express', 'openvibe-sdk', 'openvibe-contracts', 'openvibe-sdk']),
     'apps/img/package-lock.json': '{"v":1}',
     'apps/img/server/index.js': 'img();',
-    'apps/maps/package.json': pkgJson('tools-maps', ['express', 'better-sqlite3']),
+    'apps/maps/package.json': pkgJson('tools-maps', ['express', 'openvibe-sdk']),
     'apps/maps/server/index.js': 'maps();',
     'apps/_shared/package.json': JSON.stringify({ name: 'openvibe-tools-shared', version: '1.1.0', private: true }),
     'apps/_shared/guard/index.js': 'guard();',
@@ -270,7 +270,7 @@ function toolsHost(overrides = {}) {
         return { status: 200, body: { service: 'tools', release: host.gatewayRelease || String(u.runningSha).slice(0, 12) } };
     });
     host.jobs = 0;
-    host.sqliteHandler = () => [{ n: host.jobs }];
+    host.psqlHandler = () => [{ n: host.jobs }];
     return host;
 }
 
@@ -318,10 +318,10 @@ function gamesEntry(overrides = {}) {
         port: 8000,
         ready: { url: 'http://127.0.0.1:8000/api/ready', timeoutSeconds: 60 },
         generated: ['apps/client/dist-types/', 'apps/server/dist-types/'],
-        preflight: { checks: [{ label: 'better-sqlite3 loads under this Node', packages: ['apps/server'], argv: ['node', '-e', "new (require('better-sqlite3'))(':memory:').close()"] }] },
+        preflight: { checks: [{ label: 'database SDK loads under this Node', packages: ['apps/server'], argv: ['node', '-e', "require('openvibe-sdk/db')"] }] },
         protected: { kind: 'http-json-count', url: 'http://127.0.0.1:8000/api/ready', field: 'checks.sessions.detail.online', label: 'players online' },
         drain: { policy: 'report', waitMaxSeconds: 600, pollSeconds: 60, quietChecks: 2 },
-        databases: [{ name: 'world', path: '/opt/openvibe.games/data/world.db' }],
+        databases: [{ name: 'world', engine: 'postgresql', database: 'ov_world' }],
         lifecycle: lifecycleDoc(),
         ...overrides,
     };
@@ -331,7 +331,7 @@ const GAMES_FILES = {
     'package.json': JSON.stringify({ name: 'openvibe-games', private: true, scripts: { build: 'pnpm -r build' } }),
     'pnpm-lock.yaml': 'lockfileVersion: 9.0\nv: 1\n',
     'pnpm-workspace.yaml': 'packages:\n  - packages/*\n  - apps/*\n',
-    'apps/server/package.json': pkgJson('@openvibe/server', ['@openvibe/shared', 'better-sqlite3', 'tsx']),
+    'apps/server/package.json': pkgJson('@openvibe/server', ['@openvibe/shared', 'openvibe-sdk', 'tsx']),
     'apps/server/src/main.ts': 'main();',
     'apps/server/dist-types/main.d.ts': 'export {};\n',
     'apps/client/package.json': pkgJson('@openvibe/client', ['@openvibe/shared']),
@@ -357,7 +357,6 @@ function gamesHost(overrides = {}) {
         host.put(path.join(cwd, 'apps/client/dist-types/main.d.ts'), `export {}; // built ${host.repo.head.slice(0, 7)}\n`, { owner: as });
         return { code: 0 };
     };
-    host.put('/opt/openvibe.games/data/world.db', 'sqlite', { owner: 'ubuntu' });
     return host;
 }
 

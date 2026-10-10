@@ -17,21 +17,9 @@ sudo roles/data/provision.sh --check     # what would change
 sudo roles/data/provision.sh             # apply (idempotent)
 sudo roles/data/add-service.sh wiki      # database ov_wiki, roles ov_wiki / ov_wiki_app, Valkey user ov_svc_wiki,
                                          # and DATABASE_URL, DATABASE_DIRECT_URL, VALKEY_URL, VALKEY_PREFIX in /etc/openvibe/wiki.env
-sudo roles/data/switch-service.sh news   # the production switch from SQLite: stop, back up, import and verify, deploy
-                                         # (after the postgres branch is merged with green CI and auto-deploy is frozen)
 ```
 
-The same two steps from the installed CLI (the agent pipeline may run only `ovhost` through its broker;
-both run these scripts from the ovhost install, pass their exit code through and redact every URL and
-password; [docs/data-provisioning.md](../../docs/data-provisioning.md)):
-
-```bash
-sudo ovhost data provision wiki          # == sudo roles/data/add-service.sh wiki
-sudo ovhost data switch news [--sqlite <file>]   # == sudo roles/data/switch-service.sh news [<file>]
-```
-
-`switch-service.sh` runs the deployed release's `scripts/migrate-to-postgres.js`: a service without that
-file cannot be switched this way.
+The installed CLI runs `add-service.sh` through `sudo ovhost data provision wiki`. It passes the role's exit code and redacts URLs and passwords; see [data provisioning](../../docs/data-provisioning.md).
 
 Generated passwords live only in `/etc/openvibe/data.env` (root, 0600). PostgreSQL receives SCRAM secrets and
 Valkey receives SHA-256 hashes, so no plaintext is ever in SQL, logs, a process list or the scripts' output.

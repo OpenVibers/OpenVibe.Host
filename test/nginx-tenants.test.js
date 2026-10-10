@@ -17,14 +17,13 @@ function withHost(host, rows) {
         units: ['openvibe-host.service'],
         port: 4910,
         ready: { url: 'http://127.0.0.1:4910/api/ready', timeoutSeconds: 30 },
-        databases: [{ name: 'host', path: '/var/lib/openvibe-host-api/host.db' }],
-        nginx: { tenants: { sitesDomain: 'openvibe.host', wildcardCert: 'openvibe.host', database: '/var/lib/openvibe-host-api/host.db', maxUpload: '110m' } },
+        databases: [{ name: 'host', engine: 'postgresql', database: 'ov_host' }],
+        nginx: { tenants: { sitesDomain: 'openvibe.host', wildcardCert: 'openvibe.host', database: { engine: 'postgresql', database: 'ov_host' }, maxUpload: '110m' } },
     };
     host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
-    host.sqliteHandler = (db, sql, as) => {
-        assert.strictEqual(db, '/var/lib/openvibe-host-api/host.db');
+    host.psqlHandler = (db, sql) => {
+        assert.strictEqual(db, 'ov_host');
         assert.match(sql, /^SELECT hostname FROM host_domains WHERE kind = 'custom' AND status = 'verified'/);
-        assert.strictEqual(as, 'ubuntu', 'queried as the service user');
         return rows;
     };
     host.put('/etc/letsencrypt/live/www.tenant-a.org/fullchain.pem', 'CERT', { mode: 0o644 });
@@ -54,7 +53,7 @@ runTests([
         assert.strictEqual(host.read('/etc/nginx/sites-available/openvibe.host.conf'), null, 'render alone writes nothing');
     }),
 
-    test('a PostgreSQL tenant database reads the verified domains over psql, never a SQLite file', async () => {
+    test('a PostgreSQL tenant database reads the verified domains over psql, as PostgreSQL', async () => {
         const host = scenario();
         const doc = JSON.parse(host.read('/etc/openvibe/host.json'));
         // Host moved to PostgreSQL (ADR-035): its tenants database is a database in the cluster, not
@@ -76,7 +75,6 @@ runTests([
         const domains = await nginx.tenantDomains(host.exec, normalise(doc).services.host);
         assert.deepStrictEqual(domains, [{ hostname: 'www.tenant-a.org', hasCert: true }, { hostname: 'docs.tenant-b.net', hasCert: false }], 'the same [{ hostname, hasCert }] shape');
         assert.ok(host.psqlCalls.some((c) => c.database === 'ov_host' && c.sql === nginx.VERIFIED_SQL), 'the verified domains come from psql');
-        assert.strictEqual(host.sqliteCalls.length, 0, 'a database in the cluster is never opened as a file');
         const r = await host.cli('nginx', 'tenants', 'host');
         assert.strictEqual(r.code, 0, r.out);
         assert.match(r.out, /server_name www\.tenant-a\.org;/);

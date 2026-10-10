@@ -1,6 +1,6 @@
 {
   "_about": "Example ovhost inventory for the single OpenVibe host (openvibe-oregon). Copy to /etc/openvibe/host.json (root:root, 0640) and correct anything that differs on the machine; the real file is never committed. Paths, units, ports and env file locations come from OpenVibe.Network docs/roadmap-baseline/data/services.json and prod-snapshot.json (22 Sep 2026) and each repository's deploy/ directory. env.required lists NAMES only.",
-  "_databases": "Databases (lib/inventory.js): each services.<id>.databases[] item is one of two engines. SQLite (the default) is a file the service user's worker copies: { \"name\": \"live\", \"path\": \"/opt/openvibe.live/data/live.db\" }. PostgreSQL is a database in the cluster: { \"name\": \"trade\", \"engine\": \"postgresql\", \"database\": \"ov_trade\" } \u2014 the name must match ov_[a-z0-9_]+, and there is no path (ovhost reaches it as the postgres OS user over peer auth, and pgBackRest, not ovhost, copies it). tips, deals, coupons, reviews, trade, news, wiki, blog, search, sources, codes, vip, ai, bot, host, events, community, billing, media, openre and games are PostgreSQL; network, chat, tools and live are still SQLite. A drill block follows the engine: a PostgreSQL database maps to { \"url\": \"DATABASE_URL\", \"directUrl\": \"DATABASE_DIRECT_URL\" } and the drill creates a scratch database and role to restore into.",
+  "_databases": "Every databases entry names a PostgreSQL database in the cluster: { \"name\": \"trade\", \"engine\": \"postgresql\", \"database\": \"ov_trade\" }. A drill maps it to { \"url\": \"DATABASE_URL\", \"directUrl\": \"DATABASE_DIRECT_URL\" } and restores a scratch database and role.",
   "host": "openvibe-oregon",
   "stateDir": "/var/lib/openvibe-host",
   "backupDir": "/var/backups/openvibe",
@@ -39,7 +39,8 @@
           "BASE_URL",
           "JWT_PRIVATE_KEY",
           "JWT_PUBLIC_KEY",
-          "DB_PATH"
+          "DATABASE_URL",
+          "DATABASE_DIRECT_URL"
         ]
       },
       "port": 4000,
@@ -55,7 +56,8 @@
       "databases": [
         {
           "name": "network",
-          "path": "/opt/openvibe.network/data/network.db"
+          "engine": "postgresql",
+          "database": "ov_network"
         }
       ],
       "nginx": {
@@ -67,7 +69,10 @@
         "port": 14000,
         "ready": "/api/ready",
         "databases": {
-          "network": "DB_PATH"
+          "network": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -75,7 +80,8 @@
           "OV_EVENTS_INTERNAL_URL": "",
           "INTERNAL_API_KEY": "",
           "OV_TOOLS_INTERNAL_URL": "http://127.0.0.1:9",
-          "AVATAR_PATH": "{tmp}/avatars"
+          "AVATAR_PATH": "{tmp}/avatars",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "dirs": [
           "{tmp}/avatars"
@@ -105,8 +111,7 @@
             "db": "network",
             "table": "coin_transactions"
           }
-        ],
-        "_notes": "OV_EVENTS_INTERNAL_URL empty stops the dev_audit relay; INTERNAL_API_KEY empty falls back to the placeholder key, which makes the chrome site-copy job (paid LLM call through Live), avatar import and Live analytics calls return early. No switch: the ecosystem poller GETs every service readiness and release.json on loopback every 60 s (read-only). Discord bot login and the Resend email queue are gated by settings in the copy and reach only remote hosts, which the sandbox blocks. JWT_PRIVATE_KEY/JWT_PUBLIC_KEY come from the production env file and are only read."
+        ]
       }
     },
     "live": {
@@ -145,7 +150,9 @@
           "OV_OAUTH_CLIENT_SECRET",
           "MEDIA_URL",
           "MEDIA_API_KEY",
-          "MEDIA_WEBHOOK_SECRET"
+          "MEDIA_WEBHOOK_SECRET",
+          "DATABASE_URL",
+          "DATABASE_DIRECT_URL"
         ]
       },
       "port": 3000,
@@ -183,11 +190,8 @@
       "databases": [
         {
           "name": "live",
-          "path": "/opt/openvibe.live/data/live.db"
-        },
-        {
-          "name": "rs-companion",
-          "path": "/opt/openvibe.live/data/rs-companion.db"
+          "engine": "postgresql",
+          "database": "ov_live"
         }
       ],
       "_databasesNote": "analytics.db (1.7 GB, append-only pageviews) is left out of routine backups on purpose; add it here to include it.",
@@ -208,10 +212,12 @@
         "maxBody": "3m"
       },
       "drill": {
-        "_notes": "Needs OpenVibe.Live 8a58aea or later (LIVE_DRILL, server/drill.js; requires checks the deployed checkout). LIVE_DRILL=1 refuses to start unless DB_PATH and DATA_DIR are outside the checkout and /opt/openvibe.live, HOST is loopback and PORT is not 3000, and never takes over the systemd socket. It then serves HTTP only: no RTMP/SRT/WHIP/SFU/JSMPEG listener, no WebSocket (upgrades get 403), no TURN credential, no jobs loop, restream or relay resume, AI job, Media reconciler, Events outbox, chat bridge, identity sync, deploy notice, star job or registry refresh. Every method but GET/HEAD/OPTIONS answers 403; net, fetch, child_process (git only), dgram and listen are guarded, so every other service looks down to it. All its files go to DATA_DIR ({tmp}/data: a fresh analytics.db and empty data directories; the per-location *_PATH values in live.env are ignored in a drill). rs-companion.db is not restored: the server never opens it. Compared: DB-only public reads; ignore lists drop what production changes in memory or every few seconds while someone is live (viewer counts, heartbeats, live thumbnails, recording state) and the one Media lookup (recently-online vod_thumbnail). /api/streams/channel/japaneseoldguy/live is the star channel: any channel that exists works. /release.json is not compared: production computes it at its own boot, so a public/-only deploy without a restart would make it differ. EVENTS_URL, the client secret and MEDIA_URL are blanked as a second switch. Not run on the host yet.",
         "port": 13000,
         "databases": {
-          "live": "DB_PATH"
+          "live": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -220,7 +226,8 @@
           "DATA_DIR": "{tmp}/data",
           "EVENTS_URL": "",
           "OV_OAUTH_CLIENT_SECRET": "",
-          "MEDIA_URL": "http://127.0.0.1:9"
+          "MEDIA_URL": "http://127.0.0.1:9",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "dirs": [
           "{tmp}/data"
@@ -436,7 +443,9 @@
           "OV_NETWORK_URL",
           "OV_OAUTH_CLIENT_ID",
           "OV_OAUTH_CLIENT_SECRET",
-          "MEDIA_URL"
+          "MEDIA_URL",
+          "DATABASE_URL",
+          "DATABASE_DIRECT_URL"
         ]
       },
       "metrics": {
@@ -515,59 +524,19 @@
       },
       "databases": [
         {
-          "name": "tools-audio-analytics",
-          "path": "/opt/openvibe.tools/apps/audio/data/analytics.db"
-        },
-        {
-          "name": "tools-docs-analytics",
-          "path": "/opt/openvibe.tools/apps/docs/data/analytics.db"
-        },
-        {
-          "name": "tools-food-analytics",
-          "path": "/opt/openvibe.tools/apps/food/data/analytics.db"
-        },
-        {
-          "name": "tools-img-analytics",
-          "path": "/opt/openvibe.tools/apps/img/data/analytics.db"
-        },
-        {
-          "name": "tools-maps-analytics",
-          "path": "/opt/openvibe.tools/apps/maps/data/analytics.db"
-        },
-        {
-          "name": "tools-text-analytics",
-          "path": "/opt/openvibe.tools/apps/text/data/analytics.db"
-        },
-        {
-          "name": "tools-yt-analytics",
-          "path": "/opt/openvibe.tools/apps/yt/data/analytics.db"
-        },
-        {
-          "name": "tools-audio-jobs",
-          "path": "/opt/openvibe.tools/apps/audio/data/jobs.db"
-        },
-        {
-          "name": "tools-docs-jobs",
-          "path": "/opt/openvibe.tools/apps/docs/data/jobs.db"
-        },
-        {
-          "name": "tools-img-jobs",
-          "path": "/opt/openvibe.tools/apps/img/data/jobs.db"
+          "name": "tools",
+          "engine": "postgresql",
+          "database": "ov_tools"
         }
       ],
       "drill": {
-        "_notes": "Drills ONE app: docs (both database kinds; spawns no external program; every path has an env override). Its unit's ExecStart/WorkingDirectory come from drill.unit, and the comparison runs against docs' own port. DATA_DIR takes a directory, so both copies land in {tmp}/data under their production names. TOOLS_JOB_RESULTS=local keeps the job pruner from deleting production Media objects for expired jobs in the copy; EVENTS_PUBLISH=off keeps the copy's pending outbox rows from being republished; TOOLS_JOBS_CONCURRENCY=0 runs no job. What still runs, on the copy only: job recovery and pruning, analytics aggregation, upload retention (all under {tmp}). yt, maps and food open data/analytics.db relative to the checkout: drill one with drill.unit + a {tmp} data dir + bind over apps/<app>/data (plus YT_PROXY= for yt) until Tools adds DATA_DIR there. Not run on the host yet.",
         "port": 14016,
         "unit": "openvibe-tools-docs.service",
         "productionPort": 4016,
         "databases": {
-          "tools-docs-analytics": {
-            "env": "DATA_DIR",
-            "dir": true
-          },
-          "tools-docs-jobs": {
-            "env": "DATA_DIR",
-            "dir": true
+          "tools": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
           }
         },
         "env": {
@@ -580,7 +549,8 @@
           "EVENTS_PUBLISH": "off",
           "EVENTS_URL": "",
           "OV_OAUTH_CLIENT_SECRET": "",
-          "MEDIA_URL": "http://127.0.0.1:9"
+          "MEDIA_URL": "http://127.0.0.1:9",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "dirs": [
           "{tmp}/uploads",
@@ -611,31 +581,16 @@
         ],
         "counts": [
           {
-            "db": "tools-docs-jobs",
+            "db": "tools",
             "table": "tool_jobs"
           }
         ]
       },
       "protected": {
-        "kind": "sum",
-        "label": "running tool jobs",
-        "probes": [
-          {
-            "kind": "sqlite-count",
-            "db": "/opt/openvibe.tools/apps/img/data/jobs.db",
-            "sql": "SELECT count(*) AS n FROM tool_jobs WHERE state = 'running'"
-          },
-          {
-            "kind": "sqlite-count",
-            "db": "/opt/openvibe.tools/apps/audio/data/jobs.db",
-            "sql": "SELECT count(*) AS n FROM tool_jobs WHERE state = 'running'"
-          },
-          {
-            "kind": "sqlite-count",
-            "db": "/opt/openvibe.tools/apps/docs/data/jobs.db",
-            "sql": "SELECT count(*) AS n FROM tool_jobs WHERE state = 'running'"
-          }
-        ]
+        "kind": "postgresql-count",
+        "database": "ov_tools",
+        "sql": "SELECT count(*) AS n FROM tool_jobs WHERE state = 'running'",
+        "label": "running tool jobs"
       },
       "drain": {
         "policy": "report"
@@ -676,7 +631,6 @@
           "database": "ov_community"
         }
       ],
-      "_databasesNote": "Community is one PostgreSQL database (ov_community) now. Before the switch it declared two SQLite paths (the repo unit's /var/lib/openvibe-community/community.db and the /opt/openvibe.community/data/community.db the 22 Sep production snapshot found); neither is declared any more, and the frozen files are for `ovhost archive push`.",
       "nginx": {
         "vhost": "openvibe.community.conf",
         "repoVhost": "deploy/nginx/openvibe.community.conf",
@@ -721,8 +675,7 @@
             "db": "community",
             "table": "posts"
           }
-        ],
-        "_notes": "Community is one PostgreSQL database (ov_community) now: the second, legacy SQLite path it used to declare is gone. An empty client secret stops identity resolve-batch calls to Network; the dead Live URL makes a PASTES_AUTHORITY=live proxy fail visibly instead of matching production through production. Community has no events relay (EVENTS_URL is unused)."
+        ]
       }
     },
     "events": {
@@ -1145,13 +1098,17 @@
       "databases": [
         {
           "name": "chat",
-          "path": "/var/lib/openvibe-chat/chat.db"
+          "engine": "postgresql",
+          "database": "ov_chat"
         }
       ],
       "drill": {
         "port": 14400,
         "databases": {
-          "chat": "CHAT_DB_PATH"
+          "chat": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
         },
         "env": {
           "PORT": "{port}",
@@ -1161,7 +1118,8 @@
           "OV_OAUTH_CLIENT_SECRET": "",
           "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9",
           "CHAT_CACHE_DIR": "{tmp}/cache",
-          "SOUNDS_PATH": "{tmp}/sounds"
+          "SOUNDS_PATH": "{tmp}/sounds",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
         "dirs": [
           "{tmp}/cache",
@@ -1187,8 +1145,7 @@
             "db": "chat",
             "table": "moderation_actions"
           }
-        ],
-        "_notes": "An empty client secret and a dead Live URL stop the 2 s Live projection sync and the effects POSTed to Live. History endpoints are not compared: cosmetics come from Live (cut off here) and expired messages are swept at boot, so chat_messages is not counted either."
+        ]
       },
       "protected": {
         "kind": "http-json-count",
@@ -2056,7 +2013,7 @@
         }
       ],
       "drill": {
-        "_notes": "Every provider key, base URL and the HTTP seam are blanked and AI_ENABLED=0, so no run can reach a paid provider; OV_OAUTH_CLIENT_SECRET and EVENTS_URL are blanked (no service calls, no events); WHISPER_BIN is blanked (no transcription). Boot marks interrupted runs failed in the restored copy only. Counts cover configuration and citations only: runs, requests and usage grow by the minute, so they are checked by integrity_check, not by an equal count. Passed on the host 2026-09-24 05:40 UTC.",
+        "_notes": "Every provider key, base URL and the HTTP seam are blanked and AI_ENABLED=0, so no run can reach a paid provider; OV_OAUTH_CLIENT_SECRET and EVENTS_URL are blanked (no service calls, no events); WHISPER_BIN is blanked (no transcription). Boot marks interrupted runs failed in the restored copy only. Counts cover configuration and citations only: runs, requests and usage grow by the minute, so the dump is checked by pg_restore --list; these rows are not compared by count. Passed on the host 2026-09-24 05:40 UTC.",
         "port": 14700,
         "databases": {
           "ai": {
@@ -2119,7 +2076,7 @@
       }
     },
     "bot": {
-      "_note": "Deployed; migrations 0001 and 0002 applied. Bot owns openvibe.bot.conf: deploy bot installs its proxy vhost after Sites skips that filename. BOT_WHIP_BASE (in /etc/openvibe/bot.env) is the switch that points Bot's video at https://ingest.openre.stream/whip. Use ovhost deploy bot --restart if the checkout is already current so it installs and enables the service unit. Keep Sites on its ovhost deploy path (its legacy fallback still installs every vhost).",
+      "_note": "Deployed; migrations 0001 and 0002 applied. Bot owns openvibe.bot.conf: deploy bot installs its proxy vhost after Sites skips that filename. BOT_WHIP_BASE (in /etc/openvibe/bot.env) points Bot's video at https://ingest.openre.stream/whip. Use ovhost deploy bot --restart if the checkout is already current so it installs and enables the service unit. Keep Sites on its ovhost deploy path so it installs every vhost.",
       "repo": "/opt/openvibe.bot",
       "installUnits": true,
       "enableUnits": true,

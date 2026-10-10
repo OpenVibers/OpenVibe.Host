@@ -17,11 +17,12 @@ function withHost(host, rows = []) {
         units: ['openvibe-host.service'],
         port: 4910,
         ready: { url: 'http://127.0.0.1:4910/api/ready', timeoutSeconds: 30 },
-        databases: [{ name: 'host', path: '/var/lib/openvibe-host-api/host.db' }],
-        nginx: { tenants: { sitesDomain: 'openvibe.host', wildcardCert: 'openvibe.host', database: '/var/lib/openvibe-host-api/host.db', maxUpload: '110m' } },
+        databases: [{ name: 'host', engine: 'postgresql', database: 'ov_host' }],
+        nginx: { tenants: { sitesDomain: 'openvibe.host', wildcardCert: 'openvibe.host', database: { engine: 'postgresql', database: 'ov_host' }, maxUpload: '110m' } },
     };
     host.put('/etc/openvibe/host.json', JSON.stringify(doc, null, 2), { mode: 0o640, owner: 'root' });
-    host.sqliteHandler = (db, sql) => {
+    host.psqlHandler = (db, sql) => {
+        assert.strictEqual(db, 'ov_host');
         assert.match(sql, /^SELECT hostname FROM host_domains WHERE kind = 'custom' AND status = 'verified'/);
         return rows;
     };

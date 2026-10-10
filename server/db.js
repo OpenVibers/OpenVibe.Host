@@ -55,7 +55,7 @@ async function openDb(config, { log = console, registry } = {}) {
 }
 
 /**
- * Every store on a migrated database handle. opts.now — injectable clock (epoch ms), so tests and replays are
+ * Every store on a database handle. opts.now — injectable clock (epoch ms), so tests and replays are
  * deterministic. store.tx(fn) is a transaction; inside it, plain db calls join it (ambient).
  */
 function createStore(db, { now = () => Date.now() } = {}) {
