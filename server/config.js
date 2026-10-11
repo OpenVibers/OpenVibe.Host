@@ -90,6 +90,10 @@ function load(env = process.env) {
             url: trim(env.EVENTS_URL || ''),
             intervalMs: int(env.EVENTS_RELAY_INTERVAL_MS, 2000),
         },
+        community: {
+            internalUrl: trim(env.HOST_COMMUNITY_URL || ''),
+            publicUrl: trim(env.OV_COMMUNITY_URL || 'https://openvibe.community'),
+        },
 
         uploads: {
             // Largest request body accepted for one deploy (the compressed archive or all multipart parts).

@@ -46,13 +46,29 @@ const clean = (type, input, current, now) => {
     }
     return v;
 };
-function createCatalog({ store }) {
+function createCatalog({ store, community = null, log = console }) {
     const db = store.db;
+    let visibilityQueue = Promise.resolve();
+    const open = async (type, id) => {
+        const sql = type === 'provider'
+            ? 'SELECT 1 FROM catalog_providers WHERE id = ? AND status = \'active\''
+            : 'SELECT 1 FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.id = ? AND p.status = \'active\' AND v.status = \'active\'';
+        return Boolean(await db.prepare(sql).get(id));
+    };
+    const idle = () => new Promise((resolve) => setImmediate(() => visibilityQueue.then(resolve)));
     const providerOut = (p) => ({ ...p, affiliate_rel: p.affiliate_url ? 'sponsored nofollow noopener' : null, affiliate_disclosure: p.affiliate_url ? 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.' : null });
     const promoOut = (p) => ({ ...p, status: p.status === 'active' && p.ends_at != null && Number(p.ends_at) <= store.now() ? 'ended' : p.status, affiliate_rel: p.affiliate ? 'sponsored nofollow noopener' : null, affiliate_disclosure: p.affiliate ? 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.' : null });
     const get = async (type, id) => { const row = await db.prepare(`SELECT * FROM catalog_${type} WHERE id = ?`).get(id); if (!row) missing(); return type === 'promos' ? promoOut(row) : row; };
     const save = async (type, input, id, actor) => await db.tx(async () => {
         const current = id ? await get(type, id) : null;
+        const watched = [];
+        if (community && community.enabled && current && ['providers', 'plans'].includes(type)) {
+            const kind = type === 'providers' ? 'provider' : 'plan';
+            watched.push({ kind, id, was: await open(kind, id) });
+            if (kind === 'provider') {
+                for (const row of await db.prepare('SELECT id FROM catalog_plans WHERE provider_id = ?').all(id)) watched.push({ kind: 'plan', id: row.id, was: await open('plan', row.id) });
+            }
+        }
         if (current && type === 'plans' && current.origin === 'sources' && Object.keys(input).some((k) => k !== 'status')) invalid('Only status can be edited on a Sources plan');
         const now = store.now();
         const v = clean(type, input, current, now);
@@ -65,6 +81,14 @@ function createCatalog({ store }) {
                 await db.prepare('INSERT INTO catalog_price_changes (plan_id, observed_at, currency, price_monthly_before, price_monthly_after) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING').run(id, v.checked_at, v.currency, current.price_monthly, v.price_monthly);
             }
             await db.prepare(`UPDATE catalog_${type} SET ${cols.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(...cols.map((k) => v[k]), now, id);
+            if (watched.length) db.afterCommit(() => {
+                visibilityQueue = visibilityQueue.then(async () => {
+                    for (const item of watched) {
+                        const isOpen = await open(item.kind, item.id);
+                        if (isOpen !== item.was) await community.setThreadVisibility(item.kind, item.id, isOpen ? 'public' : 'hidden');
+                    }
+                }).catch((err) => log.warn(`[Host] catalog discussion sync failed: ${err.message}`));
+            });
             return await get(type, id);
         }
         const key = { providers: 'catalogProvider', plans: 'catalogPlan', promos: 'catalogPromo' }[type];
@@ -150,6 +174,6 @@ function createCatalog({ store }) {
         return { plans: Number(r.plans) || 0, providers: Number(r.providers) || 0, lastChecked: r.last == null ? null : Number(r.last) };
     }
     async function sitemapPlans() { return await db.prepare("SELECT p.id FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY p.id").all(); }
-    return { save, get, applyItem, plans, plan, providers, promos, currencies: currenciesInUse, stats, sitemapPlans, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
+    return { save, get, applyItem, plans, plan, providers, promos, currencies: currenciesInUse, stats, sitemapPlans, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
 }
 module.exports = { createCatalog };

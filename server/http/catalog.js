@@ -7,6 +7,7 @@ const { renderPage, esc } = require('../render/layout');
 const render = require('../render/catalog');
 const { csrfToken, checkCsrf, sameOrigin } = require('../auth/forms');
 const { guard } = require('../auth/viewer');
+const cache = require('openvibe-shared/cache-policy');
 
 const disclosure = render.DISCLOSURE;
 function createCatalogApi({ catalog, viewers, actorLimits }) {
@@ -28,13 +29,33 @@ function createCatalogApi({ catalog, viewers, actorLimits }) {
     router.use((err, req, res, next) => { if (res.headersSent) return next(err); sendError(res, req, err); });
     return router;
 }
-function createCatalogPages({ catalog, config, viewers, actorLimits }) {
+function createCatalogPages({ catalog, community, config, viewers, actorLimits, log = console }) {
     const router = express.Router();
     router.use(viewers.middleware('dashboard'));
     if (actorLimits) router.use(actorLimits);
-    const page = (req, res, title, body, indexable = true, description) => res.status(200).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, indexable, description, css: ['css/catalog.css'] }));
+    const cachePage = (req, res, publicPage) => {
+        res.vary('Cookie'); res.vary('Authorization');
+        res.set('Cache-Control', cache.htmlHeaders(publicPage && req.viewer.kind === 'anonymous' ? { maxAge: 60 } : { private: true }));
+    };
+    const page = (req, res, title, body, indexable = true, description) => {
+        cachePage(req, res, indexable);
+        return res.status(200).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, indexable, description, css: ['css/catalog.css'] }));
+    };
+    async function discussionFor(req, type, entity, label) {
+        if (!community || !community.enabled) return null;
+        try {
+            const threadId = await community.threadFor(type, entity, label, req.ov);
+            const data = await community.readThread(threadId, req.ov);
+            if (!data || !data.thread) throw new Error('Community returned no thread');
+            return { state: 'ok', thread: data.thread, comments: Array.isArray(data.comments) ? data.comments : [], communityUrl: community.publicUrl };
+        } catch (err) {
+            log.warn(`[Host] ${type} ${entity.id} discussion unavailable: ${err.message}`);
+            return { state: 'unavailable' };
+        }
+    }
     const view = (fn) => async (req, res) => {
         try { await fn(req, res); } catch (err) {
+            cachePage(req, res, false);
             const status = err.status || 500;
             const body = status === 404 ? '<h1>Not in the catalog</h1><p>This entry is not listed (or no longer is).</p><p><a href="/catalog">Compare plans</a></p>'
                 : status === 422 ? `<h1>That filter did not work</h1><p>${esc(err.message)}</p><p><a href="/catalog">Clear the filters</a></p>`
@@ -52,11 +73,13 @@ function createCatalogPages({ catalog, config, viewers, actorLimits }) {
     }));
     router.get('/providers/:slug', view(async (req, res) => {
         const p = await catalog.providers(req.params.slug);
-        page(req, res, `${p.name} plans and prices`, render.provider(p), true, `${p.name}'s hosting plans compared: monthly prices, per-resource prices and the day each was checked.`);
+        const discussion = await discussionFor(req, 'provider', p, p.name);
+        page(req, res, `${p.name} plans and prices`, render.provider(p, discussion), true, `${p.name}'s hosting plans compared: monthly prices, per-resource prices and the day each was checked.`);
     }));
     router.get('/plans/:id', view(async (req, res) => {
         const p = await catalog.plan(req.params.id);
-        page(req, res, `${p.provider_name} ${p.name}`, render.plan(p), true, `${p.provider_name} ${p.name}: ${p.currency} ${p.price_monthly} a month, with its specifications, price per resource and price history.`);
+        const discussion = await discussionFor(req, 'plan', p, `${p.provider_name} ${p.name}`);
+        page(req, res, `${p.provider_name} ${p.name}`, render.plan(p, discussion), true, `${p.provider_name} ${p.name}: ${p.currency} ${p.price_monthly} a month, with its specifications, price per resource and price history.`);
     }));
     router.get('/promos', view(async (req, res) => {
         page(req, res, 'Hosting promotions', render.promos(await catalog.promos()), true, 'Hosting promotions running now, with their codes and end dates as the providers state them.');

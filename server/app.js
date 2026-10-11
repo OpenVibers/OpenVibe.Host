@@ -46,6 +46,7 @@ const { createDashboard } = require('./http/dashboard');
 const { createHostReadiness } = require('./observability');
 const { createWorker } = require('./worker');
 const { createCatalog } = require('./catalog/store');
+const { createCommunity } = require('./catalog/community');
 const { createCatalogIngest } = require('./catalog/ingest');
 const { createCatalogApi, createCatalogPages } = require('./http/catalog');
 const { renderPage, assetVersion, setRelease } = require('./render/layout');
@@ -154,11 +155,12 @@ async function createApp(opts = {}) {
     const viewers = createViewerResolver({ auth, config, log });
     const tenant = createTenantServer({ store, config, blobs, takedowns, siteConfig, access, log });
     const uploadGate = createUploadGate(config.uploads.maxConcurrent);
-    const catalog = createCatalog({ store });
+    const community = createCommunity({ store, config, fetchImpl: opts.fetchImpl, log });
+    const catalog = createCatalog({ store, community, log });
     const catalogIngest = createCatalogIngest({ config, store, catalog, fetchImpl: opts.fetchImpl });
     const worker = createWorker({ config, store, domains, blobs, outbox, catalogIngest, log });
 
-    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, siteConfig, siteSources, catalog, catalogIngest, auth, viewers, tenant, worker, uploadGate, indexnow, log };
+    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, siteConfig, siteSources, catalog, community, catalogIngest, auth, viewers, tenant, worker, uploadGate, indexnow, log };
 
     const app = express();
     app.disable('x-powered-by');

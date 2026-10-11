@@ -159,7 +159,19 @@ ${list.some((p) => p.affiliate) ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</
 <p class="hc-links">${link('/catalog', '← Compare plans')}</p>`;
 }
 
-function provider(p) {
+function discussionSection(d) {
+    if (!d) return '';
+    if (d.state !== 'ok') return '<section class="hc-discussion" aria-labelledby="hc-discussion-h"><h2 id="hc-discussion-h">Discussion</h2><p class="hc-dim" role="status">Discussion is unavailable right now. Reload later.</p></section>';
+    const count = Number(d.thread.comment_count) || 0;
+    const threadUrl = `${d.communityUrl}/c/${encodeURIComponent(d.thread.id)}`;
+    const one = (c) => `<li class="hc-comment"><p class="hc-comment-meta"><strong>${esc(c.deleted ? '[deleted]' : c.display_name || 'Anonymous')}</strong>${Number.isFinite(Date.parse(c.created_at)) ? ` · <time datetime="${esc(c.created_at)}">${esc(new Date(c.created_at).toLocaleDateString('en', { timeZone: 'UTC', year: 'numeric', month: 'short', day: 'numeric' }))}</time>` : ''}</p><p>${c.deleted ? 'This comment was deleted.' : esc(c.message || '').replace(/\n/g, '<br>')}</p>${Array.isArray(c.replies) && c.replies.length ? `<ol>${c.replies.map(one).join('')}</ol>` : ''}</li>`;
+    return `<section class="hc-discussion" aria-labelledby="hc-discussion-h"><h2 id="hc-discussion-h">Discussion <span class="hc-dim">(${count})</span></h2>
+<p class="hc-dim">Comments are hosted by ${out(d.communityUrl, 'OpenVibe.Community')}.</p>
+${d.comments.length ? `<ol class="hc-comments">${d.comments.map(one).join('')}</ol>` : '<p class="hc-dim">No comments yet.</p>'}
+<p>${d.thread.visibility === 'locked' ? 'This thread is locked.' : out(threadUrl, 'Join the discussion on OpenVibe.Community', { cls: 'button hc-button-quiet' })}</p></section>`;
+}
+
+function provider(p, discussion = null) {
     const cheapest = p.plans.length ? p.plans.reduce((m, x) => (Number(x.price_monthly) < Number(m.price_monthly) ? x : m), p.plans[0]) : null;
     return `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog', 'Catalog')} / ${link('/catalog/providers', 'Providers')}</nav>
 <header class="hc-head hc-head-row">
@@ -168,12 +180,13 @@ function provider(p) {
 ${visit(p)}
 </header>
 ${p.plans.length ? planTable(p.plans, { caption: `${p.name}'s plans, lowest price first`, showProvider: false }) : '<div class="hc-empty"><p>No plan of this provider is listed right now.</p></div>'}
+${discussionSection(discussion)}
 <h2>Promotions</h2>
 ${promoCards(p.promos, { showProvider: false })}
 ${p.affiliate_url || p.promos.some((x) => x.affiliate) ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}`;
 }
 
-function plan(p) {
+function plan(p, discussion = null) {
     const spec = [
         ['vCPU', p.vcpu == null ? null : num(p.vcpu)], ['RAM', bytesMb(p.ram_mb)],
         ['Disk', p.disk_gb == null ? null : `${sizeGb(p.disk_gb)}${p.disk_type ? ` ${p.disk_type.toUpperCase()}` : ''}`],
@@ -199,6 +212,7 @@ ${visit(p)}
 </div>
 <h2>Price history</h2>
 ${history}
+${discussionSection(discussion)}
 ${p.affiliate_url ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}
 <p class="hc-links">${link('/catalog', '← Compare plans')}</p>`;
 }

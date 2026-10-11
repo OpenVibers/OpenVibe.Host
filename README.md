@@ -25,6 +25,7 @@ OpenVibe's own static hosting (Stage B below) has its page at `/hosting`; it is 
 - **Staff.** `host.catalog.manage` (Network staff only) covers `POST`/`PATCH /api/v1/catalog/{providers,plans,promos}` and the no-JS forms at `/catalog/manage`.
 - **Public reads.** `GET /api/v1/catalog/plans` (filters `kind`, `min_vcpu`, `min_ram_mb`, `min_disk_gb`, `max_price`, `currency`, `location`, `provider`; `sort`; cursor), `/plans/:id` (with price history), `/providers`, `/providers/:slug` and `/promos`.
 - **Pages.** `/catalog`, `/catalog/providers`, `/catalog/providers/:slug`, `/catalog/plans/:id` and `/catalog/promos`. They are server-rendered and work without JavaScript; the styles are `public/css/catalog.css`.
+- **Discussion.** Active public provider and plan pages lazily resolve Community threads with refs `{ service: 'host', type: 'provider', id: provider.id }` and `{ service: 'host', type: 'plan', id: plan.id }` (plus a display label), then render recent comments with a link to the thread on OpenVibe.Community. Host stores only the thread reference. `HOST_COMMUNITY_URL` enables the internal client; `OV_COMMUNITY_URL` sets the public link. With the internal URL unset, no Discussion block appears. Hidden providers and hidden or gone plans have no public page; status changes hide or reopen existing threads after commit. Host's Network service principal needs `community.comment.write` and `community.comment.moderate` for audience `openvibe.community`.
 
 ## Purpose
 
