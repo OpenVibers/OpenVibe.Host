@@ -112,6 +112,7 @@ function load(env = process.env) {
         // Public hosting is owner-gated (plan T20/O34: the owner's go-ahead, a DMCA designated agent and a Public
         // Suffix List entry come first). Until HOST_PUBLIC_HOSTING=on only OpenVibe staff can create projects, and the
         // front page says hosting is not open yet; everything else about the engine is unchanged.
+        catalog: { ingest: String(env.HOST_CATALOG_INGEST || 'off').trim().toLowerCase() === 'on', sourcesUrl: trim(env.HOST_CATALOG_SOURCES_URL || ''), webhookSecrets: list(env.HOST_CATALOG_WEBHOOK_SECRETS) },
         publicHosting: String(env.HOST_PUBLIC_HOSTING || 'off').trim().toLowerCase() === 'on',
 
         // Per-project quotas (a row in host_quotas overrides them per project; only staff set it).

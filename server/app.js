@@ -45,6 +45,9 @@ const resourceIndex = require('./registry/resource-index');
 const { createDashboard } = require('./http/dashboard');
 const { createHostReadiness } = require('./observability');
 const { createWorker } = require('./worker');
+const { createCatalog } = require('./catalog/store');
+const { createCatalogIngest } = require('./catalog/ingest');
+const { createCatalogApi, createCatalogPages } = require('./http/catalog');
 const { renderPage, assetVersion, setRelease } = require('./render/layout');
 const pages = require('./render/pages');
 
@@ -151,9 +154,11 @@ async function createApp(opts = {}) {
     const viewers = createViewerResolver({ auth, config, log });
     const tenant = createTenantServer({ store, config, blobs, takedowns, siteConfig, access, log });
     const uploadGate = createUploadGate(config.uploads.maxConcurrent);
-    const worker = createWorker({ config, store, domains, blobs, outbox, log });
+    const catalog = createCatalog({ store });
+    const catalogIngest = createCatalogIngest({ config, store, catalog, fetchImpl: opts.fetchImpl });
+    const worker = createWorker({ config, store, domains, blobs, outbox, catalogIngest, log });
 
-    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, siteConfig, siteSources, auth, viewers, tenant, worker, uploadGate, indexnow, log };
+    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, siteConfig, siteSources, catalog, catalogIngest, auth, viewers, tenant, worker, uploadGate, indexnow, log };
 
     const app = express();
     app.disable('x-powered-by');
@@ -227,38 +232,53 @@ async function createApp(opts = {}) {
     // generated one when the deploy ships none.
     const legalPaths = require('openvibe-shared/legal').PATHS;
     app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 }))
-        .send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
-    app.get('/sitemap.xml', (_req, res) => res.type('application/xml').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 }))
-        .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${['/', ...legalPaths].map((p) => `  <url><loc>${config.baseUrl}${p}</loc></url>`).join('\n')}\n</urlset>\n`));
+        .send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Allow: /hosting$', 'Allow: /catalog$', 'Allow: /catalog/*', 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
+    app.get('/sitemap.xml', async (_req, res, next) => {
+        try {
+            const providers = await catalog.providers();
+            const plans = await catalog.sitemapPlans();
+            const paths = ['/', '/hosting', ...legalPaths, '/catalog', '/catalog/promos', '/catalog/providers', ...providers.map((p) => `/catalog/providers/${p.slug}`), ...plans.map((p) => `/catalog/plans/${p.id}`)];
+            res.type('application/xml').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 }))
+                .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map((p) => `  <url><loc>${config.baseUrl}${p}</loc></url>`).join('\n')}\n</urlset>\n`);
+        } catch (err) { next(err); }
+    });
     // /llms.txt and /llms-full.txt (llmstxt.org): a map of Host's own public pages only. A tenant site, a preview
     // URL, the dashboard, /api and /internal are never listed (a tenant's own /llms.txt is its deploy's file).
-    const SITE_SUMMARY = 'OpenVibe.Host: static site hosting for OpenVibe projects (alpha). Immutable deploys, custom domains and one-step rollback.';
+    const SITE_SUMMARY = 'OpenVibe.Host: hosting plans compared (cloud, VPS and dedicated), every price dated and sourced and never ranked by who pays; and OpenVibe\'s own static hosting (alpha, not open to the public yet).';
     const legalTitles = require('openvibe-shared/legal').TITLES;
     const publicPages = [
-        { title: 'OpenVibe.Host', url: '/', text: 'The public front page of OpenVibe.Host: static site hosting for OpenVibe projects. Upload a folder or a .tar.gz of HTML, CSS, JavaScript, images and fonts; Host keeps every deploy as an immutable artifact, serves the active one on a <site>.openvibe.host address or a verified custom domain, and rolls back in one step. Alpha: static files only, no build step and no server-side code.' },
+        { title: 'OpenVibe.Host', url: '/', text: 'The front page of OpenVibe.Host: hosting plans compared. Cloud, VPS and dedicated plans from providers\' official APIs (through OpenVibe.Sources) and staff entries that name their source, with the price per month, per vCPU and per GB, the day each price was checked and its source link. The order comes only from the sort a visitor picks; affiliate links are marked and disclosed.' },
+        { title: 'Static hosting', url: '/hosting', text: 'OpenVibe.Host\'s own static site hosting: upload a folder or a .tar.gz, every deploy kept as an immutable artifact, served on a <site>.openvibe.host address or a verified custom domain, rolled back in one step. Not open to the public yet: only OpenVibe staff create projects until the launch review.' },
+        { title: 'Compare hosting plans', url: '/catalog', text: 'The comparison table: filter by kind, vCPU, RAM, disk, price, provider, location and currency; sort by monthly price or by price per vCPU, per GB of RAM or per GB of disk.' },
+        { title: 'Hosting providers', url: '/catalog/providers', text: 'Every provider in the catalog.' },
+        { title: 'Hosting promotions', url: '/catalog/promos', text: 'Hosting promotions running now, with codes and end dates as the providers state them.' },
         { title: 'What shipped on OpenVibe.Host', url: '/updates', text: 'The public update log for OpenVibe.Host: what shipped, newest first.' },
         ...legalPaths.map((p) => ({ title: legalTitles[p.slice(1)] || p.slice(1), url: p, text: `The ${legalTitles[p.slice(1)] || p.slice(1)} of OpenVibe.Host.` })),
     ];
-    app.get('/llms.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.llmsTxt({
+    const catalogPublicPages = async () => [
+        ...((await catalog.providers()).map((p) => ({ title: p.name, url: `/catalog/providers/${p.slug}`, text: `Hosting plans from ${p.name}, with prices and sources.` }))),
+        ...((await catalog.sitemapPlans()).map((p) => ({ title: `Hosting plan ${p.id}`, url: `/catalog/plans/${p.id}`, text: 'Sourced hosting plan with a checked price and price history.' }))),
+    ];
+    app.get('/llms.txt', async (_req, res, next) => { try { res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.llmsTxt({
         name: 'OpenVibe.Host',
         summary: SITE_SUMMARY,
         details: 'The sites Host serves belong to their owners and are not listed here; the dashboard, sign-in and the API are per-person.',
         sections: [
-            { title: 'Public pages', links: publicPages.map((p) => ({ title: p.title, url: `${config.baseUrl}${p.url}` })) },
+            { title: 'Public pages', links: [...publicPages, ...await catalogPublicPages()].map((p) => ({ title: p.title, url: `${config.baseUrl}${p.url}` })) },
             { title: 'Machine-readable', links: [
                 { title: 'Sitemap', url: `${config.baseUrl}/sitemap.xml`, note: 'the public pages' },
                 { title: 'robots.txt', url: `${config.baseUrl}/robots.txt` },
                 { title: 'llms-full.txt', url: `${config.baseUrl}/llms-full.txt`, note: 'this same map with a description of each public page' },
             ] },
         ],
-    })));
-    app.get('/llms-full.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.llmsFull({
+    })); } catch (err) { next(err); } });
+    app.get('/llms-full.txt', async (_req, res, next) => { try { res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.llmsFull({
         site: { name: 'OpenVibe.Host', url: config.baseUrl },
         summary: SITE_SUMMARY,
         base: config.baseUrl,
         maxBytes: 512 * 1024,
-        sections: [{ title: 'Public pages', pages: publicPages }],
-    })));
+        sections: [{ title: 'Public pages', pages: [...publicPages, ...await catalogPublicPages()] }],
+    })); } catch (err) { next(err); } });
 
     // ── Sign-in (OAuth2 client of OpenVibe.Network) ─────────
     app.use('/auth/', rateLimit({ windowMs: 15 * 60_000, max: 60, standardHeaders: true, legacyHeaders: false }));
@@ -284,7 +304,14 @@ async function createApp(opts = {}) {
     app.use('/api/v1/resources', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }),
         viewers.middleware('api'), resourceIndex.router({ guard: guard('host.resource.read') }));
 
+    // Signed Sources events; disabled unless ingest and webhook secrets are configured.
+    app.post('/internal/catalog/events', express.raw({ type: '*/*', limit: '256kb' }), async (req, res) => {
+        try { const result = await catalogIngest.consume(req.body, req.headers); res.status(result.status).json(result); }
+        catch (err) { require('./http/errors').sendError(res, req, err, log); }
+    });
+
     // ── API ─────────────────────────────────────────────────
+    app.use('/api/v1/catalog', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }), createCatalogApi(ctx));
     app.use('/api/v1', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }), createApi(ctx));
 
     // ── Preview deploys (plan T12 J4) ───────────────────────
@@ -295,6 +322,8 @@ async function createApp(opts = {}) {
         res.set('Cache-Control', cache.htmlHeaders({ private: true }));
         Promise.resolve(tenant.preview(req, res)).catch(next);
     });
+
+    app.use('/catalog', rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), createCatalogPages(ctx));
 
     // ── Dashboard ───────────────────────────────────────────
     app.use(rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), createDashboard(ctx));

@@ -17,9 +17,9 @@ const BUDGETS = {
     jsFiles: 5,   // 5 (openvibe-shared 2.10's shell adds web-runtime.js)
     jsRawKB: 250,   // 239.1 (openvibe-shared 2.6.0 served scripts; was 212.2 on 2.2.0)
     jsBrotliKB: 60,   // 56.3 (was 49.9)
-    cssFiles: 2,   // 2 (host.css, openvibe-shared showcase.css)
-    cssRawKB: 16,   // 14.8 (3.1 before showcase.css)
-    cssBrotliKB: 4.2,   // 3.6 (0.9 before showcase.css)
+    cssFiles: 3,   // 3 (host.css, openvibe-shared showcase.css, catalog.css: the front page is the hosting catalog since Host#69)
+    cssRawKB: 27,   // 25 (14.8 before catalog.css)
+    cssBrotliKB: 6.5,   // 5.7 (3.6 before catalog.css)
     externalFiles: 1,   // 0
 };
 

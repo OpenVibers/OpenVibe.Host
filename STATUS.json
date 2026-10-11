@@ -14,20 +14,21 @@
   "port": 4910,
   "domain": "openvibe.host",
   "tenantDomain": "*.openvibe.host",
-  "contracts": "openvibe-contracts v0.129.0",
+  "contracts": "openvibe-contracts v0.139.0",
   "sdk": "openvibe-sdk v0.44.0",
-  "shared": "openvibe-shared v3.0.1",
+  "shared": "openvibe-shared v4.0.0",
   "packages": [
-    "openvibe-contracts v0.129.0",
+    "openvibe-contracts v0.139.0",
     "openvibe-sdk v0.44.0",
-    "openvibe-shared v3.0.1"
+    "openvibe-shared v4.0.0"
   ],
   "capabilities": [
     "host.site.manage",
     "host.deploy.create",
     "host.domain.manage",
     "host.site.config",
-    "host.resource.read"
+    "host.resource.read",
+    "host.catalog.manage"
   ],
   "capabilitiesRegistered": true,
   "serviceManifestRegistered": "host manifest v0.2.0 released (openvibe-contracts v0.24.0+), with the four host.* events",

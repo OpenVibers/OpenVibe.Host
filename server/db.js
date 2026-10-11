@@ -30,7 +30,7 @@ const { createDb } = require('openvibe-sdk/db');
 const MIGRATIONS = path.join(__dirname, '..', 'migrations');
 const DEV_PGLITE = path.join(__dirname, '..', 'data', 'pglite');
 
-const CHARTER_TABLES = ['host_projects', 'host_project_members', 'host_quotas', 'host_sites', 'host_deploys', 'host_deploy_files', 'host_blobs', 'host_activations', 'host_deploy_logs', 'host_domains', 'host_takedowns', 'host_site_sources', 'host_deploy_git'];
+const CHARTER_TABLES = ['host_projects', 'host_project_members', 'host_quotas', 'host_sites', 'host_deploys', 'host_deploy_files', 'host_blobs', 'host_activations', 'host_deploy_logs', 'host_domains', 'host_takedowns', 'host_site_sources', 'host_deploy_git', 'catalog_providers', 'catalog_plans', 'catalog_price_changes', 'catalog_promos', 'catalog_ingest_cursor'];
 
 /**
  * The serving handle (ADR-035): DATABASE_URL through PgBouncer; in development without it, an embedded PGlite database

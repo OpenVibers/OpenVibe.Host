@@ -7,7 +7,7 @@
  */
 const { ids } = require('openvibe-contracts');
 
-const PREFIX = { project: 'prj', site: 'sit', deploy: 'dpl', domain: 'dom' };
+const PREFIX = { project: 'prj', site: 'sit', deploy: 'dpl', domain: 'dom', catalogProvider: 'hpv', catalogPlan: 'hpl', catalogPromo: 'hpr' };
 const ULID = '[0-9A-HJKMNP-TV-Z]{26}';
 const RE = Object.fromEntries(Object.entries(PREFIX).map(([k, p]) => [k, new RegExp(`^${p}_${ULID}$`)]));
 
