@@ -26,11 +26,12 @@
 const fs = require('fs');
 const path = require('path');
 const { createDb } = require('openvibe-sdk/db');
+const { createDiscussionRefs } = require('openvibe-publishing/discussion');
 
 const MIGRATIONS = path.join(__dirname, '..', 'migrations');
 const DEV_PGLITE = path.join(__dirname, '..', 'data', 'pglite');
 
-const CHARTER_TABLES = ['host_projects', 'host_project_members', 'host_quotas', 'host_sites', 'host_deploys', 'host_deploy_files', 'host_blobs', 'host_activations', 'host_deploy_logs', 'host_domains', 'host_takedowns', 'host_site_sources', 'host_deploy_git', 'catalog_providers', 'catalog_plans', 'catalog_price_changes', 'catalog_promos', 'catalog_ingest_cursor'];
+const CHARTER_TABLES = ['host_catalog_discussion_refs', 'host_projects', 'host_project_members', 'host_quotas', 'host_sites', 'host_deploys', 'host_deploy_files', 'host_blobs', 'host_activations', 'host_deploy_logs', 'host_domains', 'host_takedowns', 'host_site_sources', 'host_deploy_git', 'catalog_providers', 'catalog_plans', 'catalog_price_changes', 'catalog_promos', 'catalog_ingest_cursor'];
 
 /**
  * The serving handle (ADR-035): DATABASE_URL through PgBouncer; in development without it, an embedded PGlite database
@@ -62,6 +63,7 @@ function createStore(db, { now = () => Date.now() } = {}) {
     return {
         db,
         now,
+        discussion: createDiscussionRefs(db, { prefix: 'host_catalog', now }),
 
         tx: async (fn) => await db.tx(() => fn()),
         close: () => db.close(),

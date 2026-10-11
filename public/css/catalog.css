@@ -88,6 +88,15 @@
 .hc-spec dd { margin: .15rem 0 0; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .hc-history { padding-left: 1.2rem; font-variant-numeric: tabular-nums; }
 .hc-history time { color: var(--hs-muted); margin-right: .4rem; }
+.hc-discussion { margin: 1.75rem 0; padding: 1.1rem 1.25rem; border: 1px solid var(--hs-line); border-radius: 12px; background: var(--hs-card); overflow-wrap: anywhere; }
+.hc-discussion h2 { margin: 0 0 .4rem; font-size: 1.15rem; }
+.hc-discussion > p { margin: .5rem 0 1rem; }
+.hc-comments, .hc-comment ol { list-style: none; margin: 1rem 0; padding: 0; }
+.hc-comment { padding: .8rem 0; border-top: 1px solid var(--hs-line); }
+.hc-comment p { margin: .3rem 0; white-space: normal; }
+.hc-comment-meta { color: var(--hs-muted); font-size: 13px; }
+.hc-comment-meta strong { color: var(--hs-fg); }
+.hc-comment ol { margin: .5rem 0 0 1rem; }
 
 /* The front page's hero aside: the five lowest prices. */
 .hc-aside { padding: 1rem 1.1rem; border-radius: 16px; border: 1px solid var(--hs-line); background: var(--hs-card); min-width: min(100%, 20rem); }
@@ -104,6 +113,8 @@
 @media (max-width: 60rem) { .hc-plan { grid-template-columns: 1fr; } }
 /* Phones: each plan becomes a card; the header row is read from each cell's label. */
 @media (max-width: 44rem) {
+  .hc-discussion { padding: .9rem; }
+  .hc-discussion .button { max-width: 100%; white-space: normal; }
   .hc-table-wrap { border: 0; background: none; overflow: visible; }
   .hc-table caption { display: block; padding: 0 0 .5rem; border: 0; }
   .hc-table, .hc-table tbody, .hc-table tr, .hc-table td, .hc-table th { display: block; }
