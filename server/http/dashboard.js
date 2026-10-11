@@ -10,6 +10,7 @@ const ovServe = require('openvibe-shared/serve');
 const frame = require('openvibe-shared/frame');
 const { renderPage } = require('../render/layout');
 const pages = require('../render/pages');
+const catalogPages = require('../render/catalog');
 const showcase = require('openvibe-shared/showcase');
 const { limitsOf } = require('../limits');
 const { csrfToken, checkCsrf, sameOrigin } = require('../auth/forms');
@@ -30,8 +31,8 @@ function createDashboard(ctx) {
     if (ctx.actorLimits) router.use(ctx.actorLimits);
     router.use((req, res, next) => { privateNoStore(res); next(); });
 
-    function page(req, res, status, title, body, notice, { indexable = false, styles } = {}) {
-        res.status(status).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, notice, indexable, styles }));
+    function page(req, res, status, title, body, notice, { indexable = false, styles, css } = {}) {
+        res.status(status).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, notice, indexable, styles, css }));
     }
 
     function fail(req, res, err) {
@@ -68,12 +69,19 @@ function createDashboard(ctx) {
     // ── Pages ───────────────────────────────────────────────
     // What shipped on OpenVibe.Host: the shared update log every OpenVibe site has.
     router.get('/updates', view((req, res) => page(req, res, 200, 'What shipped on OpenVibe.Host', frame.updatesBody({ service: 'host', siteName: 'OpenVibe.Host' }) + `<script src="${ovServe.url('shipped.js')}" defer></script>`, null, { indexable: true })));
+    router.get('/hosting', view(async (req, res) => {
+        page(req, res, 200, 'Static hosting', pages.signedOut({ limits: limitsOf(config), limitsUrl: `${config.baseUrl}/limits.json`, launched: config.publicHosting }), null,
+            { indexable: !req.query || !Object.keys(req.query).length, styles: [showcase.STYLESHEET] });
+    }));
+
     router.get('/', view(async (req, res) => {
-        // The signed-out front page is the public page of openvibe.host (sitemap.xml): indexable.
-        // Everything behind sign-in stays noindex and private.
+        // The signed-out front page is the public page of openvibe.host (sitemap.xml): indexable. It leads with the
+        // hosting catalog (plan T20 step 3: openvibe.host is hosting compared); OpenVibe's own static hosting has
+        // its page at /hosting. Everything behind sign-in stays noindex and private.
         if (req.viewer.kind !== 'user') {
-            return page(req, res, 200, null, pages.signedOut({ limits: limitsOf(config), limitsUrl: `${config.baseUrl}/limits.json`, launched: config.publicHosting }), null,
-                { indexable: !req.query || !Object.keys(req.query).length, styles: [showcase.STYLESHEET] });
+            const [result, providers, promos, stats] = await Promise.all([ctx.catalog.plans({}), ctx.catalog.providers(), ctx.catalog.promos(), ctx.catalog.stats()]);
+            return page(req, res, 200, null, catalogPages.front({ plans: result.plans, providers, promos, stats, hostingLaunched: config.publicHosting }), null,
+                { indexable: !req.query || !Object.keys(req.query).length, styles: [showcase.STYLESHEET], css: ['css/catalog.css'] });
         }
         page(req, res, 200, 'Projects', pages.home({ projects: await projects.listFor(req.viewer), csrf: csrfToken(config, req.viewer), canCreate: config.publicHosting || Boolean(req.viewer.staff) }), notice(req));
     }));

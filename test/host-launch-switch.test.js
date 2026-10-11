@@ -13,8 +13,17 @@ const { csrfToken } = require('../server/auth/forms');
     const alice = t.user('alice');
     const staff = t.user('root', { role: 'admin' });
 
-    await check('the signed-out front page says hosting is not open yet and invites no one to publish', async () => {
-        const r = await t.api('GET', '/');
+    await check('the signed-out front page leads with the catalog and says static hosting is not open yet', async () => {
+        const front = await t.api('GET', '/');
+        assert.strictEqual(front.status, 200);
+        assert.match(front.text, /Hosting, compared honestly/);
+        assert.match(front.text, /not open to the public yet/);
+        assert.match(front.text, /href="\/hosting"/);
+        assert.doesNotMatch(front.text, /class="sc-btn sc-primary" href="\/auth\/login/, 'no primary sign-in-to-publish call');
+    });
+
+    await check('/hosting says hosting is not open yet and invites no one to publish', async () => {
+        const r = await t.api('GET', '/hosting');
         assert.strictEqual(r.status, 200);
         assert.match(r.text, /not open yet/);
         assert.match(r.text, /launch review/);

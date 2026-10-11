@@ -14,6 +14,10 @@ const frame = require('openvibe-shared/frame');
 const shell = require('openvibe-shared/shell');
 
 const NETWORK_URL = 'https://openvibe.network';
+// The catalog first (openvibe.host is hosting compared, plan T20 step 3); a signed-in person's projects after it.
+const NAV_LINKS = (signedIn) => [{ label: 'Compare', href: '/catalog' }, { label: 'Promotions', href: '/catalog/promos' },
+    signedIn ? { label: 'Projects', href: '/' } : { label: 'Static hosting', href: '/hosting' }];
+const DESCRIPTION = 'OpenVibe.Host: hosting plans compared, every price dated and sourced; and OpenVibe\'s own static hosting (alpha).';
 const SITE_NAME = 'OpenVibe.Host';
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 
@@ -42,7 +46,7 @@ function renderPage(o) {
     const nav = {
         service: 'host',
         apiBase: NETWORK_URL,
-        links: [{ label: 'Projects', href: '/' }],
+        links: NAV_LINKS(signedIn),
         history: { type: 'page', title: o.title || SITE_NAME },
         silentLogin: `${o.config.baseUrl}/auth/login?silent=1&next={url}`,
         sessionUrl: '/auth/me',
@@ -68,13 +72,15 @@ function renderPage(o) {
         title: o.title || SITE_NAME,
         titleSuffix: o.title ? ` · ${SITE_NAME}` : undefined,
         siteName: SITE_NAME,
-        description: 'OpenVibe.Host: static site hosting for OpenVibe projects (alpha).',
+        description: o.description || DESCRIPTION,
         canonical,
         robots: o.indexable ? 'index, follow' : 'noindex, nofollow',
-        navbar: nav, footer, home: '/', navLinks: [{ label: 'Projects', href: '/' }],
+        navbar: nav, footer, home: '/', navLinks: NAV_LINKS(signedIn),
         head: [
             appIcon.headTags({ site: 'host' }),
             `<link rel="stylesheet" href="${asset('css/host.css')}">`,
+            // Host's own stylesheets a page asks for (the catalog's css/catalog.css)
+            ...(o.css || []).map((rel) => `<link rel="stylesheet" href="${asset(rel)}">`),
             // openvibe-shared stylesheets a page asks for by name (the front page's showcase.css)
             ...(o.styles || []).map((name) => `<link rel="stylesheet" href="${esc(ovServe.url(name))}">`),
             `<meta name="ov-boost" content="host@${esc(RELEASE)}">`,

@@ -11,7 +11,7 @@
  */
 const fs = require('fs');
 
-function createWorker({ config, store, domains, blobs, outbox, log = console }) {
+function createWorker({ config, store, domains, blobs, outbox, catalogIngest, log = console }) {
     const timers = [];
     let checking = false;
 
@@ -61,6 +61,11 @@ function createWorker({ config, store, domains, blobs, outbox, log = console }) 
             every(3600 * 1000, async () => { try { await sweepObjects(); } catch (err) { log.warn('[Host] object sweep failed:', err.message); } });
             every(24 * 3600 * 1000, async () => { try { await outbox.outbox.prune(); } catch (err) { log.warn('[Host] outbox prune failed:', err.message); } });
             setTimeout(domainTick, 5000).unref();
+            if (catalogIngest && catalogIngest.enabled) {
+                const pull = async () => { try { await catalogIngest.pull(); } catch (err) { log.warn('[Host] catalog pull failed:', err.message); } };
+                every(5 * 60_000, pull);
+                setTimeout(pull, 5000).unref();
+            }
         },
         stop() { for (const t of timers) clearInterval(t); timers.length = 0; },
     };

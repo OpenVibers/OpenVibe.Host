@@ -54,10 +54,13 @@ const ORIGIN = 'https://openvibe.host';
         assert.match(r.text, /<noscript><nav aria-label="Site"/);
         assert.match(r.text, /id="ov-footer"/);
         assert.match(r.text, /Sign in with OpenVibe/);
-        assert.match(r.text, /nothing you upload is ever executed/);
+        assert.match(r.text, /Hosting, compared honestly/, 'the front page leads with the catalog');
+        const h = await t.api('GET', '/hosting');
+        assert.strictEqual(h.status, 200);
+        assert.match(h.text, /nothing you upload is ever executed/);
         // The limits table is the one /limits.json serves (limitsOf(config)), never a second copy.
-        assert.match(r.text, /id="limits"/);
-        assert.match(r.text, /Files in one deploy/);
+        assert.match(h.text, /id="limits"/);
+        assert.match(h.text, /Files in one deploy/);
         assert.match(r.text, /href="\/shared\/showcase\.css\?v=[0-9a-f]{12}"/);
         assert.match(r.headers['content-security-policy'], /frame-ancestors 'none'/);
         // Release notifications: release-watch's EventSource on the Events realtime stream (openvibe-shared 1.17).
@@ -74,15 +77,16 @@ const ORIGIN = 'https://openvibe.host';
         assert.match(withQuery.text, /<meta name="robots" content="noindex, nofollow">/);
     });
 
-    await check('robots.txt and sitemap.xml: the front page and the legal pages only; tenant sites keep their own', async () => {
+    await check('robots.txt and sitemap.xml: the front page, static hosting, the catalog and the legal pages only; tenant sites keep their own', async () => {
         const robots = await t.api('GET', '/robots.txt');
         assert.strictEqual(robots.status, 200);
-        assert.strictEqual(robots.text, 'User-agent: *\nAllow: /$\nAllow: /terms$\nAllow: /privacy$\nAllow: /dmca$\nDisallow: /\n\nSitemap: https://openvibe.host/sitemap.xml\n');
+        assert.strictEqual(robots.text, 'User-agent: *\nAllow: /$\nAllow: /terms$\nAllow: /privacy$\nAllow: /dmca$\nAllow: /hosting$\nAllow: /catalog$\nAllow: /catalog/*\nDisallow: /\n\nSitemap: https://openvibe.host/sitemap.xml\n');
         const map = await t.api('GET', '/sitemap.xml');
         assert.strictEqual(map.status, 200);
         assert.match(map.headers['content-type'], /application\/xml/);
         const locs = [...map.text.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-        assert.deepStrictEqual(locs, ['https://openvibe.host/', 'https://openvibe.host/terms', 'https://openvibe.host/privacy', 'https://openvibe.host/dmca']);
+        assert.deepStrictEqual(locs, ['https://openvibe.host/', 'https://openvibe.host/hosting', 'https://openvibe.host/terms', 'https://openvibe.host/privacy', 'https://openvibe.host/dmca',
+            'https://openvibe.host/catalog', 'https://openvibe.host/catalog/promos', 'https://openvibe.host/catalog/providers']);
         for (const p of ['/terms', '/privacy', '/dmca']) assert.strictEqual((await t.api('GET', p)).status, 200, p);
     });
 

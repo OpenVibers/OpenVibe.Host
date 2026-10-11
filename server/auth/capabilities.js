@@ -20,6 +20,7 @@ const CAPABILITIES = Object.freeze({
     DOMAIN_MANAGE: 'host.domain.manage',
     SITE_CONFIG: 'host.site.config',
     RESOURCE_READ: 'host.resource.read',
+    CATALOG_MANAGE: 'host.catalog.manage',
 });
 
 /** → { allowed, code, reason } (capabilities.check()). */

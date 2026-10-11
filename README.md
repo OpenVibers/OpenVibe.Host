@@ -7,6 +7,25 @@
 **Plan:** OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026), §15.3 and §15.17; roadmap Wave 21.
 **License:** AGPL-3.0 (same as every OpenVibe service).
 
+## The hosting catalog (openvibe.host's front page)
+
+Plan T20 step 3 (owner, 2026-10-08): openvibe.host is **hosting compared**: a modern LowEndBox with honest data. The signed-out front page and `/catalog` compare cloud, VPS and dedicated plans side by side:
+- price per month, per vCPU and per GB of RAM and disk;
+- the day each price was checked, and a link to its source;
+- price changes kept as a history per plan.
+
+OpenVibe's own static hosting (Stage B below) has its page at `/hosting`; it is still not open to the public.
+
+- **Where plans come from.**
+  - OpenVibe.Sources items in category `hosting` (official provider APIs), read with `openvibe-publishing/ingest`: an event consumer at `/internal/catalog/events` plus a cursor pull. The switch is `HOST_CATALOG_INGEST` (default off) with `HOST_CATALOG_SOURCES_URL`.
+  - The mapping is `server/catalog/mapping.js`, keyed by source: `linode-types` and `vultr-plans`. Vultr's API host disallows robots, so that Sources seed stays disabled.
+  - Staff entries, which must name their source URL.
+  - Nothing is estimated. A value the source does not state is shown as Unknown.
+- **Order.** It comes only from the visitor's sort: price, per vCPU, per GB of RAM, per GB of disk, or recently checked. Affiliate links carry `rel="sponsored nofollow noopener"` with the provider's own disclosure beside them, and never change the order (`test/catalog-public.test.js`).
+- **Staff.** `host.catalog.manage` (Network staff only) covers `POST`/`PATCH /api/v1/catalog/{providers,plans,promos}` and the no-JS forms at `/catalog/manage`.
+- **Public reads.** `GET /api/v1/catalog/plans` (filters `kind`, `min_vcpu`, `min_ram_mb`, `min_disk_gb`, `max_price`, `currency`, `location`, `provider`; `sort`; cursor), `/plans/:id` (with price history), `/providers`, `/providers/:slug` and `/promos`.
+- **Pages.** `/catalog`, `/catalog/providers`, `/catalog/providers/:slug`, `/catalog/plans/:id` and `/catalog/promos`. They are server-rendered and work without JavaScript; the styles are `public/css/catalog.css`.
+
 ## Purpose
 
 Repository deploy scripts call ovhost. Stage A applies the deploy rules for every service on the host:
@@ -59,7 +78,8 @@ Stage A adds a few safety rules of its own:
 
 Implemented here (the service manifest's `capabilities`, Stage B's API, audience `openvibe.host`):
 `host.site.manage` (sites, members, takedowns), `host.deploy.create` (uploads, activation, rollback),
-`host.domain.manage` (custom domains) and `host.site.config` (headers, redirects, SPA fallback). See
+`host.domain.manage` (custom domains), `host.site.config` (headers, redirects, SPA fallback), and
+`host.catalog.manage` (staff-only hosting catalog writes). See
 [Grants and registration](#grants-and-registration-for-the-lead).
 
 `host.resource.read` (first-party) is the authority resource index Host serves for OpenVibe.Services'
