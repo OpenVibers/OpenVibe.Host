@@ -583,7 +583,8 @@ review is [docs/threat-review.md](docs/threat-review.md). The launch has not bee
 Part of the [OpenVibe network](https://openvibe.network). Built in the open by [OpenVibers](https://github.com/OpenVibers).
 
 <!-- versions:start -->
-- openvibe-contracts: v0.129.0
+- openvibe-contracts: v0.139.0
 - openvibe-sdk: v0.44.0
-- openvibe-shared: v3.0.1
+- openvibe-shared: v4.0.0
+- openvibe-publishing: v1.4.0
 <!-- versions:end -->
