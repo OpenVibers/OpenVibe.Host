@@ -56,7 +56,7 @@ const item = (key, id, fields, time = at, title = id) => ({ id: `itm_${'0'.repea
             assert.strictEqual((await enabled.consume(raw, headers)).duplicate, true);
         });
         await check('0005 tables and append-only price history migrated', async () => {
-            const tables = await db.db.prepare("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name LIKE 'catalog_%'").all();
+            const tables = await db.db.prepare("SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name LIKE 'catalog_%'").all();
             assert.ok(tables.some((x) => x.table_name === 'catalog_price_changes'));
             const h = await db.db.prepare('SELECT plan_id, observed_at FROM catalog_price_changes LIMIT 1').get();
             await assert.rejects(db.db.prepare('DELETE FROM catalog_price_changes WHERE plan_id = ? AND observed_at = ?').run(h.plan_id, h.observed_at), /immutable/);
