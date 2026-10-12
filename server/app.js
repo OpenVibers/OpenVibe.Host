@@ -242,9 +242,19 @@ async function createApp(opts = {}) {
         try {
             const providers = await catalog.providers();
             const plans = await catalog.sitemapPlans();
-            const paths = ['/', '/hosting', ...legalPaths, '/catalog', '/catalog/promos', '/catalog/providers', ...providers.map((p) => `/catalog/providers/${p.slug}`), ...plans.map((p) => `/catalog/plans/${p.id}`)];
+            // A catalog page's lastmod is the newest price check it shows: a plan's own, a provider's latest plan, and the
+            // newest of all for the catalog and the front page. Static pages carry none.
+            const day = (ms) => (Number.isFinite(Number(ms)) && ms != null ? new Date(Number(ms)).toISOString().slice(0, 10) : undefined);
+            const latest = (rows) => rows.reduce((m, p) => Math.max(m, Number(p.checked_at) || 0), 0) || undefined;
+            const newest = day(latest(plans));
+            const urls = [
+                { path: '/', lastmod: newest }, { path: '/hosting' }, ...legalPaths.map((path) => ({ path })),
+                { path: '/catalog', lastmod: newest }, { path: '/catalog/promos' }, { path: '/catalog/providers', lastmod: newest },
+                ...providers.map((v) => ({ path: `/catalog/providers/${v.slug}`, lastmod: day(latest(plans.filter((p) => p.provider_slug === v.slug))) })),
+                ...plans.map((p) => ({ path: `/catalog/plans/${p.id}`, lastmod: day(p.checked_at) })),
+            ];
             res.type('application/xml').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 }))
-                .send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map((p) => `  <url><loc>${config.baseUrl}${p}</loc></url>`).join('\n')}\n</urlset>\n`);
+                .send(sharedSeo.sitemapXml(urls.map((u) => ({ loc: `${config.baseUrl}${u.path}`, lastmod: u.lastmod }))));
         } catch (err) { next(err); }
     });
     // /llms.txt and /llms-full.txt (llmstxt.org): a map of Host's own public pages only. A tenant site, a preview
