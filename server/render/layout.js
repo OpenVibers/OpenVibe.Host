@@ -14,10 +14,8 @@ const frame = require('openvibe-shared/frame');
 const shell = require('openvibe-shared/shell');
 
 const NETWORK_URL = 'https://openvibe.network';
-// The catalog first (openvibe.host is hosting compared, plan T20 step 3); a signed-in person's projects after it.
-const NAV_LINKS = (signedIn) => [{ label: 'Compare', href: '/catalog' }, { label: 'Promotions', href: '/catalog/promos' },
-    signedIn ? { label: 'Projects', href: '/' } : { label: 'Static hosting', href: '/hosting' }];
-const DESCRIPTION = 'OpenVibe.Host: hosting plans compared, every price dated and sourced; and OpenVibe\'s own static hosting (alpha).';
+const NAV_LINKS = () => [{ label: 'Compare', href: '/catalog' }, { label: 'Promotions', href: '/catalog/promos' }];
+const DESCRIPTION = 'OpenVibe.Host: hosting plans compared, every price dated and sourced.';
 const SITE_NAME = 'OpenVibe.Host';
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');
 
@@ -65,7 +63,7 @@ function renderPage(o) {
     const notice = o.notice ? `<p class="notice notice-${esc(o.notice.kind || 'info')}" role="status">${esc(o.notice.text)}</p>` : '';
     // shell.page (openvibe-shared/shell) writes the document, the SEO head, the theme-loader, navbar.js and
     // footer.js with the navbar init, the noscript nav and the SSR footer; the rest of the head and the body
-    // are this site's own. Only Host's own pages come through here, never a tenant site (http/tenant.js).
+    // are the catalog's own pages.
     const canonical = o.indexable ? `${o.config.baseUrl}${o.path && o.path.split('?')[0] !== '/' ? o.path.split('?')[0] : '/'}` : undefined;
     return shell.page({
         name: SITE_NAME, service: 'host', lang: 'en',

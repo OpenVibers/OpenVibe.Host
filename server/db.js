@@ -1,28 +1,6 @@
 'use strict';
 
-/**
- * Host's own PostgreSQL database (ADR-035, roadmap WS-X2): the schema is migrations/NNNN_*.sql, applied at boot. Nothing here is shared with
- * another service.
- *
- *   host_projects         tenant projects: owner subject (usr_…), environment (production|sandbox),
- *                         network_project_id once OpenVibe.Network has projects (ADR-014)
- *   host_project_members  principals with a role on a project: usr_… or app:app_…/svc:… principals
- *   host_quotas           per-project overrides of the configured quota defaults (staff only)
- *   host_sites            a site = a name (<name>.openvibe.host) + the pointer to its active deploy
- *   host_deploys          IMMUTABLE artifacts: manifest (sha256 per file), totals, state
- *   host_deploy_files     path → sha256/size/content type per deploy (immutable)
- *   host_blobs            which content-addressed objects a project stores (storage accounting)
- *   host_activations      every pointer switch (activate / rollback), for audit and rollback targets
- *   host_deploy_logs      the upload/validation log of each deploy (there is no build in Stage B)
- *   host_domains          default <site>.openvibe.host and custom domains (TXT-verified)
- *   host_takedowns        staff takedowns of a site or a project (serving stops; content is kept)
- *   host_site_sources     the Git repository + branch a site's own CI deploys from (public, no credential)
- *   host_deploy_git       what a git deploy was built from: repository, ref, commit (immutable)
- *   event_outbox          openvibe-sdk transactional outbox
- *
- * Immutability is enforced by the database itself: triggers refuse any UPDATE of a deploy's
- * artifact columns or of its file rows, and file rows can only be removed once the deploy is deleted.
- */
+/** OpenVibe.Host catalog database. Applied migrations are immutable. */
 const fs = require('fs');
 const path = require('path');
 const { createDb } = require('openvibe-sdk/db');
@@ -31,7 +9,7 @@ const { createDiscussionRefs } = require('openvibe-publishing/discussion');
 const MIGRATIONS = path.join(__dirname, '..', 'migrations');
 const DEV_PGLITE = path.join(__dirname, '..', 'data', 'pglite');
 
-const CHARTER_TABLES = ['host_catalog_discussion_refs', 'host_projects', 'host_project_members', 'host_quotas', 'host_sites', 'host_deploys', 'host_deploy_files', 'host_blobs', 'host_activations', 'host_deploy_logs', 'host_domains', 'host_takedowns', 'host_site_sources', 'host_deploy_git', 'catalog_providers', 'catalog_plans', 'catalog_price_changes', 'catalog_promos', 'catalog_ingest_cursor'];
+const CHARTER_TABLES = ['host_catalog_discussion_refs', 'catalog_providers', 'catalog_plans', 'catalog_price_changes', 'catalog_promos', 'catalog_ingest_cursor'];
 
 /**
  * The serving handle (ADR-035): DATABASE_URL through PgBouncer; in development without it, an embedded PGlite database

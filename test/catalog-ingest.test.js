@@ -7,7 +7,7 @@ const { createCatalog } = require('../server/catalog/store');
 const { createCatalogIngest } = require('../server/catalog/ingest');
 const { mapItem } = require('../server/catalog/mapping');
 const accountData = require('../server/catalog/account-data');
-const { check, done } = require('./stageb/boot');
+const { check, done } = require('./helpers/boot');
 const at = '2026-10-11T12:00:00Z';
 // The shape the Sources `api` adapter stores: the plan id as identity, Linode's label as title, the mapped extras flat in fields.
 const item = (key, id, fields, time = at, title = id) => ({ id: `itm_${'0'.repeat(26)}`, source_key: key, category: 'hosting', kind: 'plan', identity: id, canonical_url: null, title, summary: null, authors: [], published_at: null, source_updated_at: null, fields, revision: 1, provenance: { retrieved_at: time, first_seen_at: at, content_hash: 'a'.repeat(64), raw_body_hash: null, parser_version: 'api@1', fetch_run_id: null, license_note: null, terms_note: null, entered_by: null }, removed: null });

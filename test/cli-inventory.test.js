@@ -47,7 +47,8 @@ runTests([
         const m = JSON.parse(fs.readFileSync(require.resolve('openvibe-contracts/manifests/services/host.json'), 'utf8'));
         contracts.assertValid('registry.service-manifest', m);
         assert.strictEqual(m.id, 'host');
-        assert.deepStrictEqual([...m.capabilities].sort(), ['host.catalog.manage', 'host.deploy.create', 'host.domain.manage', 'host.resource.read', 'host.site.config', 'host.site.manage'], 'Stage A has no API; the Stage B service enforces these six (host.resource.read: the resource index, openvibe-contracts 0.107.0; host.catalog.manage: the hosting catalog, 0.139.0)');
+        assert.ok(m.capabilities.includes('host.catalog.manage'), 'the released manifest includes catalog management');
+        assert.deepStrictEqual(require('../STATUS.json').capabilities, ['host.catalog.manage'], 'Host now implements only catalog management');
     }),
 
     test('as root, an inventory that is not root-owned or is writable by others is refused', async () => {

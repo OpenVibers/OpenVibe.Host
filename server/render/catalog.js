@@ -253,8 +253,8 @@ const jsonLd = {
     },
 };
 
-/** The signed-out front page: the comparison first, then OpenVibe's own static hosting (still in review). */
-function front({ plans, providers, promos: live, stats, hostingLaunched }) {
+/** The front page of the hosting comparison. */
+function front({ plans, providers, promos: live, stats }) {
     const aside = plans.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
 <p class="hc-aside-h">Lowest monthly prices right now</p>
 <ol>${plans.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
@@ -280,11 +280,7 @@ function front({ plans, providers, promos: live, stats, hostingLaunched }) {
             { icon: 'ov:account', title: 'Ranked by you', text: 'No paid placement. Affiliate links are marked, disclosed beside the link, and never change the order.' },
         ],
     }) + (live.length ? `<section class="sc-sec"><h2>Promotions running now</h2>${promoCards(live.slice(0, 3))}<p class="hc-more">${link('/catalog/promos', 'All promotions →')}</p></section>` : '')
-    + `<section class="sc-sec hc-own" id="static-hosting"><h2>OpenVibe's own static hosting</h2>
-<p>${hostingLaunched
-        ? 'Publish a static site from a folder or a .tar.gz: every deploy is kept as an immutable artifact, served at &lt;site&gt;.openvibe.host and on domains you verify, and rolled back in one step.'
-        : 'The engine is built and tested (immutable deploys, one-step rollback, custom domains), but it is <strong>not open to the public yet</strong>: abuse handling and a designated DMCA agent come first. Until then only OpenVibe staff create projects.'}</p>
-<p>${link('/hosting', 'How it works and its limits →')}</p></section>`;
+    + `<p class="hc-own">Want to host a site with OpenVibe? ${link('https://openvibe.space', 'Visit OpenVibe.Space')}.</p>`;
 }
 
 module.exports = { front, catalog, providerList, provider, plan, promos, planTable, jsonLd, DISCLOSURE, money, bytesMb, sizeGb };

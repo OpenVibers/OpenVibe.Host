@@ -2,7 +2,7 @@
   "name": "openvibe-host",
   "version": "0.3.0",
   "private": true,
-  "description": "OpenVibe.Host: the operator plane (Stage A, the ovhost CLI) and tenant static hosting (Stage B, the Host API service on port 4910): immutable content-addressed deploys, per-site domains, quotas and rollback.",
+  "description": "OpenVibe.Host: hosting plans compared, with sourced prices and the ovhost operator CLI.",
   "main": "lib/index.js",
   "bin": {
     "ovhost": "bin/ovhost"
@@ -19,14 +19,13 @@
     "systemd",
     "nginx",
     "operator",
-    "static-hosting"
+    "hosting-comparison"
   ],
   "author": "OpenVibers",
   "license": "AGPL-3.0-only",
   "repository": "github:OpenVibers/OpenVibe.Host",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1138.0",
-    "busboy": "^1.6.0",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",

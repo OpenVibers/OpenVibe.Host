@@ -1,10 +1,10 @@
 # OpenVibe.Host
 
-> The network's deployment/control plane first; then isolated hosting for community sites, bots and mods.
+> Hosting, compared honestly: plans side by side with dated, sourced prices. And the network's operator plane, `ovhost`.
 
-**Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It is installed on the production host at `/usr/local/bin/ovhost` with inventory `/etc/openvibe/host.json`; it deploys services, runs nightly backups, and performs restore drills. Repository deploy scripts are thin wrappers around `ovhost deploy|rollback|plan`: [docs/deploy-strategies.md](docs/deploy-strategies.md). Stage B (tenant static hosting) serves the dashboard, API, front page, and tenant sites. See [docs/launch.md](docs/launch.md) and [docs/threat-review.md](docs/threat-review.md). Stage C (sandboxed user code) is **not started**.
-**Domain:** `openvibe.host` (dashboard and API) and `*.openvibe.host` (tenant sites). Launched on 2026-10-07 (see [Launch rule](#launch-rule)); OpenVibe.Sites no longer serves it.
-**Plan:** OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026), §15.3 and §15.17; roadmap Wave 21.
+**Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It is installed on the production host at `/usr/local/bin/ovhost` with inventory `/etc/openvibe/host.json`; it deploys services, runs nightly backups, and performs restore drills. Repository deploy scripts are thin wrappers around `ovhost deploy|rollback|plan`: [docs/deploy-strategies.md](docs/deploy-strategies.md). The Host service on port 4910 serves the hosting comparison catalog at openvibe.host. Stage B (tenant static hosting) **moved to OpenVibe.Space on 2026-10-12** (see [Static hosting moved](#static-hosting-moved)). Stage C (sandboxed user code) is **not started**.
+**Domain:** `openvibe.host` (the catalog). `*.openvibe.host` served Stage B's tenant sites; any request there now answers 410 with a link to OpenVibe.Space.
+**Plan:** OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026), §15.3 and §15.17; roadmap Wave 21; T20 (Host, Space and Community re-split, 2026-10-08).
 **License:** AGPL-3.0 (same as every OpenVibe service).
 
 ## The hosting catalog (openvibe.host's front page)
@@ -14,7 +14,7 @@ Plan T20 step 3 (owner, 2026-10-08): openvibe.host is **hosting compared**: a mo
 - the day each price was checked, and a link to its source;
 - price changes kept as a history per plan.
 
-OpenVibe's own static hosting (Stage B below) has its page at `/hosting`; it is still not open to the public.
+OpenVibe's own static hosting moved to OpenVibe.Space ([below](#static-hosting-moved)); the front page links it in one line.
 
 - **Where plans come from.**
   - OpenVibe.Sources items in category `hosting` (official provider APIs), read with `openvibe-publishing/ingest`: an event consumer at `/internal/catalog/events` plus a cursor pull. The switch is `HOST_CATALOG_INGEST` (default off) with `HOST_CATALOG_SOURCES_URL`.
@@ -30,6 +30,20 @@ OpenVibe's own static hosting (Stage B below) has its page at `/hosting`; it is 
 - **Search.** Every public plan and provider page is an OpenVibe.Search document (`host.index_document.upserted|deleted`, `server/catalog/search-index.js` through openvibe-publishing/search-feed): sent a minute after boot, hourly, after each catalog pull and shortly after a staff change; only changed pages are sent, and a hidden or gone entry becomes a tombstone.
 - **Pages.** `/catalog`, `/catalog/providers`, `/catalog/providers/:slug`, `/catalog/plans/:id` and `/catalog/promos`. They are server-rendered and work without JavaScript; the styles are `public/css/catalog.css`.
 - **Discussion.** Active public provider and plan pages lazily resolve Community threads with refs `{ service: 'host', type: 'provider', id: provider.id }` and `{ service: 'host', type: 'plan', id: plan.id }` (plus a display label), then render recent comments with a link to the thread on OpenVibe.Community. Host stores only the thread reference. `HOST_COMMUNITY_URL` enables the internal client; `OV_COMMUNITY_URL` sets the public link. With the internal URL unset, no Discussion block appears. Hidden providers and hidden or gone plans have no public page; status changes hide or reopen existing threads after commit. Host's Network service principal needs `community.comment.write` and `community.comment.moderate` for audience `openvibe.community`.
+
+## Static hosting moved
+
+The static hosting engine (Stage B: projects, sites, immutable content-addressed deploys, activation and rollback, previews, Git ingest, per-site configuration, custom domains, takedowns, the resource index and the dashboard) moved to **[OpenVibe.Space](https://openvibe.space)** on 2026-10-12 (plan T20 step 2), where sites are served at `<name>.openvibe.website` under `space.*` capabilities and events (openvibe-contracts 0.149.0). Production Host had 0 projects, 0 sites and 0 deploys, so no data moved.
+
+What is left here answers **410 Gone** with a link to Space:
+
+| Request | Answer |
+| --- | --- |
+| `/hosting`, `/projects*`, `/sites*`, `/deploys*`, `/domains*`, `/preview*` | a short page linking OpenVibe.Space |
+| `/api/v1/projects*`, `/api/v1/sites*`, `/api/v1/deploys*`, `/api/v1/domains*`, `/api/v1/resources*` | problem JSON `{ "code": "host.moved_to_space", "url": "https://openvibe.space" }` |
+| any `*.openvibe.host` tenant host | a short page linking OpenVibe.Space |
+
+Migration `0008_drop_hosting_engine.sql` (`-- phase: contract`, after `0007`) drops the engine's tables once the expand window has passed; the catalog's tables stay.
 
 ## Purpose
 
@@ -58,7 +72,7 @@ Stage A adds a few safety rules of its own:
 ## Owns
 
 - Stage A: the host inventory (services, units, env names, ports, probes, drain policy), environment validation, release install and rollback for git-checkout services, readiness and drain orchestration, the release log, certificate inventory, nginx vhost rendering and transactional install, config snapshots, scheduled backups (pgBackRest verification and logical PostgreSQL dumps) with retention and encrypted off-host copies, restore drills.
-- Stage B: tenant projects (keyed by project id), static sites, immutable content-addressed deploy artifacts, activation and rollback, default and custom domains (DNS TXT verification), per-project quotas, upload/validation logs, the tenant vhosts (`ovhost nginx tenants`).
+- The hosting comparison catalog: providers, plans, price history, promotions and their sources (migrations 0005-0007), and the catalog's Search documents (`host.index_document.*`).
 - Later (Stage C): sandbox profiles, budgets, secret references, outbound policy.
 - Host roles, provisioned from code so any machine can take them: the **data role** (`roles/data/`, ADR-035): PostgreSQL 18, PgBouncer, pgBackRest, Valkey and their exporters, plus `add-service.sh` giving each service its database, roles and Valkey user. `ovhost data provision <svc>` runs `add-service.sh` from the installed CLI, redacting every URL and password: [docs/data-provisioning.md](docs/data-provisioning.md).
 
@@ -67,48 +81,43 @@ Stage A adds a few safety rules of its own:
 - Product business logic. Host calls product hooks (`build`) and reads product endpoints (`/api/ready`, `/api/streams`). It never embeds product rules.
 - Secrets. `ovhost` reads service env files only to learn variable **names** and whether each one is empty. It never stores, prints or snapshots a value. The one exception is its own `/etc/openvibe/backup.env` (root-only): it reads the `BACKUP_*` values there to reach the backup bucket, and never prints or stores them.
 - Platform-wide credentials for hosted code (never).
-- Certificate issuance/renewal (certbot does this today). Stage A only takes inventory; Stage B never handles a certificate or key through its API.
-- Projects as an identity concept: ADR-014 puts projects in OpenVibe.Network. Until Network has them, Host creates a `prj_` project for its owner and records `network_project_id` when one is given.
-- Tenant secrets. Stage B stores none (no environment variables, no build secrets, no deploy keys).
+- Certificate issuance/renewal (certbot does this today). Stage A only takes inventory;
+- Static hosting: OpenVibe.Space owns it since 2026-10-12.
 
 ## Depends on
 
-- OpenVibe.Contracts (`openvibe-contracts` v0.107.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, v0.32.0 added the takedown routes to `host.site.manage`, v0.83.0 added `host.site.config`, and v0.107.0 adds the planned `host.resource.read` and the git-source routes to `host.site.manage`/`host.deploy.create`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks, the `common.resource-summary@1`/`common.resource-list-result@1` schemas and the `contracts.resources` OVRN helpers (ADR-048).
-- OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
-- OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.44.0 transactional outbox (openvibe-sdk/limits for the per-actor limits).
-- `openvibe-shared` v3.0.1 (Stage B): the OpenVibe Frame (Host's own pages are composed with `openvibe-shared/shell`), legal pages, `/release.json`, `/metrics`, `/api/ready`.
-- OpenVibe.Media (Stage B, opt-in): with `HOST_OBJECT_STORE=media`, deploy objects are written through to Media's Object API v2 (`openvibe-sdk/media`) and local disk becomes the read cache; unset keeps them on local disk (see [Storage](#storage)).
+- OpenVibe.Contracts (`openvibe-contracts`, pinned below): `host.catalog.manage`, the catalog's `host.index_document.*` events, and `host.release.published` from `ovhost announce`.
+- OpenVibe.Network: SSO for catalog staff, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay and `ovhost alerts relay`.
+- OpenVibe.Events: the catalog's events through the `openvibe-sdk` transactional outbox, and `ovhost announce`.
+- OpenVibe.Sources (optional): price ingestion for the catalog (`HOST_CATALOG_INGEST`); OpenVibe.Search: the catalog's pages as documents; OpenVibe.Community (optional): discussion on provider and plan pages; OpenVibe.Watch: the "Tell me when this price changes" link on plan pages (a link, no call).
+- `openvibe-shared` (the OpenVibe Frame, legal pages, `/release.json`, `/metrics`, `/api/ready`) and `openvibe-publishing` (ingest and the search feed).
 
 ## Capabilities
 
-Implemented here (the service manifest's `capabilities`, Stage B's API, audience `openvibe.host`):
-`host.site.manage` (sites, members, takedowns), `host.deploy.create` (uploads, activation, rollback),
-`host.domain.manage` (custom domains), `host.site.config` (headers, redirects, SPA fallback), and
-`host.catalog.manage` (staff-only hosting catalog writes). See
-[Grants and registration](#grants-and-registration-for-the-lead).
+Implemented here (the service manifest's `capabilities`, audience `openvibe.host`): `host.catalog.manage`
+(staff-only catalog writes: providers, plans, promotions).
 
-`host.resource.read` (first-party) is the authority resource index Host serves for OpenVibe.Services'
-fan-out ([ADR-048](https://github.com/OpenVibers/OpenVibe.Contracts/blob/main/docs/adr/ADR-048-services-control-plane.md)
-section 3, plan T13 step 8): `GET /api/v1/resources` lists Host's sites, deploys and domains as a page of
-`common.resource-summary@1` and `GET /api/v1/resources/:ovrn` reads one by its OVRN, exactly as
-OpenVibe.Network's index does. Host ships it; OpenVibe.Contracts keeps the capability `planned` with no
-`implementedBy` routes until the deploy, and flips it afterwards.
+Retired with the engine (OpenVibe.Space implements the `space.*` equivalents since openvibe-contracts 0.149.0;
+a Contracts release retires these): capabilities `host.site.manage`, `host.site.config`, `host.deploy.create`,
+`host.domain.manage`, `host.resource.read`, and events `host.deploy.created`, `host.deploy.activated`,
+`host.deploy.failed`, `host.domain.verified`.
 
 Called elsewhere, as the service principal `host` (the OAuth client `host`; `ovhost` reads the same
 credentials from `/etc/openvibe/host.env`):
 
 | Service | Grant | Used by |
 |---|---|---|
-| OpenVibe.Events | `events.event.publish` | Stage B's outbox (`host.deploy.*`, `host.domain.verified`) and `ovhost announce` (`host.release.published`) |
+| OpenVibe.Events | `events.event.publish` | the catalog's outbox (`host.index_document.*`) and `ovhost announce` (`host.release.published`) |
 | OpenVibe.Network | `network.operator.alert` | `ovhost alerts relay` (Prometheus alerts that page the operator) |
 | OpenVibe.Network | `network.status.incident` | `ovhost incident` and `ovhost maintenance` (the public status page) |
+| OpenVibe.Community | `community.comment.write`, `community.comment.moderate` | the catalog's discussion threads |
 
 ## Stages
 
 | Stage | Scope | State |
 |---|---|---|
 | **A: operator plane** | `ovhost` CLI and library: inventory, validate, plan, deploy (`--wait-idle`/`--force`), automatic rollback, rollback, status, releases, certs, nginx render/install, snapshot, backup, restore drill. No daemon and no server. Port **4910** is reserved for a later operator API. | **alpha**: written and tested (fake host, plus the real executor against temp HTTP/git). Installed on the host: deploys every service, runs the nightly backups and the restore drills. |
-| **B: tenant static hosting** | The Host API service (port 4910): projects, sites, immutable content-addressed deploys, activation and rollback, `<site>.openvibe.host` and TXT-verified custom domains, quotas, upload logs, events, a server-rendered dashboard; tenant vhosts via `ovhost nginx tenants`. | **alpha**: written and tested (`npm test`, against a temp database, a mock Network and a DNS table). Runs on the host on `:4910` behind nginx; launched at openvibe.host on 2026-10-07. |
+| **B: tenant static hosting** | Projects, sites, immutable deploys, rollback, previews, Git ingest, custom domains. | **moved to OpenVibe.Space** on 2026-10-12 (T20 step 2); old URLs here answer 410. |
 | **C: sandboxed user code** | Isolation profiles, CPU/memory/time/network/storage budgets, secret references, outbound policy, metering, kill/revoke without touching platform services. | **not started**, deliberately. Blocked until isolation and metering are proven. Nothing in Stage B runs tenant code. |
 
 Stage A also provides incident and maintenance controls (`ovhost incident|maintenance|freeze`) and release notifications (`host.release.published`). Restore drills are described in [docs/restore-drills.md](docs/restore-drills.md).
@@ -160,7 +169,7 @@ ovhost announce <service> [--release <id>] [--commit <sha>] [--origin <url>] [--
 ovhost releases <service> [--limit <n>]
 ovhost certs [--warn-days <n>]
 ovhost nginx render <service> [--variant http|sse|websocket] [--manifest <file>] [--install]
-ovhost nginx tenants <service> [--wildcard-cert <name|dir>] [--install]    Stage B tenant vhosts
+ovhost nginx tenants <service> [--wildcard-cert <name|dir>] [--install]    tenant vhosts for a service whose inventory has `nginx.tenants`
 ovhost snapshot <service> [--out <file>]
 ovhost backup <service>
 ovhost backup --all [--offsite] [--logical] [--no-prune] [--keep-daily <n>] [--keep-weekly <n>]
@@ -250,7 +259,7 @@ Two things deploy from this repository:
   then `ovhost --version` and `sudo ovhost capabilities` (ovhost does not deploy itself; an update is
   undone by checking out the previous commit there). Its timers (`openvibe-backup`, `openvibe-alerts`, `openvibe-browsercheck`,
   `openvibe-devpath`, `openvibe-toolsjob`) are unit files in [deploy/systemd/](deploy/systemd/).
-- **The Stage B service** deploys like every other service, with `sudo ovhost deploy host` (strategy
+- **The catalog service** deploys like every other service, with `sudo ovhost deploy host` (strategy
   `git-checkout`: fetch, fast-forward `/opt/openvibe.host`, install on a lockfile change, restart, wait for `/api/ready`).
   The unit is `openvibe-host.service` on `127.0.0.1:4910`, the env file `/etc/openvibe/host.env`. Its state is
   `/var/lib/openvibe-host-api` (not ovhost's own `/var/lib/openvibe-host`).
@@ -273,268 +282,12 @@ This was done on 2026-09-23 (the CLI and inventory are installed); the steps sta
 4. **Run as root:** `sudo ovhost …`. `ovhost` drops to `ubuntu` for git/npm (`runuser`) and needs root for `systemctl`, `nginx -t`, reading `/etc/openvibe/*.env` (names only) and writing vhosts. For least privilege, give operator accounts a sudoers rule for `/usr/local/bin/ovhost` alone instead of a general `ALL`. Do **not** grant it to the `ubuntu` service user if that account has no sudo today.
 5. **First run:** `sudo ovhost status`, then `sudo ovhost validate <each service>`, then `sudo ovhost plan live`, all read-only apart from `git fetch`. Adopt `deploy` one service at a time, starting with one that has no protected sessions.
 6. **Scheduled backups:** see [docs/backups.md](docs/backups.md#installing-on-the-host-operator) (bucket, key, `/etc/openvibe/backup.env`, `openvibe-backup.timer`).
-7. **Updating the CLI itself:** a deploy of this repository replaces `/opt/openvibe.host` (the Stage B service), not the root-owned install at `/usr/local/lib/openvibe-host`, so after a merge to `main` run `sudo ovhost self-update`. It finds its own install directory from its real path (`/usr/local/bin/ovhost` → `/usr/local/lib/openvibe-host/bin/ovhost`), fetches `origin main`, refuses a dirty tree, a branch other than `main` or a divergence, merges `--ff-only` and runs `npm ci --omit=dev --no-audit --no-fund` there; `--dry-run` prints the plan first. It restarts nothing — the next `ovhost` invocation runs the new code. Without it the installed CLI silently runs behind `main` (on 2026-10-02 it was 16 commits behind: no `env-names --set`, no `logs`, no Bot vhost).
-
-## Stage B: tenant static hosting
-
-A Node service (`server/`, Express 4, PostgreSQL, port **4910**, service id `host`) that hosts static sites for OpenVibe projects. Every request is dispatched on its `Host` header first:
-
-| Host | What answers |
-|---|---|
-| `openvibe.host` (the `BASE_URL` host) and loopback | the dashboard, `/api/v1`, `/auth/*`, `/api/ready`, `/api/health`, `/release.json`, `/limits.json` (the default project limits, from config), `/metrics` (direct loopback only), legal pages, and the crawl files `/robots.txt`, `/sitemap.xml`, `/llms.txt`, `/llms-full.txt` (`text/plain`, cached like the sitemap; they list only Host's own public pages: the front page, `/updates` and the legal pages, never a customer site, a preview or an operator path) |
-| `<site>.openvibe.host` (one label) | that site's active deploy, and nothing else: no API, no sign-in, no cookies |
-| a custom domain with `status = verified` | the site it was verified for |
-| anything else (including pending, failed or lapsed custom domains, and `a.b.openvibe.host`) | `404 Unknown host`, with no tenant content |
-
-### Model
-
-- **Projects** (`prj_<ULID>`) have an owner (a `usr_` subject), an environment (`production` or `sandbox`), members with a role (`owner` > `maintainer` > `deployer`), and optionally the `network_project_id` of the OpenVibe.Network project (ADR-014: Network owns projects; until it has them, Host creates one for its owner). Every Host row and every stored object is keyed by the project id.
-- **Sites** (`sit_<ULID>`) have a name (one DNS label, 3–40 characters, reserved names refused) that is their default host, `<name>.openvibe.host`, and a pointer to the active deploy. A deleted site's name is held for 30 days so nobody else can serve content on links that still point there. (The id prefix is `sit_` since 2026-10-07, ADR-048's three-letter rule; it was `site_`, renamed with no conversion because production held no sites.)
-- **Deploys** (`dpl_<ULID>`) are immutable artifacts: a manifest (`host.deploy-manifest@1`: path, sha256, size and content type of every file, file count, total bytes) with its own sha256, file rows, and the upload/validation log. Database triggers refuse any update of a deploy's artifact columns or file rows. The bytes are content-addressed per project: `<HOST_STORAGE_DIR>/projects/<prj_…>/<aa>/<sha256>`, with `HOST_OBJECT_STORE=media` writing them through to OpenVibe.Media as well ([Storage](#storage)).
-- **Domains**: every site has its default domain. A custom domain is added as `pending` and becomes `verified` (and served) once `_openvibe-host.<hostname>` has the TXT record `openvibe-host-verification=<token>`. A verified name belongs to one site. OpenVibe domains (every domain in the released service manifests, `openvibe.<tld>`, the sites domain itself) can never be claimed. The worker re-checks pending domains (they fail after `HOST_DOMAIN_PENDING_DAYS`) and re-checks verified ones daily: a TXT record gone for `HOST_DOMAIN_LAPSE_DAYS` lapses the domain and it stops being served.
-- **Quotas** per project, enforced by Host: storage bytes (objects stored once per project, so re-uploading unchanged files costs nothing), deploys per rolling 24 hours (checked before the body is read; failed uploads count), files per deploy, bytes per file, sites, custom domains. A deploy's own size before deduplication may not exceed the storage quota. Defaults come from `HOST_QUOTA_*` / `HOST_SANDBOX_QUOTA_*`; staff override them per project. Sandbox projects get smaller quotas, no custom domains, and `X-Robots-Tag: noindex`.
-- **Build logs**: Stage B has no build step. Each deploy's log records what was received, every validation problem, what was stored, the manifest digest and the activation, and says that nothing was executed. Refused uploads are recorded as `failed` deploys, so their logs are visible too.
-
-### Storage
-
-Deploy objects are content-addressed and stored **per project** (ADR-014):
-`<HOST_STORAGE_DIR>/projects/<prj_…>/<aa>/<sha256>`. The same bytes uploaded by two projects are
-stored twice, and storage is accounted and deleted per project. Every read goes through
-`server/storage.js` and is keyed by a validated project id and the manifest's sha256, so a request
-can only ever name its own project's objects.
-
-With **`HOST_OBJECT_STORE=media`** (opt-in; unset is the local store above, unchanged) local disk
-becomes the read cache and **OpenVibe.Media** is the source of truth:
-
-- every object is written through to Media's Object API v2 (`openvibe-sdk/media`
-  `createObjectsClient`) as a **private** object in Host's own namespace (`OV_MEDIA_NAMESPACE`,
-  default `host`), keyed per project by `metadata.project_id` with the file's sha256 as
-  `content_hash`. A deploy is not reported as stored until Media acknowledged every object; a Media
-  failure fails the deploy (`502 storage.object_store`) with its log, never a silent local-only
-  success;
-- serving reads the local cache; a miss re-fetches the object from Media, verifies its sha256 and
-  only then caches and serves it (a mismatch is a `500`, never served);
-- an object is deleted from Media exactly where the local store would delete the blob (deploy GC,
-  project removal, the hourly orphan sweep), and the delete re-checks `host_blobs` just before it
-  runs, so an object a deploy re-referenced while the delete was in flight keeps its Media copy;
-- an empty file (0 bytes) is stored in the local cache only: Media's upload refuses empty
-  objects, and the serving path never asks Media for a size-0 file;
-- the hourly orphan sweep walks the **local cache files** only, so a Media object with no cache
-  file (for example a duplicate left by two uploads that raced before puts were serialised) is
-  not reaped by the sweep; project removal deletes it, and puts are serialised per
-  `(project, sha256)` so two deploys sharing a new sha do not create a duplicate in the first
-  place.
-
-Host authenticates to Media with its Network service principal (client credentials, audience
-`openvibe.media`), which must hold `media.object.upload`, `media.object.read`, `media.object.list`
-and `media.object.delete` for the `host` namespace and everything below it (`host.*`), and a `host`
-tenant must exist in Media. `OV_MEDIA_URL` is the internal Media base URL (default
-`http://127.0.0.1:4100`). `ovhost backup host` still archives the local cache; in the Media mode the
-Media objects are the durable copy.
-
-### Uploads
-
-`POST /api/v1/sites/:id/deploys[?activate=1][&root=dist]` accepts a tar or tar.gz archive (`Content-Type: application/gzip`, `application/x-tar`, `application/octet-stream`) or `multipart/form-data` (`archive=<one archive>` or `files=<file>…`, each part's filename being the path; `strip=folder` removes a browser folder upload's shared top folder). The archive is parsed in memory and never extracted. The whole upload is refused, and recorded as a failed deploy, when any of these is true:
-
-- a path is absolute, contains `..`, `.`, an empty segment, a backslash, a control or non-ASCII character, or goes more than 32 levels deep; a pax or GNU long-name header that rewrites a name gets the same checks;
-- an entry is a symbolic link, a hard link, a device, a FIFO or any other non-regular entry (never followed and never skipped);
-- a hidden file or directory other than `.well-known/` is present (`.env`, `.git/`, `.htaccess`, …);
-- a file is server-side code or an executable (`php`, `cgi`, `pl`, `py`, `sh`, `asp(x)`, `jsp`, `shtml`, `exe`, `jar`, …) or looks like a credential or database (`pem`, `key`, `p12`, `env`, `sqlite`, …);
-- a file type is not on the allowlist (HTML, CSS, JavaScript, JSON, source maps, web manifests, text, Markdown, CSV, XML/RSS/Atom, WebVTT, SVG, PNG, JPEG, GIF, WebP, AVIF, ICO, BMP, fonts, MP4/WebM/Ogg video, MP3/Ogg/Opus/WAV/M4A/FLAC audio, PDF, WebAssembly, glTF, zip; extension-less files are plain text);
-- two entries have the same path, a path is both a file and a directory, or there are no files;
-- a limit is exceeded: request size (`HOST_MAX_UPLOAD_BYTES`, the connection is closed rather than drained), files, bytes per file, total bytes (decompression stops at `HOST_MAX_UNPACKED_BYTES`, default 256 MiB, or the storage quota if smaller, so a gzip bomb cannot fill memory), or storage.
-
-### Serving
-
-Requests resolve their site once from the `Host` header, read the site's active deploy pointer once, and then read only that deploy's immutable rows. The file's bytes come from the blob store keyed by the site's project id and the manifest's sha256 — the local disk cache, or, with `HOST_OBJECT_STORE=media`, the object fetched back from Media and sha256-verified ([Storage](#storage)) — never from the URL, so no path, encoding or `Host` trick can reach another project's objects. Absolute-form request targets must name the same host as the `Host` header.
-
-- `GET`/`HEAD` only (405 otherwise). `/` and `/dir/` serve `index.html`; `/page` also tries `page.html`; `/dir` redirects to `/dir/` when `dir/index.html` exists.
-- `Content-Type` from the manifest; strong `ETag` (the sha256) with `304` on `If-None-Match`; single byte ranges (`206`/`416`).
-- `Cache-Control: public, max-age=31536000, immutable` for fingerprinted asset names (`app.3f2a9c1b.js`, `index-BdK3x9aQ.js`), `public, max-age=0, must-revalidate` for everything else, so an activation or rollback shows at once.
-- `X-Content-Type-Options: nosniff`, a strict CSP (`default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; … object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'`), `Referrer-Policy`, `Cross-Origin-Opener-Policy: same-origin`, a restrictive `Permissions-Policy`. Never a `Set-Cookie`.
-- A missing file serves the deploy's own `404.html` with status 404, or a plain Host 404 page.
-
-**Why a separate registrable domain.** Tenant pages are arbitrary HTML and JavaScript. They live under `openvibe.host`, never under `openvibe.network` or `openvibe.live`, so no OpenVibe session cookie can ever reach them (`ovhost nginx tenants` refuses a sites domain under a first-party domain). The dashboard shares `openvibe.host` with the tenants, which makes tenant pages *same-site* with it. So:
-
-- the dashboard session is only Host's own `__Host-ov_host_session` cookie (HttpOnly, Secure, `Path=/`, no `Domain`; a subdomain cannot set it), written and cleared alongside the SDK's `ov_token` at sign-in, refresh and sign-out (`server/auth/sso.js`, read at `server/auth/viewer.js:99-103`). The plain `ov_token` cookie the shared navbar reads is display-only and is never trusted, a sign-in callback must match Host's own `__Host-ov_host_flow` state, and a refresh never changes the signed-in account. With `COOKIE_SECURE=false` (plain-http development) the names drop the `__Host-` prefix and are not Secure;
-- every dashboard form needs the dashboard's own `Origin` **and** a form token (an HMAC of the signed-in subject); `SameSite` alone would not stop a tenant page;
-- `/api/v1` ignores cookies entirely: `Authorization: Bearer` only;
-- nginx strips `Cookie` and `Authorization` from tenant requests, hides `Set-Cookie` from tenant responses and allows only `GET`/`HEAD` with a 1 KB body limit.
-
-### API (`/api/v1`)
-
-People present their Network user JWT as a Bearer token. Services and apps present a Network client-credentials token for audience `openvibe.host`. Each route checks exactly one capability for service tokens, and every caller is also judged by its project role. A first-party service (`svc:…`) may act for a person with `X-OV-Subject: usr_…`; an app (`app:app_…`) is a principal and always acts as itself, so it must be added to a project as a member (for example as `deployer`, for CI). A token with the claim `env: "sandbox"` is refused on production projects (ADR-014). Callers who are not members get 404 for everything in a project.
-
-| Route | Capability | Least role |
-|---|---|---|
-| `GET/POST /projects` · `GET/DELETE /projects/:id` | `host.site.manage` | member / owner (delete) |
-| `GET /projects/:id/quota` · `PUT /projects/:id/quota` | `host.site.manage` | member / Network staff (PUT) |
-| `PUT/DELETE /projects/:id/members/:principal` | `host.site.manage` | owner |
-| `GET/POST /projects/:id/sites` · `GET/DELETE /sites/:id` | `host.site.manage` | member / maintainer |
-| `GET/POST /sites/:id/deploys` · `GET /deploys/:id` · `GET /deploys/:id/log` | `host.deploy.create` | deployer |
-| `POST /deploys/:id/activate` · `POST /sites/:id/rollback` (`{ deploy_id?, expected_active? }`) | `host.deploy.create` | deployer |
-| `DELETE /deploys/:id` (not the active one) | `host.site.manage` | maintainer |
-| `GET/PUT/DELETE /sites/:id/source` (`{ provider, repo_url, ref }`) | `host.site.manage` | maintainer (GET: member) |
-| `POST /sites/:id/source/deploys?ref=…&commit_sha=…` (the upload body; always a preview) | `host.deploy.create` | deployer |
-| `POST/DELETE /projects/:id/takedown` · `POST/DELETE /sites/:id/takedown` | `host.site.manage` | Network staff only |
-| `GET/POST /sites/:id/domains` · `POST /domains/:id/verify` · `DELETE /domains/:id` | `host.domain.manage` | maintainer (reads: member) |
-| `GET /resources[?project=&kind=&cursor=&limit=]` · `GET /resources/:ovrn` (the resource index, ADR-048) | `host.resource.read` | first-party service only |
-
-Errors are RFC 9457 problems (`application/problem+json`, with the legacy `error` field). A refused upload answers 413/422 with `deploy_id` and the log lines; `503 upload.busy` (with `Retry-After`) when `HOST_MAX_CONCURRENT_UPLOADS` uploads are already being validated; `507 storage.host_full` while the disk has less than `HOST_MIN_FREE_BYTES` free. Network staff (`role: admin`) can read every project, site, deploy and log, delete sites, projects and domains, set quotas, and **take a site or project down** (451 on every host, content kept for review, members see the reason and cannot publish or delete around it); they cannot publish into a tenant's site.
-
-The five capability ids (`host.site.config` since v0.83.0; `host.resource.read` planned since v0.107.0) and the service manifest are released in `openvibe-contracts`, which Host pins, and the CI contract check is blocking; `test/host-contracts-events.test.js` holds the routes, guards and emitted events to the released manifests.
-
-#### The resource index (ADR-048 section 3)
-
-`GET /api/v1/resources` lists the resources Host owns as a page of `common.resource-summary@1`
-(`common.resource-list-result@1`: `{ resources, next_cursor }`), and `GET /api/v1/resources/:ovrn` reads
-one by its computed OVRN. It is the same path, shape and paging every authority answers, so
-OpenVibe.Services can fan out over all of them and merge:
-
-| Kind | Rows | Name | State |
-|---|---|---|---|
-| `host.site` (`sit_`) | `host_sites` | the site's label (`<name>.openvibe.host`) | `active` / `deleted` |
-| `host.deploy` (`dpl_`) | `host_deploys` | — | `ready` / `failed` / `deleted` |
-| `host.domain` (`dom_`) | `host_domains` | the hostname it answers on | `pending` / `verified` / `failed` / `lapsed` |
-
-Every summary carries `service: "host"`, the `project_id` of the project that owns it, the `created_by`
-person as `owner` when it is a `usr_` subject, and its `ovrn` computed by
-`contracts.resources.nameOf` — `ovrn:host:<prj_…>:site/<sit_…>`, `:deploy/<dpl_…>`,
-`:domain/<dom_…>`. Host lists no projects (only Network lists projects): Host mints its own `prj_` ids
-until it adopts Network projects (ADR-014). `?project=prj_…` is the tenancy boundary — with it only
-that project's rows answer, and one of another project is never returned; without it the first-party
-caller sees every Host-owned resource. `?kind=` narrows to one kind, `?cursor=` is an opaque keyset
-position and `?limit=` is 1–1000 (default 100). A query that cannot be honoured is `400
-resources.bad_query`; an OVRN that names nothing is `404 resources.unknown_resource`. The index is
-first-party: only a service token holding `host.resource.read` is admitted (a person gets 403, no token
-401), and `test/resource-index.test.js` validates every summary and page against the released schemas.
-
-### Activation and rollback
-
-Activation is one PostgreSQL transaction: a compare-and-set on the site's `active_deploy_id`, an activation record and the `host.deploy.activated` event. If any part fails, none of it happens. `expected_active` turns a racing operator's switch into a 409. Rollback goes to a named ready deploy of the same site, or to the most recent previously active one that still exists. The active deploy cannot be deleted. Deleting another deploy removes its objects when no other deploy of the project uses them.
-
-### Git deploys (Phase 1)
-
-A site can be connected to a Git repository, but **the build runs in the project's own CI, never in Host**. Host never clones or fetches the repository, holds no credential for it, and executes nothing; the CI's token is the trust boundary.
-
-- **Connect.** A maintainer sets the site's source: `PUT /api/v1/sites/:id/source` with `{ "provider": "github", "repo_url": "https://github.com/<owner>/<repo>", "ref": "main" }`. `repo_url` must be `https` on the provider's own host (`github.com`, `gitlab.com`, `codeberg.org`) with the path `owner/repo` and an optional `.git`, and no user, port, query or fragment; `ref` must be a branch name by `git check-ref-format`'s rules (at most 200 characters, no `..`, no leading `-`). Any other field (a token, a key) is refused with 422. The row (`host_site_sources`) is public provenance; the read role can GET it.
-- **Deploy.** The CI checks out the commit, builds, and posts the output to `POST /api/v1/sites/:id/source/deploys?ref=<branch>&commit_sha=<full sha>` with the same body and limits as an upload (`ref` and `commit_sha` may also be multipart fields). It authenticates as an app (`app:app_…`, a Network client-credentials token for audience `openvibe.host` with `host.deploy.create`) that is a `deployer` of the project, or with a person's Bearer token. A site with no source answers `409 source.not_connected`, another branch `409 source.ref_mismatch`, a commit that is not 40 or 64 lowercase hex characters `422 source.commit_sha`, and `activate` `422 source.activate`. The files then go through exactly the upload validation; a refused file is a failed deploy with `host.deploy.failed`.
-- **Preview, then approve.** An accepted build is stored as a deploy with `source: "git"` and an immutable `host_deploy_git` row (provider, repo URL, ref, commit), written in the same transaction, and becomes the site's live preview at `/preview/<deploy-id>/` (one hour, members only). It never touches the active deploy. A deployer approves it with the ordinary `POST /api/v1/deploys/:id/activate`; responses show the provenance as `deploy.git`.
-
-A minimal GitHub Actions workflow (the app's client id and secret are repository secrets; Host never sees them):
-
-```yaml
-name: Deploy to OpenVibe Host
-on:
-  push:
-    branches: [main]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm ci && npm run build          # your build; the output is in dist/
-      - name: Post the build as a preview
-        env:
-          CLIENT_ID: ${{ secrets.OPENVIBE_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.OPENVIBE_CLIENT_SECRET }}
-          SITE_ID: ${{ vars.OPENVIBE_SITE_ID }}
-        run: |
-          TOKEN=$(curl -fsS https://openvibe.network/oauth/token \
-            -d grant_type=client_credentials -d audience=openvibe.host \
-            -d client_id="$CLIENT_ID" -d client_secret="$CLIENT_SECRET" | jq -r .access_token)
-          tar -czf site.tar.gz -C dist .
-          curl -fsS -X POST "https://openvibe.host/api/v1/sites/$SITE_ID/source/deploys?ref=${GITHUB_REF_NAME}&commit_sha=${GITHUB_SHA}" \
-            -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/gzip' --data-binary @site.tar.gz
-```
-
-### Events
-
-Through the `openvibe-sdk` v0.44.0 transactional outbox (`event_outbox`), inside the transaction that makes the change:
-
-| Event | When | Payload |
-|---|---|---|
-| `host.deploy.created` | an upload became a ready deploy | `project_id, site_id, site, source, file_count, total_bytes, manifest_sha256` |
-| `host.deploy.activated` | a site's active deploy changed | `project_id, site_id, site, deploy_id, previous_deploy_id, rollback` |
-| `host.deploy.failed` | an upload was refused | `project_id, site_id, site, code, problems` (codes only, never file contents) |
-| `host.domain.verified` | a custom domain's TXT record was found | `project_id, site_id, site, hostname` |
-
-The relay publishes with Host's service token (`events.event.publish`, audience `openvibe.events`) only when `EVENTS_URL` and `OV_OAUTH_CLIENT_SECRET` are set. Otherwise rows wait and `/api/ready` says the relay is off.
-
-These tenant events have subject `deploy` and visibility `internal`; `host.deploy.activated@1` in openvibe-contracts 0.58.0 is the tenant shape only. Releases of network services are a separate event type: the operator plane (`ovhost`) publishes `host.release.published` with subject `release` and visibility `public` ([docs/release-notifications.md](docs/release-notifications.md)).
-
-### Dashboard
-
-Server-rendered pages with the OpenVibe Frame (`openvibe-shared` v3.0.1 `shell.page`: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
-
-### Observability
-
-`GET /api/ready` (openvibe-shared/ready): `db` and `storage` are required; `network_jwks`, `events_relay` and `domain_checks` are optional and report degradation. `GET /release.json`. `GET /metrics` for direct loopback callers only (nginx also returns 404): HTTP golden signals by route template (tenant requests are one `tenant_site` series), process metrics, release info and `host_sites`.
-
-### IndexNow (openvibe-shared/indexnow)
-
-`INDEXNOW_KEY` (`openvibe-shared` v2.2.0) turns on IndexNow. The key file is served at `/<key>.txt` on every host (the dashboard and each tenant site, so an engine can verify a ping that names a tenant host). When a tenant site's active deploy appears, changes (a new deploy or a rollback) or goes away (the site or its project is deleted), the site's page and its `/sitemap.xml` are queued to `api.indexnow.org`; a verified custom domain is queued when it starts serving. The module batches and debounces (one POST per 30 s window), filters to https URLs on the pinged host and never throws, so a failed ping cannot fail a deploy. A ready deploy that is not active (a draft) and a sandbox site (already `noindex`) never ping. Unset → off: no key route is mounted and nothing is sent. Tests and drills never set it (the drill's override in [`host.example.json`](host.example.json) sets `INDEXNOW_KEY` empty).
-
-### Grants and registration (for the lead)
-
-- OpenVibe.Network OAuth client **`host`**, redirect `https://openvibe.host/auth/callback`, scope `profile theme`. The same client is the service principal `svc:host`.
-- Grant `[host, events.event.publish, openvibe.events]`.
-- With `HOST_OBJECT_STORE=media`: grants `[host, media.object.upload, openvibe.media]`, `[host, media.object.read, openvibe.media]`, `[host, media.object.list, openvibe.media]` and `[host, media.object.delete, openvibe.media]`, covering the `host` namespace and its subtree (`host.*`), plus a `host` tenant in Media. Network-side; Host asks for the verbs as its scope.
-- Callers of Host get `[<client>, host.site.manage | host.deploy.create | host.domain.manage, openvibe.host]` as needed. None exist yet (Codes, the expected first caller, has not adopted Host yet).
-- The resource index is read the other way round: **OpenVibe.Services** calls `GET /api/v1/resources` on `svc:services` with `host.resource.read` for audience `openvibe.host`, without `X-OV-Subject` (the capability is first-party and answers the whole index).
-- Released in `openvibe-contracts` v0.107.0 (CI contract check blocking); v0.32.0 added the takedown routes to `host.site.manage.implementedBy` and v0.107.0 added the git-source routes. `host.resource.read` stays `planned` with an empty `implementedBy` until Opus flips it after the deploy.
-
-### Deploying Stage B (for the operator)
-
-The service runs on the host (loopback, since 2026-09-23) behind openvibe.host, and the tenant vhost of step 9 is installed. Public hosting stays off (`HOST_PUBLIC_HOSTING`, Host#47): only staff create projects until the owner's launch gates clear (plan T20).
-
-1. **DNS.** `openvibe.host` and `*.openvibe.host`: `A`/`AAAA` records to the host. If the zone is on Cloudflare, keep `*.openvibe.host` **DNS-only** (grey cloud), or set `HOST_CNAME_TARGET` to a DNS-only name: custom domains in other accounts cannot CNAME to a proxied hostname (Cloudflare error 1014). Set `HOST_ORIGIN_IPV4`/`HOST_ORIGIN_IPV6` if tenants should be told the addresses for apex domains.
-2. **Wildcard certificate.** A DNS-01 challenge is required for `*.openvibe.host`, for example `certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/certbot-cloudflare.ini -d openvibe.host -d '*.openvibe.host'`. The credentials file is root-only (0600), outside every repository, and never passed to Host. The certificate lands in `/etc/letsencrypt/live/openvibe.host/`; another location is passed with `--wildcard-cert <name|dir>`.
-3. **Network.** Register the OAuth client `host` and the grant above.
-4. **Code and state.** `sudo -u ubuntu git clone https://github.com/OpenVibers/OpenVibe.Host /opt/openvibe.host && cd /opt/openvibe.host && sudo -u ubuntu npm ci --omit=dev --no-audit --no-fund`. This checkout is the service; the root-owned `/usr/local/lib/openvibe-host` stays the `ovhost` CLI. The unit's state directory is `/var/lib/openvibe-host-api` (database and objects), deliberately **not** `/var/lib/openvibe-host`, which is `ovhost`'s own root-only state.
-5. **Environment.** `/etc/openvibe/host.env` (0600), from [`.env.example`](.env.example): at least `BASE_URL=https://openvibe.host`, `HOST_SITES_DOMAIN=openvibe.host`, `OV_NETWORK_URL`, `OV_NETWORK_INTERNAL_URL`, `OV_OAUTH_CLIENT_ID=host`, `OV_OAUTH_CLIENT_SECRET`, `HOST_FORM_SECRET`, `EVENTS_URL`, `INDEXNOW_KEY` (optional).
-6. **Unit.** `sudo cp deploy/systemd/openvibe-host.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-host`, then `curl -s http://127.0.0.1:4910/api/ready`.
-7. **nginx.** Add the `host` entry from [`host.example.json`](host.example.json) to `/etc/openvibe/host.json`, update `/usr/local/lib/openvibe-host`, then `sudo ovhost nginx tenants host` (review) and `sudo ovhost nginx tenants host --install` (writes `openvibe.host.conf` and `openvibe.host-custom-domains.conf`, `nginx -t`, reload; restored on failure). [`deploy/nginx/openvibe.host.conf`](deploy/nginx/openvibe.host.conf) is a reference copy.
-8. **Certificates.** `sudo ovhost certs renew --install` renews the existing lineages with `certbot renew` (the wildcard) and issues `certbot certonly --webroot -w /var/www/certbot -d <hostname>` for every verified custom domain that still has no certificate (the generated port-80 block already answers the ACME challenge), then re-renders the tenant vhosts through the same transactional install. A failure leaves that domain HTTP-only and fails the command; the others still proceed. `ovhost certs renew` without `--install` only reviews. `deploy/systemd/openvibe-certs.timer` runs it twice a day (the [unit](deploy/systemd/openvibe-certs.service) runs as root; certificates never pass through the Host API). The manual equivalent is `sudo ovhost nginx tenants host` to list the domains still waiting, then `certbot certonly` and `ovhost nginx tenants host --install` for each.
-9. **Launch.** Follow [docs/launch.md](docs/launch.md). Until then [`deploy/nginx/openvibe.host-tenants-pending.conf`](deploy/nginx/openvibe.host-tenants-pending.conf) answers every `*.openvibe.host` name with a 404 over the wildcard certificate (installed 2026-09-23; without it the wildcard fell through to nginx's default server). `ovhost nginx tenants host --install` removes it in the same `nginx -t` and reload that installs the tenant vhost (`nginx.tenants.replaces`), and puts it back if the test fails.
-
-### Not done yet (Stage B)
-
-- Uploads are held in memory while they are validated (bounded by `HOST_MAX_UPLOAD_BYTES` and `HOST_MAX_UNPACKED_BYTES`), so the service needs that much headroom per concurrent upload.
-- Objects are on the service's local disk by default; there is no replication. `HOST_OBJECT_STORE=media` (opt-in) additionally writes every object through to OpenVibe.Media and keeps local disk as the read cache. `ovhost backup host` archives `/var/lib/openvibe-host-api/objects` (the inventory's `objects` entry) alongside `ov_host`, uploads the encrypted archive off-host, and a restore drill extracts it and checks every blob's sha256. The database (`ov_host` on the host's data role, ADR-035; schema in [migrations/](migrations/)) is backed up with the others by pgBackRest.
-- Certificates for custom domains are issued and installed by `ovhost certs renew --install` (step 8) on the `openvibe-certs.timer`; certbot stays outside the Host service and no key file is read.
-- Projects are created in Host. When Network has projects (ADR-014), Host should accept only Network project ids and read membership from Network.
-- `openvibe.host` is not on the Public Suffix List, so a tenant page can still set `Domain=openvibe.host` cookies (a cookie bomb breaks the dashboard and other tenant sites for that visitor). The protections above do not depend on it. [docs/threat-review.md §5](docs/threat-review.md#5-the-public-suffix-list-question) records the decision (launch without it) and the recommended follow-up (dashboard off the tenant zone, then list the zone).
-- Tenant objects are in `ovhost backup`: the inventory declares them as `objects` (`/var/lib/openvibe-host-api/objects`), the backup archives the tree, the off-host copy encrypts it, and a drill extracts it and checks every blob's sha256. With `HOST_OBJECT_STORE=media`, this archives the read cache and Media holds the durable objects.
-- Git deploys are Phase 1 only (see [Git deploys](#git-deploys-phase-1)): the project's own CI builds and posts the output. Host never clones, fetches, holds a repository credential or builds; in-Host builds belong to Run (plan T14). There is no webhook: a push reaches Host only through the CI's call.
-- Tenant sites publish their own sitemap/robots/feed; when a deploy ships no `sitemap.xml` or `robots.txt`, Host generates one (the manifest's HTML pages on the host the request came in on, so a verified custom domain gets its own `sitemap.xml`; sandbox projects get `Disallow: /` and are `noindex`). A tenant's own file at either path always wins. The dashboard host serves `/robots.txt` and `/sitemap.xml` (front page and legal pages).
-- The Codes portal (Wave 20) does not exist, so there is no public developer onboarding for Host yet.
-
-### Acceptance (what `npm test` demonstrates for Stage B)
-
-- **Tenant isolation** (`test/host-isolation.test.js`): 25 path tricks (`..`, `%2e%2e`, `%2f`, `%5c`, `%00`, double encoding, absolute object-store paths, sha256 paths, `/host.db`) and 14 `Host` header tricks never return another tenant's bytes; absolute-form targets that disagree with `Host` are refused; tenant hosts never reach the API, auth, metrics or readiness; identical bytes are stored per project; every API route answers 404 to non-members; the API ignores cookies.
-- **Traversal and links refused** (`test/host-uploads.test.js`): `..`, absolute, backslash, non-ASCII, pax and GNU long-name overrides, symlinks, hard links, devices, FIFOs, hidden files, server-side code, credentials, unknown types, duplicates, conflicts, corrupt archives and a 40 MB gzip bomb. Each becomes a failed deploy with a log and `host.deploy.failed`, nothing is stored, and the active deploy keeps serving.
-- **Quotas** (`test/host-quota-auth.test.js`): deploys per day (rolling), deduplicated storage, files, bytes per file, request size, sites, custom domains, sandbox limits; service-token audience/capability, `X-OV-Subject` delegation, app principals, sandbox tokens, mods, staff.
-- **Atomic rollback** (`test/host-rollback.test.js`): 320 requests while the pointer flips 40 times all return one whole deploy; a failure inside the switch changes nothing; `expected_active` conflicts; database-level immutability; the pointer survives a restart.
-- **Custom domains** (`test/host-domains.test.js`): not served until verified; wrong or missing TXT stays pending; first verified proof wins; OpenVibe domains refused; removal and site deletion stop serving; background verification, pending expiry and lapse.
-- **No secrets in responses** (`test/host-secrets-dashboard.test.js`): no API, dashboard, readiness or event body contains the OAuth client secret, the form secret, an uploaded `.env`'s values or any credential-like string; response objects are allowlisted; plus the dashboard (chrome, forms, CSRF against same-site tenant origins, planted cookies) and machine endpoints.
-- **Lifecycle, headers, events** (`test/host-lifecycle.test.js`, `test/host-contracts-events.test.js`): content types, ETag/304, ranges, immutable caching, CSP, nosniff, custom 404, 405; valid event envelopes delivered by the relay with a Network service token; the proposals match the guarded routes.
-- **Tenant vhosts** (`test/nginx-tenants.test.js`): the wildcard vhost with the certificate path parameter, HTTPS only for verified domains that have a certificate, hostile database values refused before they reach nginx, transactional install that removes the pending vhost in the same change, `www.` redirect, client address headers from `$remote_addr` only, no key file read.
-- **Abuse controls** (`test/host-abuse.test.js`): staff takedowns (451 with Clear-Site-Data on every host, content kept, members cannot publish or delete around them, lift), certificate-validation paths refused, uploads validated two at a time (503 + Retry-After), the disk floor (507), the per-person project cap, fingerprinted assets capped at an hour at a CDN.
-- **IndexNow** (`test/indexnow.test.js`): off without `INDEXNOW_KEY` (no key route, nothing sent); with a key the key file is served at `/<key>.txt` as `text/plain` on the dashboard and on tenant hosts; activating a deploy pings the site page and its sitemap, a rollback or a site deletion pings again, a ready-but-not-active deploy and a sandbox site never ping.
-- **Tenant sitemap/robots** (`test/host-sitemap.test.js`): a deploy that ships none gets a generated `sitemap.xml` (the manifest's HTML pages, `index.html` → the directory URL, the error page left out, on the host the request came in on — so a verified custom domain gets its own) and `robots.txt` (crawlers welcomed and the sitemap named; a sandbox site gets `Disallow: /` and stays `noindex`); a file the tenant uploaded at either path wins; correct content types and caching; HEAD works; no secret in the body.
-- **Preview deploys** (`test/host-preview.test.js`): `POST /sites/:id/deploys?preview=1` stores a deploy with `source=preview` and points the site at it without activating (the public site keeps serving its active deploy); `/preview/<deploy-id>/…` on the dashboard is served to a project member only — non-members and signed-out callers get a plain 404, a public tenant host never serves it, every response is `noindex, no-store`, and the response's CSP sandboxes the tenant content into an opaque origin (no `allow-same-origin`) so it can never act as `openvibe.host`; a preview is never pinged to IndexNow and never listed in the site's sitemap; it vanishes when it expires, when the site deploys or rolls back, or when it is deleted; and it serves only its own project's objects (a same-named file of another project is not reachable).
-- **Git deploys** (`test/host-git-source.test.js`): a maintainer connects a source, a deployer gets 403 and a non-member 404, a bad URL, provider or ref is 422 and a credential field is refused; an app deployer's ingest is a `source=git` deploy with its `host_deploy_git` row and the site's preview while the public host keeps serving the active deploy; activate flips the pointer and clears the preview; an invalid file (a failed deploy and `host.deploy.failed`), a ref mismatch, an unconnected site, a bad SHA and `activate=1` all leave `active_deploy_id` unchanged; `host_deploy_git` rows are immutable; source responses hold only the allowlisted fields.
-- **Resource index** (`test/resource-index.test.js`): no token 401, a person 403, a service token without `host.resource.read` 403 and with it 200; every summary and every page validates against `common.resource-summary@1` and `common.resource-list-result@1`; all three kinds (sites, deploys, domains) with their states, names, owners and OVRNs; `?project=` never returns another project's rows; `?kind=` narrows and an unknown kind is an empty page; the cursor pages the whole index with no duplicate, gap or reordering; `GET /:ovrn` reads the one resource whose computed OVRN it is (a wrong project, another service's OVRN, an unknown id and a non-OVRN are 404 `resources.unknown_resource`); a bad query is 400 `resources.bad_query`.
-- **Home-page size budget** (`test/perf-budget.test.js`): the server on a fresh database, the home page measured with `openvibe-shared/perf-budget` — html 15.9 KB (4.3 br), js 4 files 212.2 KB (49.9 br), css 1 file 3.1 KB (0.9 br), 0 external — within the committed budgets.
-- The isolation test also covers cross-origin reads from a tenant page (no CORS grant anywhere), ETag/Range existence oracles, delegated service tokens, app principals and the dashboard.
-
-Not demonstrated yet: any of this on the production host.
+7. **Updating the CLI itself:** a deploy of this repository replaces `/opt/openvibe.host` (the catalog service), not the root-owned install at `/usr/local/lib/openvibe-host`, so after a merge to `main` run `sudo ovhost self-update`. It finds its own install directory from its real path (`/usr/local/bin/ovhost` → `/usr/local/lib/openvibe-host/bin/ovhost`), fetches `origin main`, refuses a dirty tree, a branch other than `main` or a divergence, merges `--ff-only` and runs `npm ci --omit=dev --no-audit --no-fund` there; `--dry-run` prints the plan first. It restarts nothing — the next `ovhost` invocation runs the new code. Without it the installed CLI silently runs behind `main` (on 2026-10-02 it was 16 commits behind: no `env-names --set`, no `logs`, no Bot vhost).
 
 ## Security
 
-Reporting a vulnerability: [SECURITY.md](SECURITY.md). Stage B's threat review, with the decisions it
-records: [docs/threat-review.md](docs/threat-review.md). The rules the code keeps:
+Reporting a vulnerability: [SECURITY.md](SECURITY.md). Stage B's threat review (now Space's engine) stays in
+[docs/threat-review.md](docs/threat-review.md) for the record. The rules the code keeps:
 
 - **Secrets.** `ovhost` reads service env files for variable **names** and emptiness only; it never
   stores, prints or snapshots a value. The one exception is its own root-only `/etc/openvibe/backup.env`.
@@ -542,11 +295,9 @@ records: [docs/threat-review.md](docs/threat-review.md). The rules the code keep
 - **Operator plane.** `ovhost` runs as root and drops to the checkout owner for git, npm, builds and
   PostgreSQL; it never stops or restarts a socket unit except the release-layout rebind; a protected-session
   probe that cannot answer counts as sessions active; tracked local changes block a deploy.
-- **Tenants (Stage B).** Static files only: no tenant code runs, no tenant secret is stored, uploads are
-  validated and content-addressed, tenant hosts get no CORS grant, staff takedowns answer 451. Custom
-  domains are proven by DNS TXT through the configured resolver, and certificates never pass through
-  the API. Dashboard and API auth is Network SSO and service tokens with the `host.*` capabilities.
-- **Egress.** Stage B calls only its configured Network and Events hosts; `ovhost` calls the host's own
+- **Catalog.** Public pages and reads are signed-out and cacheable; staff writes need `host.catalog.manage` and a
+  Network staff user; affiliate links are marked and never change the order. Engine URLs answer 410.
+- **Egress.** The service calls only its configured Network, Events, Sources and Community hosts; `ovhost` calls the host's own
   services, Network, Events, Prometheus and the backup bucket.
 
 ## Development
@@ -554,10 +305,10 @@ records: [docs/threat-review.md](docs/threat-review.md). The rules the code keep
 ```
 npm test                    # every test, each file in its own process (Node 22)
 node test/deploy.test.js    # one file
-npm run dev                 # Stage B service on http://localhost:4910 (HOST_SITES_DOMAIN=localhost serves sites at http://<site>.localhost:4910)
+npm run dev                 # the catalog service on http://localhost:4910
 ```
 
-Stage B tests (`test/host-*.test.js`) boot the service on a temp database and object store with a controllable clock, a mock Network (real RS256 keys) and a DNS table, and talk to it over raw HTTP so they can send any `Host` header and request target.
+The service tests (`test/catalog-*.test.js`, `test/engine-moved.test.js`) boot it on a temp PGlite database with `test/helpers/boot.js` (a mock Network with real RS256 keys) and talk to it over raw HTTP.
 
 Stage A: everything that touches the system goes through the executor (`lib/executor.js`). The tests replace it with `test/fake-host.js`, an in-memory host with git repos, systemd units, npm, nginx, ss, HTTP endpoints and PostgreSQL. No test runs systemctl, git, npm, nginx or curl against the real machine. `test/executor.test.js` covers the real executor only where that is safe: HTTP to a local server and temp files.
 
@@ -578,10 +329,8 @@ The launch release removes the domain from `OpenVibe.Sites/sites.json`, switches
 registers maturity in the ecosystem registry atomically. A placeholder is never counted as an
 implemented service.
 
-**Stage B against this rule (2026-09-23):** every item is met in code and tests. The evidence per
-item, the exact launch steps (tenant vhost with the pending vhost removed in the same change, Sites,
-Network registry), verification and rollback are in [docs/launch.md](docs/launch.md); the threat
-review is [docs/threat-review.md](docs/threat-review.md). The launch has not been run.
+**Stage B** never launched publicly here: it moved to OpenVibe.Space on 2026-10-12, where the same rule and
+the owner's gates (go-ahead, a DMCA agent, a Public Suffix List entry for openvibe.website) apply.
 
 ---
 
@@ -593,3 +342,6 @@ Part of the [OpenVibe network](https://openvibe.network). Built in the open by [
 - openvibe-shared: v4.0.3
 - openvibe-publishing: v1.4.0
 <!-- versions:end -->
+---
+
+Part of the [OpenVibe network](https://openvibe.network). Built in the open by [OpenVibers](https://github.com/OpenVibers).

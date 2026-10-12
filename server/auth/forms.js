@@ -1,14 +1,6 @@
 'use strict';
 
-/**
- * Dashboard form protection. SameSite=Lax is NOT enough here: tenant sites on <site>.openvibe.host
- * are the same site as openvibe.host, so their pages could submit forms to the dashboard with the
- * session cookie attached. Every dashboard POST therefore needs both:
- *
- *   1. an Origin (or, without one, a Referer) equal to the dashboard's own origin, and
- *   2. a form token: an HMAC of the signed-in subject under HOST_FORM_SECRET (a random per-process
- *      key when unset, so forms opened before a restart must be reloaded).
- */
+/** Catalog form protection: same-origin request and subject-bound CSRF token. */
 const crypto = require('crypto');
 
 const fallback = crypto.randomBytes(32).toString('hex');
@@ -24,7 +16,7 @@ function checkCsrf(config, viewer, token) {
     return crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
 }
 
-/** The request came from a dashboard page (not from a tenant page or another site). */
+/** The request came from the catalog origin. */
 function sameOrigin(config, req) {
     const expected = new URL(config.baseUrl).origin;
     const origin = req.get('origin');

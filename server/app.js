@@ -1,18 +1,6 @@
 'use strict';
 
-/**
- * OpenVibe.Host Stage B: Express app factory. server/index.js listens and starts the workers;
- * tests build their own instance with a temp database and storage, an injectable clock, a DNS
- * resolver table and a mock Network.
- *
- * Every request is dispatched on its Host header FIRST:
- *
- *   <site>.<sitesDomain> / verified custom domain  → tenant static files (http/tenant.js) and
- *                                                    nothing else: no API, no auth, no cookies
- *   the dashboard host (BASE_URL) and loopback     → dashboard pages, /api/v1, /auth, /api/ready,
- *                                                    /release.json, /limits.json, /metrics (loopback only)
- *   anything else                                  → 404 unknown host
- */
+/** OpenVibe.Host catalog HTTP app. */
 const path = require('path');
 const express = require('express');
 const cookieParser = require('cookie-parser');
@@ -21,28 +9,15 @@ const contracts = require('openvibe-contracts');
 const sharedMetrics = require('openvibe-shared/metrics');
 const cache = require('openvibe-shared/cache-policy');
 const sharedSeo = require('openvibe-shared/seo');
-const { createIndexNow } = require('openvibe-shared/indexnow');
-
+const frame = require('openvibe-shared/frame');
+const showcase = require('openvibe-shared/showcase');
+const ovServe = require('openvibe-shared/serve');
 const configLib = require('./config');
 const { openStore } = require('./db');
-const { createBlobStore } = require('./storage');
 const { createHostOutbox } = require('./events/outbox');
-const { createAccess } = require('./domain/access');
-const { createTakedowns } = require('./domain/takedowns');
-const { createProjects } = require('./domain/projects');
-const { createSites } = require('./domain/sites');
-const { createDeploys } = require('./domain/deploys');
-const { createDomains } = require('./domain/domains');
-const { createSiteConfig } = require('./domain/site-config');
-const { createSiteSources } = require('./domain/site-sources');
 const { createSsoClient } = require('openvibe-sdk/sso');
-const { createViewerResolver, guard } = require('./auth/viewer');
+const { createViewerResolver } = require('./auth/viewer');
 const { createHostSession } = require('./auth/sso');
-const { createTenantServer } = require('./http/tenant');
-const { createUploadGate } = require('./http/upload');
-const { createApi } = require('./http/api');
-const resourceIndex = require('./registry/resource-index');
-const { createDashboard } = require('./http/dashboard');
 const { createHostReadiness } = require('./observability');
 const { createWorker } = require('./worker');
 const { createCatalog } = require('./catalog/store');
@@ -51,167 +26,71 @@ const { createCatalogIngest } = require('./catalog/ingest');
 const { createCatalogSearch } = require('./catalog/search-index');
 const { createCatalogApi, createCatalogPages } = require('./http/catalog');
 const { renderPage, assetVersion, setRelease } = require('./render/layout');
-const pages = require('./render/pages');
+const catalogRender = require('./render/catalog');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const VERSION = require('../package.json').version;
-
-const DASHBOARD_CSP = {
+const SPACE_URL = 'https://openvibe.space';
+const MOVED = 'Static hosting moved to OpenVibe.Space.';
+const DASHBOARD_CSP_HEADER = Object.entries({
     'default-src': ["'self'"],
-    // The OpenVibe Frame (theme-loader, navbar, footer) comes from the Network; the inline init is ours.
     'script-src': ["'self'", "'unsafe-inline'", 'https://openvibe.network'],
     'style-src': ["'self'", "'unsafe-inline'", 'https://openvibe.network', 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
     'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com'],
     'img-src': ["'self'", 'data:', 'https:'],
-    // openvibe.events: release notifications (release-watch's EventSource, openvibe-shared 1.17).
     'connect-src': ["'self'", 'https://openvibe.network', 'https://openvibe.events'],
     'frame-src': ["'self'", 'https://openvibe.network'],
-    'frame-ancestors': ["'none'"],
-    'object-src': ["'none'"],
-    'base-uri': ["'self'"],
+    'frame-ancestors': ["'none'"], 'object-src': ["'none'"], 'base-uri': ["'self'"],
     'form-action': ["'self'", 'https://openvibe.network'],
-};
-const DASHBOARD_CSP_HEADER = Object.entries(DASHBOARD_CSP).map(([k, v]) => `${k} ${v.join(' ')}`).join('; ');
+}).map(([k, v]) => `${k} ${v.join(' ')}`).join('; ');
 
-/**
- * opts: config, store, now (clock), fetchImpl, auth (an openvibe-sdk/sso client),
- *       resolver ({ resolveTxt }), log
- */
 async function createApp(opts = {}) {
     const config = opts.config || configLib.load();
     const log = opts.log || console;
-    // PostgreSQL (ADR-035): opened and migrated here unless the caller (a test, a script) hands in a store.
     const store = opts.store || await openStore(config, { now: opts.now, log });
-    // The object store: local disk, written through to OpenVibe.Media when HOST_OBJECT_STORE=media.
-    // The Media client is built here (not at module load) and fetches a token lazily; unset config
-    // leaves media null and the store is exactly the local one.
-    const mediaStore = config.objectStore.mode === 'media' ? {
-        url: config.media.url,
-        namespace: config.media.namespace,
-        scope: config.media.scope,
-        clientId: config.oauth.clientId,
-        clientSecret: config.oauth.clientSecret,
-        tokenUrl: `${config.networkInternalUrl}/oauth/token`,
-        ...(opts.fetchImpl ? { fetchImpl: opts.fetchImpl } : {}),
-    } : null;
-    // The Media delete re-checks this just before it runs: a deploy may have re-used the sha since
-    // the caller decided the blob was unreferenced, and Media holds the durable copy.
-    const blobReferenced = store.db.prepare('SELECT 1 FROM host_blobs WHERE project_id = ? AND sha256 = ?');
-    const blobs = createBlobStore(opts.storageDir || config.storageDir, {
-        media: mediaStore,
-        isReferenced: async (projectId, sha256) => Boolean(await blobReferenced.get(projectId, sha256)),
-    });
     require('./http/errors').setLogger(log);
-
-    // IndexNow (openvibe-shared/indexnow): created once at boot from INDEXNOW_KEY. Unset → off, nothing
-    // mounted, nothing sent; tests and drills never set it. The key file is served on every host (it is
-    // mounted below, before the tenant dispatch), and one module per public host keeps a tenant site's
-    // URL on its own host, which the protocol (and the module) requires. Tests inject a single object
-    // through opts.indexnow (a spy) and every ping goes through it.
-    const indexnow = opts.indexnow !== undefined ? opts.indexnow : createIndexNow({
-        host: config.baseUrl, key: config.indexnow.key, ...(opts.fetchImpl ? { fetch: opts.fetchImpl } : {}), log,
-    });
-    const indexnowHosts = new Map();
-    function indexnowFor(hostname) {
-        if (!indexnowHosts.has(hostname)) indexnowHosts.set(hostname, createIndexNow({
-            host: hostname, key: config.indexnow.key, ...(opts.fetchImpl ? { fetch: opts.fetchImpl } : {}), log,
-        }));
-        return indexnowHosts.get(hostname);
-    }
-    /**
-     * Queue a page that appeared, changed or left the index: one absolute URL per path on `hostname`,
-     * sent as a debounced batch. With an injected module (tests) it is used for every host. Never throws.
-     */
-    function announce(hostname, paths) {
-        if (!indexnow.enabled || !hostname) return;
-        const u = new URL(config.baseUrl);
-        const origin = `${u.protocol}//${hostname}${u.port ? `:${u.port}` : ''}`;
-        const target = opts.indexnow !== undefined ? indexnow : indexnowFor(hostname);
-        target.pingSoon(paths.map((p) => new URL(p, origin).href));
-    }
-
     const outbox = createHostOutbox({ db: store.db, config, fetchImpl: opts.fetchImpl, now: store.now, log });
-    const access = createAccess({ store });
-    const takedowns = createTakedowns({ store });
-    const projects = createProjects({ store, config, access, blobs, takedowns, log, indexnow: announce });
-    const sites = createSites({ store, config, access, projects, takedowns, indexnow: announce });
-    const deploys = createDeploys({ store, config, access, projects, sites, blobs, outbox, takedowns, log, indexnow: announce });
-    const domains = createDomains({ store, config, access, projects, sites, outbox, resolver: opts.resolver, log, indexnow: announce });
-    const siteConfig = createSiteConfig({ store });
-    const siteSources = createSiteSources({ store, sites });
     const auth = opts.auth || createSsoClient({
-        site: 'host',
-        baseUrl: config.baseUrl,
-        clientId: config.oauth.clientId,
-        clientSecret: config.oauth.clientSecret,
-        redirectUri: config.oauth.redirectUri,
-        scope: config.oauth.scope,
-        networkUrl: config.networkUrl,
-        networkInternalUrl: config.networkInternalUrl,
-        issuer: config.networkUrl,
-        secureCookies: config.cookies.secure,
-        log,
+        site: 'host', baseUrl: config.baseUrl, clientId: config.oauth.clientId,
+        clientSecret: config.oauth.clientSecret, redirectUri: config.oauth.redirectUri,
+        scope: config.oauth.scope, networkUrl: config.networkUrl,
+        networkInternalUrl: config.networkInternalUrl, issuer: config.networkUrl,
+        secureCookies: config.cookies.secure, log,
         ...(opts.fetchImpl ? { fetch: opts.fetchImpl } : {}),
     });
     const viewers = createViewerResolver({ auth, config, log });
-    const tenant = createTenantServer({ store, config, blobs, takedowns, siteConfig, access, log });
-    const uploadGate = createUploadGate(config.uploads.maxConcurrent);
     const community = createCommunity({ store, config, fetchImpl: opts.fetchImpl, log });
     const catalog = createCatalog({ store, community, log });
     const catalogIngest = createCatalogIngest({ config, store, catalog, fetchImpl: opts.fetchImpl });
     const catalogSearch = createCatalogSearch({ config, store, outbox, log });
-    catalog.onChange(() => { if (config.worker.enabled) catalogSearch.sweepSoon(); });   // the worker's own switch: off in tests and drills
-    const worker = createWorker({ config, store, domains, blobs, outbox, catalogIngest, catalogSearch, log });
-
-    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, siteConfig, siteSources, catalog, community, catalogIngest, catalogSearch, auth, viewers, tenant, worker, uploadGate, indexnow, log };
-
+    catalog.onChange(() => { if (config.worker.enabled) catalogSearch.sweepSoon(); });
+    const worker = createWorker({ config, outbox, catalogIngest, catalogSearch, log });
+    const ctx = { config, store, outbox, catalog, community, catalogIngest, catalogSearch, auth, viewers, worker, log };
     const app = express();
     app.disable('x-powered-by');
     app.disable('etag');
     app.set('trust proxy', config.trustProxy);
-
     const release = require('openvibe-shared/release').createRelease({ service: 'host', root: path.join(__dirname, '..') });
     setRelease(release.release);
     const registry = sharedMetrics.createRegistry();
-    const httpMetrics = sharedMetrics.httpMetrics(registry, { normalize: (req) => (req.hostTarget === 'site' ? 'tenant_site' : req.hostTarget === 'unknown' ? 'unknown_host' : null) });
     const proc = sharedMetrics.processMetrics(registry);
-    // Per-actor limits on writes (server/http/actor-limits.js; roadmap WS-R task 4), one budget for the API and the dashboard.
-    // Valkey (ADR-035): shared, never-authoritative state (per-actor limit counters). Optional.
+    ctx.stopMetrics = proc.stop;
     const valkey = opts.valkey !== undefined ? opts.valkey : (config.valkey.url ? require('openvibe-sdk/valkey').createValkey({ url: config.valkey.url, prefix: config.valkey.prefix, log }) : null);
     ctx.valkey = valkey;
     ctx.actorLimits = require('./http/actor-limits').createHostActorLimits({ registry, valkey });
     sharedMetrics.releaseInfo(registry, { service: 'host', release: release.release });
-    registry.gauge({
-        name: 'host_sites', help: 'Active tenant sites',
-        collect: async () => [{ labels: {}, value: (await store.db.prepare("SELECT COUNT(*) AS n FROM host_sites WHERE status = 'active'").get()).n }],
-    });
-    ctx.stopMetrics = proc.stop;
     app.locals.metrics = registry;
     app.locals.ctx = ctx;
-
-    app.use(httpMetrics.middleware);
-
-    // GET /<key>.txt — the IndexNow key file (openvibe-shared/indexnow). Served before the host dispatch
-    // so it answers on the dashboard host and on every tenant host (an engine fetches it from the host a
-    // ping names). Mounted only with a key; it answers that one path and falls through for everything else.
-    if (indexnow.enabled) app.use(indexnow.keyFile);
-
-    // ── Host dispatch: tenant sites never reach anything below ──
-    // resolve/handle read the database (ADR-035: async), so a rejection here must reach the error
-    // handler below: Express 4 does not catch a rejected async handler, which would hang the request.
-    app.use(async (req, res, next) => {
-        try {
-            const target = await tenant.resolve(req.headers.host);
-            req.hostTarget = target.kind;
-            if (target.kind === 'dashboard') return next();
-            if (target.kind === 'site') return await tenant.handle(req, res, target.site);
-            return tenant.unknownHost(req, res);
-        } catch (err) {
-            req.hostTarget = req.hostTarget || 'unknown';
-            return next(err);
-        }
+    app.use(sharedMetrics.httpMetrics(registry).middleware);
+    const catalogHost = new URL(config.baseUrl).hostname.toLowerCase();
+    app.use((req, res, next) => {
+        let hostname;
+        try { hostname = new URL(`http://${req.headers.host}`).hostname.toLowerCase(); }
+        catch { return res.status(400).send('Invalid Host header'); }
+        if (hostname === catalogHost || hostname === 'localhost' || hostname === '127.0.0.1') return next();
+        if (hostname.endsWith(`.${catalogHost}`)) return res.status(410).type('html').send(`<h1>Static hosting moved</h1><p>${MOVED} <a href="${SPACE_URL}">Visit OpenVibe.Space</a>.</p>`);
+        return res.status(404).send('Unknown host');
     });
-
     app.use(contracts.http.middleware());
     app.use((req, res, next) => {
         res.setHeader('Content-Security-Policy', DASHBOARD_CSP_HEADER);
@@ -222,142 +101,72 @@ async function createApp(opts = {}) {
         next();
     });
     app.use(cookieParser());
-
-    // ── Machine endpoints ───────────────────────────────────
     app.get('/api/health', (_req, res) => res.json({ status: 'ok', service: 'openvibe-host', version: VERSION }));
-    // GET /release.json (ADR-016) and POST /release-metrics: open tabs' update reports into /metrics.
-    release.mount(app, { registry: registry });
-    // GET /limits.json: the developer limits enforced here, from config (WS-N task 7; Codes renders them).
-    require('./limits').mountLimits(app, config);
-    const readiness = createHostReadiness({ store, blobs, outbox, jwksUrl: `${config.networkInternalUrl}/api/.well-known/jwks`, release: release.release, minFreeBytes: () => config.uploads.minFreeBytes, valkey: ctx.valkey });
-    app.get('/api/ready', readiness.handler);
+    release.mount(app, { registry });
+    app.get('/api/ready', createHostReadiness({ store, outbox, jwksUrl: `${config.networkInternalUrl}/api/.well-known/jwks`, release: release.release, valkey }).handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));
-    // The dashboard host: only the public front page and the legal pages are crawlable. Tenant sites
-    // never reach this app's routes; http/tenant.js serves a deploy's own robots.txt/sitemap.xml, or a
-    // generated one when the deploy ships none.
     const legalPaths = require('openvibe-shared/legal').PATHS;
-    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 }))
-        .send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Allow: /hosting$', 'Allow: /catalog$', 'Allow: /catalog/*', 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
+    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Allow: /catalog$', 'Allow: /catalog/*', 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
     app.get('/sitemap.xml', async (_req, res, next) => {
         try {
-            const providers = await catalog.providers();
-            const plans = await catalog.sitemapPlans();
-            // A catalog page's lastmod is the newest price check it shows: a plan's own, a provider's latest plan, and the
-            // newest of all for the catalog and the front page. Static pages carry none.
-            const day = (ms) => (Number.isFinite(Number(ms)) && ms != null ? new Date(Number(ms)).toISOString().slice(0, 10) : undefined);
-            const latest = (rows) => rows.reduce((m, p) => Math.max(m, Number(p.checked_at) || 0), 0) || undefined;
-            const newest = day(latest(plans));
-            const urls = [
-                { path: '/', lastmod: newest }, { path: '/hosting' }, ...legalPaths.map((path) => ({ path })),
-                { path: '/catalog', lastmod: newest }, { path: '/catalog/promos' }, { path: '/catalog/providers', lastmod: newest },
-                ...providers.map((v) => ({ path: `/catalog/providers/${v.slug}`, lastmod: day(latest(plans.filter((p) => p.provider_slug === v.slug))) })),
-                ...plans.map((p) => ({ path: `/catalog/plans/${p.id}`, lastmod: day(p.checked_at) })),
-            ];
-            res.type('application/xml').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 }))
-                .send(sharedSeo.sitemapXml(urls.map((u) => ({ loc: `${config.baseUrl}${u.path}`, lastmod: u.lastmod }))));
+            const [providers, plans] = await Promise.all([catalog.providers(), catalog.sitemapPlans()]);
+            const day = (ms) => Number.isFinite(Number(ms)) && ms != null ? new Date(Number(ms)).toISOString().slice(0, 10) : undefined;
+            const latest = (rows) => day(rows.reduce((m, p) => Math.max(m, Number(p.checked_at) || 0), 0) || undefined);
+            const urls = [{ path: '/', lastmod: latest(plans) }, ...legalPaths.map((p) => ({ path: p })), { path: '/catalog', lastmod: latest(plans) }, { path: '/catalog/promos' }, { path: '/catalog/providers', lastmod: latest(plans) },
+                ...providers.map((p) => ({ path: `/catalog/providers/${p.slug}`, lastmod: latest(plans.filter((v) => v.provider_slug === p.slug)) })),
+                ...plans.map((p) => ({ path: `/catalog/plans/${p.id}`, lastmod: day(p.checked_at) }))];
+            res.type('application/xml').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.sitemapXml(urls.map((u) => ({ loc: `${config.baseUrl}${u.path}`, lastmod: u.lastmod }))));
         } catch (err) { next(err); }
     });
-    // /llms.txt and /llms-full.txt (llmstxt.org): a map of Host's own public pages only. A tenant site, a preview
-    // URL, the dashboard, /api and /internal are never listed (a tenant's own /llms.txt is its deploy's file).
-    const SITE_SUMMARY = 'OpenVibe.Host: hosting plans compared (cloud, VPS and dedicated), every price dated and sourced and never ranked by who pays; and OpenVibe\'s own static hosting (alpha, not open to the public yet).';
-    const legalTitles = require('openvibe-shared/legal').TITLES;
+    const summary = 'OpenVibe.Host compares cloud, VPS and dedicated hosting plans with dated and sourced prices.';
     const publicPages = [
-        { title: 'OpenVibe.Host', url: '/', text: 'The front page of OpenVibe.Host: hosting plans compared. Cloud, VPS and dedicated plans from providers\' official APIs (through OpenVibe.Sources) and staff entries that name their source, with the price per month, per vCPU and per GB, the day each price was checked and its source link. The order comes only from the sort a visitor picks; affiliate links are marked and disclosed.' },
-        { title: 'Static hosting', url: '/hosting', text: 'OpenVibe.Host\'s own static site hosting: upload a folder or a .tar.gz, every deploy kept as an immutable artifact, served on a <site>.openvibe.host address or a verified custom domain, rolled back in one step. Not open to the public yet: only OpenVibe staff create projects until the launch review.' },
-        { title: 'Compare hosting plans', url: '/catalog', text: 'The comparison table: filter by kind, vCPU, RAM, disk, price, provider, location and currency; sort by monthly price or by price per vCPU, per GB of RAM or per GB of disk.' },
+        { title: 'OpenVibe.Host', url: '/', text: summary },
+        { title: 'Compare hosting plans', url: '/catalog', text: 'Filter and compare hosting plans by price and resources.' },
         { title: 'Hosting providers', url: '/catalog/providers', text: 'Every provider in the catalog.' },
-        { title: 'Hosting promotions', url: '/catalog/promos', text: 'Hosting promotions running now, with codes and end dates as the providers state them.' },
-        { title: 'What shipped on OpenVibe.Host', url: '/updates', text: 'The public update log for OpenVibe.Host: what shipped, newest first.' },
-        ...legalPaths.map((p) => ({ title: legalTitles[p.slice(1)] || p.slice(1), url: p, text: `The ${legalTitles[p.slice(1)] || p.slice(1)} of OpenVibe.Host.` })),
+        { title: 'Hosting promotions', url: '/catalog/promos', text: 'Current provider promotions.' },
+        { title: 'What shipped on OpenVibe.Host', url: '/updates', text: 'The public update log.' },
+        ...legalPaths.map((p) => ({ title: p.slice(1), url: p, text: `The ${p.slice(1)} of OpenVibe.Host.` })),
     ];
-    const catalogPublicPages = async () => [
-        ...((await catalog.providers()).map((p) => ({ title: p.name, url: `/catalog/providers/${p.slug}`, text: `Hosting plans from ${p.name}, with prices and sources.` }))),
-        ...((await catalog.sitemapPlans()).map((p) => ({ title: `Hosting plan ${p.id}`, url: `/catalog/plans/${p.id}`, text: 'Sourced hosting plan with a checked price and price history.' }))),
-    ];
-    app.get('/llms.txt', async (_req, res, next) => { try { res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.llmsTxt({
-        name: 'OpenVibe.Host',
-        summary: SITE_SUMMARY,
-        details: 'The sites Host serves belong to their owners and are not listed here; the dashboard, sign-in and the API are per-person.',
-        sections: [
-            { title: 'Public pages', links: [...publicPages, ...await catalogPublicPages()].map((p) => ({ title: p.title, url: `${config.baseUrl}${p.url}` })) },
-            { title: 'Machine-readable', links: [
-                { title: 'Sitemap', url: `${config.baseUrl}/sitemap.xml`, note: 'the public pages' },
-                { title: 'robots.txt', url: `${config.baseUrl}/robots.txt` },
-                { title: 'llms-full.txt', url: `${config.baseUrl}/llms-full.txt`, note: 'this same map with a description of each public page' },
-            ] },
-        ],
-    })); } catch (err) { next(err); } });
-    app.get('/llms-full.txt', async (_req, res, next) => { try { res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.llmsFull({
-        site: { name: 'OpenVibe.Host', url: config.baseUrl },
-        summary: SITE_SUMMARY,
-        base: config.baseUrl,
-        maxBytes: 512 * 1024,
-        sections: [{ title: 'Public pages', pages: [...publicPages, ...await catalogPublicPages()] }],
-    })); } catch (err) { next(err); } });
-
-    // ── Sign-in (OAuth2 client of OpenVibe.Network) ─────────
+    const allPages = async () => [...publicPages,
+        ...(await catalog.providers()).map((p) => ({ title: p.name, url: `/catalog/providers/${p.slug}`, text: `Hosting plans from ${p.name}.` })),
+        ...(await catalog.sitemapPlans()).map((p) => ({ title: `Hosting plan ${p.id}`, url: `/catalog/plans/${p.id}`, text: 'Sourced plan and price history.' }))];
+    app.get('/llms.txt', async (_req, res, next) => { try { res.type('text/plain').send(sharedSeo.llmsTxt({ name: 'OpenVibe.Host', summary, sections: [{ title: 'Public pages', links: (await allPages()).map((p) => ({ title: p.title, url: `${config.baseUrl}${p.url}` })) }] })); } catch (err) { next(err); } });
+    app.get('/llms-full.txt', async (_req, res, next) => { try { res.type('text/plain').send(sharedSeo.llmsFull({ site: { name: 'OpenVibe.Host', url: config.baseUrl }, summary, base: config.baseUrl, maxBytes: 512 * 1024, sections: [{ title: 'Public pages', pages: await allPages() }] })); } catch (err) { next(err); } });
     app.use('/auth/', rateLimit({ windowMs: 15 * 60_000, max: 60, standardHeaders: true, legacyHeaders: false }));
     app.use('/auth', createHostSession({ auth, config }).router(express));
     { const legal = require('openvibe-shared/legal'); app.get(legal.PATHS, legal.handler({ id: 'host', service: 'host', host: 'openvibe.host', name: 'OpenVibe.Host', profile: 'ugc' })); }
-
-    // ── Static assets (content-hashed ?v= → immutable) ──────
-    // This site's own pinned copy of the OpenVibe Frame's browser files (openvibe-shared/serve).
     app.use('/shared', require('openvibe-shared/serve').handler());
-    app.use(express.static(PUBLIC_DIR, {
-        index: false, redirect: false, etag: true,
-        setHeaders(res, filePath) {
-            const rel = path.relative(PUBLIC_DIR, filePath).split(path.sep).join('/');
-            const v = res.req && res.req.query && res.req.query.v;
-            res.setHeader('Cache-Control', cache.assetHeaders(rel, { hashed: !!v && v === assetVersion(rel) }));
-        },
-    }));
-
-    // ── Resource index (ADR-048 section 3, plan T13 step 8) ──
-    // The resources Host owns (sites, deploys, domains) as common.resource-summary@1, for OpenVibe.Services'
-    // fan-out. Its own router, mounted here and not in http/api.js: it is the same path and shape every
-    // authority answers (Network's index), and it is first-party — the capability is host.resource.read.
-    app.use('/api/v1/resources', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }),
-        viewers.middleware('api'), resourceIndex.router({ guard: guard('host.resource.read') }));
-
-    // Signed Sources events; disabled unless ingest and webhook secrets are configured.
+    app.use(express.static(PUBLIC_DIR, { index: false, redirect: false, etag: true, setHeaders(res, filePath) {
+        const rel = path.relative(PUBLIC_DIR, filePath).split(path.sep).join('/');
+        res.setHeader('Cache-Control', cache.assetHeaders(rel, { hashed: !!res.req.query.v && res.req.query.v === assetVersion(rel) }));
+    } }));
     app.post('/internal/catalog/events', express.raw({ type: '*/*', limit: '256kb' }), async (req, res) => {
         try { const result = await catalogIngest.consume(req.body, req.headers); res.status(result.status).json(result); }
         catch (err) { require('./http/errors').sendError(res, req, err, log); }
     });
-
-    // ── API ─────────────────────────────────────────────────
     app.use('/api/v1/catalog', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }), createCatalogApi(ctx));
-    app.use('/api/v1', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }), createApi(ctx));
-
-    // ── Preview deploys (plan T12 J4) ───────────────────────
-    // A member views a site's live preview deploy at /preview/<deploy-id>/… — dashboard host only (the
-    // dispatch above sends every tenant host to tenant.handle, so this never answers on a public host),
-    // session-authenticated, membership-checked in tenant.preview, noindex and never cached.
-    app.use('/preview', rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), viewers.middleware('dashboard'), (req, res, next) => {
-        res.set('Cache-Control', cache.htmlHeaders({ private: true }));
-        Promise.resolve(tenant.preview(req, res)).catch(next);
-    });
-
+    const movedApi = (req, res) => res.status(410).type('application/problem+json').json({ code: 'host.moved_to_space', title: 'Static hosting moved', detail: MOVED, url: SPACE_URL });
+    const movedPage = (req, res) => res.status(410).type('html').send(renderPage({ title: 'Static hosting moved', body: `<h1>Static hosting moved</h1><p>${MOVED} <a href="${SPACE_URL}">Visit OpenVibe.Space</a>.</p>`, config, path: req.originalUrl }));
+    // Lookaheads: app.use strips what the path matched, and a consumed '/' would make Express skip the route.
+    app.use(/^\/api\/v1\/(?:projects|sites|deploys|domains|resources)(?=\/|$)/, movedApi);
+    app.use(/^\/(?:hosting|projects|sites|deploys|domains|preview)(?=\/|$)/, movedPage);
     app.use('/catalog', rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), createCatalogPages(ctx));
-
-    // ── Dashboard ───────────────────────────────────────────
-    app.use(rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), createDashboard(ctx));
-    app.use((req, res) => {
-        res.set('Cache-Control', cache.htmlHeaders({ private: true }));
-        if (req.path.startsWith('/api/')) return contracts.http.sendProblem(res, 404, 'route.not_found', { detail: 'Not found', ctx: req.ov });
-        res.status(404).type('html').send(renderPage({ title: 'Not found', body: pages.errorPage({ status: 404, message: 'There is no page at this address.' }), viewer: req.viewer, config, path: req.originalUrl }));
+    app.get('/providers', (_req, res) => res.redirect(301, '/catalog/providers'));
+    app.get('/promotions', (_req, res) => res.redirect(301, '/catalog/promos'));
+    app.get('/updates', (_req, res) => res.type('html').send(renderPage({ title: 'What shipped on OpenVibe.Host', body: frame.updatesBody({ service: 'host', siteName: 'OpenVibe.Host' }) + `<script src="${ovServe.url('shipped.js')}" defer></script>`, config, path: '/updates', indexable: true })));
+    app.get('/', viewers.middleware('dashboard'), async (req, res, next) => {
+        try {
+            const [result, providers, promos, stats] = await Promise.all([catalog.plans({}), catalog.providers(), catalog.promos(), catalog.stats()]);
+            res.type('html').send(renderPage({ body: catalogRender.front({ plans: result.plans, providers, promos, stats }), viewer: req.viewer, config, path: '/', indexable: true, styles: [showcase.STYLESHEET], css: ['css/catalog.css'], jsonLd: catalogRender.jsonLd.front(config.baseUrl, result.plans) }));
+        } catch (err) { next(err); }
     });
-
-    // eslint-disable-next-line no-unused-vars
+    app.use((req, res) => req.path.startsWith('/api/') ? contracts.http.sendProblem(res, 404, 'route.not_found', { detail: 'Not found', ctx: req.ov }) : res.status(404).type('html').send(renderPage({ title: 'Not found', body: '<h1>Not found</h1>', config, path: req.originalUrl })));
     app.use((err, req, res, _next) => {
         log.error('[Host]', err && err.stack ? err.stack : err);
         if (res.headersSent) return;
-        res.set('Cache-Control', cache.htmlHeaders({ private: true }));
         if (req.path.startsWith('/api/')) return contracts.http.sendProblem(res, 500, 'internal.error', { detail: 'Internal error', ctx: req.ov });
-        res.status(500).type('text/plain').send('Something went wrong on our side. Try again in a moment.');
+        res.status(500).type('text/plain').send('Something went wrong on our side.');
     });
-
     return { app, ctx };
 }
-
 module.exports = { createApp, DASHBOARD_CSP_HEADER };

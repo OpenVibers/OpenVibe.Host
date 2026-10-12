@@ -1,12 +1,6 @@
 'use strict';
 
-/**
- * OpenVibe.Host Stage B — process entry. `node server/index.js`
- * Listens on PORT (4910) behind nginx (deploy/nginx). Serves the dashboard and API on BASE_URL's
- * host and tenant sites on <site>.<HOST_SITES_DOMAIN> and verified custom domains. Starts the
- * outbox relay (when EVENTS_URL and the client secret are set) and the worker (domain checks,
- * object sweep).
- */
+/** OpenVibe.Host catalog service entry point. */
 const { createApp } = require('./app');
 const { gracefulStop } = require('openvibe-sdk/service');
 
@@ -15,11 +9,11 @@ const { app, ctx } = await createApp();
 const { config } = ctx;
 
 const server = app.listen(config.port, config.host, () => {
-    console.log(`[Host] ${config.nodeEnv} on http://${config.host}:${config.port} → dashboard ${config.baseUrl}, sites *.${config.sitesDomain} (db ${config.db.url ? 'PostgreSQL' : 'embedded PGlite'}, objects ${ctx.blobs.root})`);
+    console.log(`[Host] ${config.nodeEnv} on http://${config.host}:${config.port} → catalog ${config.baseUrl} (db ${config.db.url ? 'PostgreSQL' : 'embedded PGlite'})`);
     console.log(`[Host] events relay ${ctx.outbox.enabled ? `on → ${config.events.url}` : 'off (events wait in event_outbox)'}; worker ${config.worker.enabled ? 'on' : 'off'}`);
 });
 server.keepAliveTimeout = 65_000;
-server.requestTimeout = 10 * 60_000;   // large uploads on slow links
+server.requestTimeout = 30_000;
 ctx.outbox.start();
 ctx.worker.start();
 

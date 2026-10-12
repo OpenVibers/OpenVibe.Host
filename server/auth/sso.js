@@ -1,30 +1,6 @@
 'use strict';
 
-/**
- * The dashboard's own session cookie, around the openvibe-sdk/sso /auth router.
- *
- * openvibe-sdk/sso keeps the session in `ov_token`: host-only, not HttpOnly (the shared navbar reads
- * it). Tenant sites are served at <site>.openvibe.host, the same site as the dashboard, so a tenant
- * page can plant `ov_token=<its owner's own valid token>; Domain=openvibe.host; Path=/<longer path>`
- * and the browser sends it ahead of the real one (cookie tossing). Host therefore trusts only its own
- * cookie, which no subdomain can set or overwrite:
- *
- *   __Host-ov_host_session   HttpOnly, Secure, Path=/, no Domain, SameSite=Lax; the verified access
- *                            token, written whenever the SDK writes ov_token after a sign-in
- *                            (callback, FedCM) or a refresh, and cleared whenever it clears ov_token
- *                            (sign-out, a refresh the Network refuses).
- *   __Host-ov_host_flow      the OAuth state of a sign-in started here; /auth/callback requires it,
- *                            so a planted ov_oauth_state/ov_oauth_verifier cannot complete the
- *                            attacker's own sign-in in the victim's browser.
- *
- * ov_refresh (Path=/auth) can be planted too: a refresh renews the session only for the subject the
- * session already holds, and never creates one. Inside /auth the SDK sees the trusted session as
- * ov_token (/auth/me and the silent sign-in check never read a planted one). ov_token stays
- * display-only for the shared navbar.
- *
- * Development (COOKIE_SECURE=false, plain http): browsers refuse __Host- cookies without Secure, so
- * the names drop the prefix (ov_host_session, ov_host_flow) and are not Secure.
- */
+/** Host-only, HttpOnly session and OAuth flow cookies around openvibe-sdk/sso. */
 const crypto = require('crypto');
 const { COOKIES, decodeJwtPayload, parseCookies } = require('openvibe-sdk/sso');
 

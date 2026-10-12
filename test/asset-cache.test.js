@@ -8,7 +8,7 @@
 const assert = require('assert');
 const cache = require('openvibe-shared/cache-policy');
 const { assetVersion } = require('../server/render/layout');
-const { boot, check, done, DASHBOARD } = require('./stageb/boot');
+const { boot, check, done, DASHBOARD } = require('./helpers/boot');
 
 const ASSET = 'css/host.css';
 
