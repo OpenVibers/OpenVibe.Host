@@ -28,12 +28,25 @@ const item = (key, id, fields, time = at, title = id) => ({ id: `itm_${'0'.repea
             assert.strictEqual(mapItem(item('vultr-plans', 'vdc-1', { monthly_cost: 50, type: 'vdc' })).kind, 'dedicated');
             assert.strictEqual(mapItem(item('vultr-plans', 'vhf-1', { monthly_cost: 10, type: 'vhf' })).disk_type, 'nvme');
         });
+        await check('an AWS Lightsail bundle maps from the price list text, with its monthly price from 744 hours', async () => {
+            const ls = { usagetype: 'USE1-BundleUsage:0.5GB', vcpu: '2', memory: '0.5GB', storage: '20GB', transfer: '1TB', location: 'US East (N. Virginia)', region: 'us-east-1', price_hourly: '0.0067200000', price_unit: 'Hrs' };
+            const p = mapItem(item('aws-lightsail-bundles', '8E4A4X47ZPXKB2KD', ls, at, ls.usagetype));
+            assert.deepStrictEqual([p.provider.slug, p.name, p.kind, p.vcpu, p.ram_mb, p.disk_gb, p.disk_type, p.bandwidth_gb, p.price_monthly, p.price_hourly, p.ipv4, p.locations],
+                ['aws-lightsail', 'General purpose 0.5 GB', 'vps', 2, 512, 20, 'ssd', 1000, 5, 0.00672, 1, ['US East (N. Virginia)']]);
+            const v6 = mapItem(item('aws-lightsail-bundles', 'SKU2', { ...ls, usagetype: 'USE1-ComputeOptimizedBundleUsage:8GB_IPv6', memory: '8GB', price_hourly: '0.1075300000' }));
+            assert.deepStrictEqual([v6.name, v6.ipv4, v6.ram_mb, v6.price_monthly], ['Compute-optimized 8 GB (IPv6 only)', 0, 8192, 80]);
+            assert.throws(() => mapItem(item('aws-lightsail-bundles', 'SKU3', { ...ls, price_unit: 'Quantity' })), /not hourly/);
+            assert.throws(() => mapItem(item('aws-lightsail-bundles', 'SKU4', { ...ls, memory: 'lots' })), /size in GB or TB/);
+            await catalog.applyItem(item('aws-lightsail-bundles', '8E4A4X47ZPXKB2KD', ls, at, ls.usagetype));
+            const row = (await catalog.plans({ provider: 'aws-lightsail' })).plans[0];
+            assert.deepStrictEqual([row.name, Number(row.price_monthly), row.ipv4, row.locations], ['General purpose 0.5 GB', 5, 1, ['US East (N. Virginia)']]);
+        });
         await check('upsert preserves first seen and records only a changed price', async () => {
             const raw = { vcpu_count: 1, ram: 1024, disk: 25, bandwidth: 1000, monthly_cost: 5, hourly_cost: 0.007, type: 'vc2' };
             await catalog.applyItem(item('vultr-plans', 'vc2-1c-1gb', raw));
             await catalog.applyItem(item('vultr-plans', 'vc2-1c-1gb', { ...raw, monthly_cost: 6 }, '2026-10-12T12:00:00Z'));
             await catalog.applyItem(item('vultr-plans', 'vc2-1c-1gb', { ...raw, monthly_cost: 6 }, '2026-10-13T12:00:00Z'));
-            const p = (await catalog.plans()).plans[0];
+            const p = (await catalog.plans({ provider: 'vultr' })).plans[0];
             assert.strictEqual(Number(p.price_monthly), 6);
             assert.strictEqual(p.first_seen_at, Date.parse(at));
             assert.strictEqual(p.unmetered, null); assert.strictEqual(p.locations, null);

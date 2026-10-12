@@ -18,7 +18,10 @@ OpenVibe's own static hosting (Stage B below) has its page at `/hosting`; it is 
 
 - **Where plans come from.**
   - OpenVibe.Sources items in category `hosting` (official provider APIs), read with `openvibe-publishing/ingest`: an event consumer at `/internal/catalog/events` plus a cursor pull. The switch is `HOST_CATALOG_INGEST` (default off) with `HOST_CATALOG_SOURCES_URL`.
-  - The mapping is `server/catalog/mapping.js`, keyed by source: `linode-types` and `vultr-plans`. Vultr's API host disallows robots, so that Sources seed stays disabled.
+  - The mapping is `server/catalog/mapping.js`, keyed by source: `linode-types`, `aws-lightsail-bundles` and `vultr-plans`.
+    Lightsail's price list gives numbers as text and prices by the hour; a bundle's monthly price is its hourly rate for
+    744 hours (AWS bills up to that cap), and IPv6-only bundles show 0 IPv4 addresses. Vultr's API host disallows
+    robots, so that Sources seed stays disabled.
   - Staff entries, which must name their source URL.
   - Nothing is estimated. A value the source does not state is shown as Unknown.
 - **Order.** It comes only from the visitor's sort: price, per vCPU, per GB of RAM, per GB of disk, or recently checked. Affiliate links carry `rel="sponsored nofollow noopener"` with the provider's own disclosure beside them, and never change the order (`test/catalog-public.test.js`).

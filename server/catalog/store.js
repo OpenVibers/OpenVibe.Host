@@ -113,7 +113,7 @@ function createCatalog({ store, community = null, log = console }) {
             p = { id };
         }
         const old = await t.prepare('SELECT * FROM catalog_plans WHERE provider_id = ? AND external_id = ?').get(p.id, v.external_id);
-        const cols = ['name', 'kind', 'vcpu', 'ram_mb', 'disk_gb', 'disk_type', 'bandwidth_gb', 'currency', 'price_monthly', 'price_hourly', 'source_key', 'source_item_id', 'source_url', 'checked_at'];
+        const cols = ['name', 'kind', 'vcpu', 'ram_mb', 'disk_gb', 'disk_type', 'bandwidth_gb', 'ipv4', 'locations', 'currency', 'price_monthly', 'price_hourly', 'source_key', 'source_item_id', 'source_url', 'checked_at'];
         if (old) {
             if (old.origin !== 'sources' || v.checked_at < Number(old.checked_at)) return 'hold';
             if (Number(old.price_monthly) !== v.price_monthly || old.currency !== v.currency) {
