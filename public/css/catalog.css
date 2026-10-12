@@ -139,3 +139,4 @@
 }
 /* Filled buttons on the readable accent (white on --accent-strong passes AA; dark text on the light accent does not everywhere). */
 .hc-visit .button:not(.hc-button-quiet), .hc-more .button:not(.hc-button-quiet) { background: var(--accent-strong, #2563eb); color: var(--on-accent-strong, #fff); }
+.hc-watch { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; margin: .9rem 0 0; }

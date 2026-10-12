@@ -94,6 +94,8 @@ function load(env = process.env) {
             internalUrl: trim(env.HOST_COMMUNITY_URL || ''),
             publicUrl: trim(env.OV_COMMUNITY_URL || 'https://openvibe.community'),
         },
+        // OpenVibe.Watch's public site: a plan page links a prefilled watch on the plan's own API (no call is made).
+        watch: { publicUrl: trim(env.OV_WATCH_URL || 'https://openvibe.watch') },
 
         uploads: {
             // Largest request body accepted for one deploy (the compressed archive or all multipart parts).

@@ -80,7 +80,7 @@ function createCatalogPages({ catalog, community, config, viewers, actorLimits, 
     router.get('/plans/:id', view(async (req, res) => {
         const p = await catalog.plan(req.params.id);
         const discussion = await discussionFor(req, 'plan', p, `${p.provider_name} ${p.name}`);
-        page(req, res, `${p.provider_name} ${p.name}`, render.plan(p, discussion), true, `${p.provider_name} ${p.name}: ${p.currency} ${p.price_monthly} a month, with its specifications, price per resource and price history.`, render.jsonLd.plan(config.baseUrl, p));
+        page(req, res, `${p.provider_name} ${p.name}`, render.plan(p, discussion, { baseUrl: config.baseUrl, watchUrl: config.watch && config.watch.publicUrl }), true, `${p.provider_name} ${p.name}: ${p.currency} ${p.price_monthly} a month, with its specifications, price per resource and price history.`, render.jsonLd.plan(config.baseUrl, p));
     }));
     router.get('/promos', view(async (req, res) => {
         page(req, res, 'Hosting promotions', render.promos(await catalog.promos()), true, 'Hosting promotions running now, with their codes and end dates as the providers state them.');

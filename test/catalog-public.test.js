@@ -52,6 +52,7 @@ const { boot, check, done } = require('./stageb/boot');
             const planPage = await t.api('GET', `/catalog/plans/${cheap.id}`);
             const product = ld(planPage.text).find((x) => x['@type'] === 'Product');
             assert.match(planPage.text, /class="hc-visit"/, 'a plan page offers a way to the provider');
+            assert.match(planPage.text, /href="https:\/\/openvibe\.watch\/watches\/new\?template=json&amp;url=[^"]*%2Fapi%2Fv1%2Fcatalog%2Fplans%2F[^"]*value_path=plan\.price_monthly&amp;op=changed/, 'a plan page offers a prefilled price watch');
             assert.ok(product && product.offers.price === '4.00' && product.offers.priceCurrency === 'USD' && product.offers.priceSpecification.unitText === 'MONTH');
             assert.ok(!types((await t.api('GET', '/catalog?min_vcpu=2')).text).includes('ItemList'), 'a filtered view carries no JSON-LD');
             const promos = await t.api('GET', '/api/v1/catalog/promos'); assert.strictEqual(promos.json().promos.length, 1);
