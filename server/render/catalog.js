@@ -14,6 +14,7 @@
  * order never depends on affiliation (the store sorts; nothing here reorders).
  */
 const showcase = require('openvibe-shared/showcase');
+const seo = require('openvibe-shared/seo');
 const { esc } = require('./layout');
 
 const DISCLOSURE = 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.';
@@ -217,6 +218,32 @@ ${p.affiliate_url ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}
 <p class="hc-links">${link('/catalog', '← Compare plans')}</p>`;
 }
 
+/** JSON-LD for the catalog pages (only indexable pages carry it; renderPage drops it otherwise). */
+const planUrl = (base, p) => `${base}/catalog/plans/${encodeURIComponent(p.id)}`;
+const jsonLd = {
+    front(base, plans) {
+        return [
+            seo.jsonLd.website({ name: 'OpenVibe.Host', url: `${base}/`, description: 'Hosting plans compared: price per month, per vCPU and per GB, every price dated and sourced.' }),
+            seo.jsonLd.itemList('Lowest monthly hosting prices', plans.slice(0, 8).map((p) => ({ name: `${p.provider_name} ${p.name}`, url: planUrl(base, p) })), { url: `${base}/catalog` }),
+        ];
+    },
+    catalog(base, plans) {
+        return [seo.jsonLd.itemList('Hosting plans', plans.map((p) => ({ name: `${p.provider_name} ${p.name}`, url: planUrl(base, p) })), { url: `${base}/catalog` })];
+    },
+    plan(base, p) {
+        const price = Number(p.price_monthly);
+        return [
+            seo.jsonLd.breadcrumbs([{ name: 'Catalog', url: `${base}/catalog` }, { name: p.provider_name, url: `${base}/catalog/providers/${encodeURIComponent(p.provider_slug)}` }, { name: p.name, url: planUrl(base, p) }]),
+            seo.jsonLd.product({
+                name: `${p.provider_name} ${p.name}`, url: planUrl(base, p), brand: { '@type': 'Brand', name: p.provider_name },
+                description: [p.vcpu != null ? `${Number(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb) ? `${bytesMb(p.ram_mb)} RAM` : null, sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).join(', ') || undefined,
+                offers: Number.isFinite(price) ? { '@type': 'Offer', price: price.toFixed(2), priceCurrency: p.currency, url: p.source_url, availability: 'https://schema.org/InStock',
+                    priceSpecification: { '@type': 'UnitPriceSpecification', price: price.toFixed(2), priceCurrency: p.currency, unitText: 'MONTH' } } : undefined,
+            }),
+        ];
+    },
+};
+
 /** The signed-out front page: the comparison first, then OpenVibe's own static hosting (still in review). */
 function front({ plans, providers, promos: live, stats, hostingLaunched }) {
     const aside = plans.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
@@ -251,4 +278,4 @@ function front({ plans, providers, promos: live, stats, hostingLaunched }) {
 <p>${link('/hosting', 'How it works and its limits →')}</p></section>`;
 }
 
-module.exports = { front, catalog, providerList, provider, plan, promos, planTable, DISCLOSURE, money, bytesMb, sizeGb };
+module.exports = { front, catalog, providerList, provider, plan, promos, planTable, jsonLd, DISCLOSURE, money, bytesMb, sizeGb };

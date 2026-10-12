@@ -43,6 +43,16 @@ const { boot, check, done } = require('./stageb/boot');
             assert.strictEqual((await t.api('GET', '/catalog/providers')).status, 200);
             const nothing = await t.api('GET', '/catalog?min_vcpu=999'); assert.match(nothing.text, /No plan matches these filters/);
             const bad = await t.api('GET', '/catalog?sort=affiliate'); assert.strictEqual(bad.status, 422);
+            // JSON-LD on the indexable catalog pages: WebSite and an ItemList on the front, an ItemList on /catalog,
+            // a Product with a monthly Offer on a plan; never on a filtered (noindex) view.
+            const ld = (html) => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1])).flat();
+            const types = (html) => ld(html).map((x) => x['@type']);
+            assert.ok(types(front.text).includes('WebSite') && types(front.text).includes('ItemList'), JSON.stringify(types(front.text)));
+            assert.ok(types(plans.text).includes('ItemList'));
+            const planPage = await t.api('GET', `/catalog/plans/${cheap.id}`);
+            const product = ld(planPage.text).find((x) => x['@type'] === 'Product');
+            assert.ok(product && product.offers.price === '4.00' && product.offers.priceCurrency === 'USD' && product.offers.priceSpecification.unitText === 'MONTH');
+            assert.ok(!types((await t.api('GET', '/catalog?min_vcpu=2')).text).includes('ItemList'), 'a filtered view carries no JSON-LD');
             const promos = await t.api('GET', '/api/v1/catalog/promos'); assert.strictEqual(promos.json().promos.length, 1);
         });
     } finally { await t.close(); }

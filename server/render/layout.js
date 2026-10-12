@@ -75,6 +75,7 @@ function renderPage(o) {
         description: o.description || DESCRIPTION,
         canonical,
         robots: o.indexable ? 'index, follow' : 'noindex, nofollow',
+        jsonLd: o.indexable && Array.isArray(o.jsonLd) ? o.jsonLd : undefined,
         navbar: nav, footer, home: '/', navLinks: NAV_LINKS(signedIn),
         head: [
             appIcon.headTags({ site: 'host' }),

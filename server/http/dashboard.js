@@ -31,8 +31,8 @@ function createDashboard(ctx) {
     if (ctx.actorLimits) router.use(ctx.actorLimits);
     router.use((req, res, next) => { privateNoStore(res); next(); });
 
-    function page(req, res, status, title, body, notice, { indexable = false, styles, css } = {}) {
-        res.status(status).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, notice, indexable, styles, css }));
+    function page(req, res, status, title, body, notice, { indexable = false, styles, css, jsonLd } = {}) {
+        res.status(status).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, notice, indexable, styles, css, jsonLd }));
     }
 
     function fail(req, res, err) {
@@ -81,7 +81,7 @@ function createDashboard(ctx) {
         if (req.viewer.kind !== 'user') {
             const [result, providers, promos, stats] = await Promise.all([ctx.catalog.plans({}), ctx.catalog.providers(), ctx.catalog.promos(), ctx.catalog.stats()]);
             return page(req, res, 200, null, catalogPages.front({ plans: result.plans, providers, promos, stats, hostingLaunched: config.publicHosting }), null,
-                { indexable: !req.query || !Object.keys(req.query).length, styles: [showcase.STYLESHEET], css: ['css/catalog.css'] });
+                { indexable: !req.query || !Object.keys(req.query).length, styles: [showcase.STYLESHEET], css: ['css/catalog.css'], jsonLd: catalogPages.jsonLd.front(config.baseUrl, result.plans) });
         }
         page(req, res, 200, 'Projects', pages.home({ projects: await projects.listFor(req.viewer), csrf: csrfToken(config, req.viewer), canCreate: config.publicHosting || Boolean(req.viewer.staff) }), notice(req));
     }));
