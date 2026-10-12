@@ -24,6 +24,7 @@ OpenVibe's own static hosting (Stage B below) has its page at `/hosting`; it is 
 - **Order.** It comes only from the visitor's sort: price, per vCPU, per GB of RAM, per GB of disk, or recently checked. Affiliate links carry `rel="sponsored nofollow noopener"` with the provider's own disclosure beside them, and never change the order (`test/catalog-public.test.js`).
 - **Staff.** `host.catalog.manage` (Network staff only) covers `POST`/`PATCH /api/v1/catalog/{providers,plans,promos}` and the no-JS forms at `/catalog/manage`.
 - **Public reads.** `GET /api/v1/catalog/plans` (filters `kind`, `min_vcpu`, `min_ram_mb`, `min_disk_gb`, `max_price`, `currency`, `location`, `provider`; `sort`; cursor), `/plans/:id` (with price history), `/providers`, `/providers/:slug` and `/promos`.
+- **Search.** Every public plan and provider page is an OpenVibe.Search document (`host.index_document.upserted|deleted`, `server/catalog/search-index.js` through openvibe-publishing/search-feed): sent a minute after boot, hourly, after each catalog pull and shortly after a staff change; only changed pages are sent, and a hidden or gone entry becomes a tombstone.
 - **Pages.** `/catalog`, `/catalog/providers`, `/catalog/providers/:slug`, `/catalog/plans/:id` and `/catalog/promos`. They are server-rendered and work without JavaScript; the styles are `public/css/catalog.css`.
 - **Discussion.** Active public provider and plan pages lazily resolve Community threads with refs `{ service: 'host', type: 'provider', id: provider.id }` and `{ service: 'host', type: 'plan', id: plan.id }` (plus a display label), then render recent comments with a link to the thread on OpenVibe.Community. Host stores only the thread reference. `HOST_COMMUNITY_URL` enables the internal client; `OV_COMMUNITY_URL` sets the public link. With the internal URL unset, no Discussion block appears. Hidden providers and hidden or gone plans have no public page; status changes hide or reopen existing threads after commit. Host's Network service principal needs `community.comment.write` and `community.comment.moderate` for audience `openvibe.community`.
 
@@ -584,7 +585,7 @@ review is [docs/threat-review.md](docs/threat-review.md). The launch has not bee
 Part of the [OpenVibe network](https://openvibe.network). Built in the open by [OpenVibers](https://github.com/OpenVibers).
 
 <!-- versions:start -->
-- openvibe-contracts: v0.143.0
+- openvibe-contracts: v0.145.0
 - openvibe-sdk: v0.44.0
 - openvibe-shared: v4.0.3
 - openvibe-publishing: v1.4.0

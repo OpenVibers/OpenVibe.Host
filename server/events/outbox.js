@@ -7,6 +7,7 @@
  *   host.deploy.activated  a site's active deploy changed (payload.rollback marks a rollback)
  *   host.deploy.failed     an upload was refused (payload.code, problem codes; no file contents)
  *   host.domain.verified   a custom domain's TXT record was found; the domain is now served
+ *   host.index_document.upserted|deleted   a hosting catalog page in OpenVibe.Search (server/catalog/search-index.js)
  *
  * The SDK writes each row inside the change's own transaction (emit joins the ambient openvibe-sdk/db
  * transaction), so an event exists if and only if its change committed. The relay publishes with
@@ -16,7 +17,8 @@
  */
 const { createServiceOutbox } = require('openvibe-sdk/events');
 
-const EVENT_TYPES = Object.freeze(['host.deploy.created', 'host.deploy.activated', 'host.deploy.failed', 'host.domain.verified']);
+const EVENT_TYPES = Object.freeze(['host.deploy.created', 'host.deploy.activated', 'host.deploy.failed', 'host.domain.verified',
+    'host.index_document.upserted', 'host.index_document.deleted']);
 
 function createHostOutbox({ db, config, fetchImpl, now, log = console }) {
     return createServiceOutbox({

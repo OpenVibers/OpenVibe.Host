@@ -48,6 +48,8 @@ const clean = (type, input, current, now) => {
 };
 function createCatalog({ store, community = null, log = console }) {
     const db = store.db;
+    const listeners = [];
+    const changed = (type) => { for (const fn of listeners) { try { fn(type); } catch { /* a listener never breaks a save */ } } };
     let visibilityQueue = Promise.resolve();
     const open = async (type, id) => {
         const sql = type === 'provider'
@@ -59,7 +61,8 @@ function createCatalog({ store, community = null, log = console }) {
     const providerOut = (p) => ({ ...p, affiliate_rel: p.affiliate_url ? 'sponsored nofollow noopener' : null, affiliate_disclosure: p.affiliate_url ? 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.' : null });
     const promoOut = (p) => ({ ...p, status: p.status === 'active' && p.ends_at != null && Number(p.ends_at) <= store.now() ? 'ended' : p.status, affiliate_rel: p.affiliate ? 'sponsored nofollow noopener' : null, affiliate_disclosure: p.affiliate ? 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.' : null });
     const get = async (type, id) => { const row = await db.prepare(`SELECT * FROM catalog_${type} WHERE id = ?`).get(id); if (!row) missing(); return type === 'promos' ? promoOut(row) : row; };
-    const save = async (type, input, id, actor) => await db.tx(async () => {
+    const save = async (type, input, id, actor) => { const out = await saveTx(type, input, id, actor); changed(type); return out; };
+    const saveTx = async (type, input, id, actor) => await db.tx(async () => {
         const current = id ? await get(type, id) : null;
         const watched = [];
         if (community && community.enabled && current && ['providers', 'plans'].includes(type)) {
@@ -174,6 +177,6 @@ function createCatalog({ store, community = null, log = console }) {
         return { plans: Number(r.plans) || 0, providers: Number(r.providers) || 0, lastChecked: r.last == null ? null : Number(r.last) };
     }
     async function sitemapPlans() { return await db.prepare("SELECT p.id FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY p.id").all(); }
-    return { save, get, applyItem, plans, plan, providers, promos, currencies: currenciesInUse, stats, sitemapPlans, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
+    return { onChange: (fn) => listeners.push(fn), save, get, applyItem, plans, plan, providers, promos, currencies: currenciesInUse, stats, sitemapPlans, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
 }
 module.exports = { createCatalog };
