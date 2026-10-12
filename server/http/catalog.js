@@ -37,9 +37,9 @@ function createCatalogPages({ catalog, community, config, viewers, actorLimits, 
         res.vary('Cookie'); res.vary('Authorization');
         res.set('Cache-Control', cache.htmlHeaders(publicPage && req.viewer.kind === 'anonymous' ? { maxAge: 60 } : { private: true }));
     };
-    const page = (req, res, title, body, indexable = true, description) => {
+    const page = (req, res, title, body, indexable = true, description, ld) => {
         cachePage(req, res, indexable);
-        return res.status(200).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, indexable, description, css: ['css/catalog.css'] }));
+        return res.status(200).type('html').send(renderPage({ title, body, viewer: req.viewer, config, path: req.originalUrl, indexable, description, jsonLd: ld, css: ['css/catalog.css'] }));
     };
     async function discussionFor(req, type, entity, label) {
         if (!community || !community.enabled) return null;
@@ -66,7 +66,8 @@ function createCatalogPages({ catalog, community, config, viewers, actorLimits, 
     router.get('/', view(async (req, res) => {
         const [result, providers, currencies] = await Promise.all([catalog.plans(req.query), catalog.providers(), catalog.currencies()]);
         page(req, res, 'Compare hosting plans', render.catalog({ result, query: req.query, providers, currencies }), !Object.keys(req.query).length,
-            'Compare cloud, VPS and dedicated hosting plans: price per month, per vCPU and per GB, each with the day it was checked and its source.');
+            'Compare cloud, VPS and dedicated hosting plans: price per month, per vCPU and per GB, each with the day it was checked and its source.',
+            render.jsonLd.catalog(config.baseUrl, result.plans));
     }));
     router.get('/providers', view(async (req, res) => {
         page(req, res, 'Hosting providers', render.providerList(await catalog.providers()));
@@ -79,7 +80,7 @@ function createCatalogPages({ catalog, community, config, viewers, actorLimits, 
     router.get('/plans/:id', view(async (req, res) => {
         const p = await catalog.plan(req.params.id);
         const discussion = await discussionFor(req, 'plan', p, `${p.provider_name} ${p.name}`);
-        page(req, res, `${p.provider_name} ${p.name}`, render.plan(p, discussion), true, `${p.provider_name} ${p.name}: ${p.currency} ${p.price_monthly} a month, with its specifications, price per resource and price history.`);
+        page(req, res, `${p.provider_name} ${p.name}`, render.plan(p, discussion), true, `${p.provider_name} ${p.name}: ${p.currency} ${p.price_monthly} a month, with its specifications, price per resource and price history.`, render.jsonLd.plan(config.baseUrl, p));
     }));
     router.get('/promos', view(async (req, res) => {
         page(req, res, 'Hosting promotions', render.promos(await catalog.promos()), true, 'Hosting promotions running now, with their codes and end dates as the providers state them.');
