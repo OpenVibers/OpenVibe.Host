@@ -51,6 +51,7 @@ const { boot, check, done } = require('./stageb/boot');
             assert.ok(types(plans.text).includes('ItemList'));
             const planPage = await t.api('GET', `/catalog/plans/${cheap.id}`);
             const product = ld(planPage.text).find((x) => x['@type'] === 'Product');
+            assert.match(planPage.text, /class="hc-visit"/, 'a plan page offers a way to the provider');
             assert.ok(product && product.offers.price === '4.00' && product.offers.priceCurrency === 'USD' && product.offers.priceSpecification.unitText === 'MONTH');
             assert.ok(!types((await t.api('GET', '/catalog?min_vcpu=2')).text).includes('ItemList'), 'a filtered view carries no JSON-LD');
             const promos = await t.api('GET', '/api/v1/catalog/promos'); assert.strictEqual(promos.json().promos.length, 1);

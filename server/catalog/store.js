@@ -146,7 +146,7 @@ function createCatalog({ store, community = null, log = console }) {
         return { plans: rows.slice(0, 50).map(planOut), next_cursor: rows.length > 50 ? String(offset + 50) : null };
     }
     async function plan(id) {
-        const p = await db.prepare("SELECT p.*, v.slug AS provider_slug, v.name AS provider_name, v.affiliate_url, v.affiliate_note FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.id = ? AND p.status = 'active' AND v.status = 'active'").get(id);
+        const p = await db.prepare("SELECT p.*, v.slug AS provider_slug, v.name AS provider_name, v.homepage_url, v.affiliate_url, v.affiliate_note FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.id = ? AND p.status = 'active' AND v.status = 'active'").get(id);
         if (!p) missing();
         return { ...planOut(p), price_history: (await db.prepare('SELECT * FROM catalog_price_changes WHERE plan_id = ? ORDER BY observed_at DESC').all(id)).map((h) => ({ ...h, checked_at: new Date(Number(h.observed_at)).toISOString(), source_url: p.source_url })) };
     }
