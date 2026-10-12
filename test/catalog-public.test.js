@@ -56,6 +56,13 @@ const { boot, check, done } = require('./stageb/boot');
             assert.ok(!types((await t.api('GET', '/catalog?min_vcpu=2')).text).includes('ItemList'), 'a filtered view carries no JSON-LD');
             const promos = await t.api('GET', '/api/v1/catalog/promos'); assert.strictEqual(promos.json().promos.length, 1);
         });
+        await check('the sitemap dates catalog pages by their newest price check', async () => {
+            const xml = (await t.api('GET', '/sitemap.xml')).text;
+            const planUrl = xml.match(/<url><loc>[^<]*\/catalog\/plans\/[^<]+<\/loc><lastmod>(\d{4}-\d{2}-\d{2})<\/lastmod><\/url>/);
+            assert.ok(planUrl, `a plan page carries a lastmod: ${xml.slice(0, 400)}`);
+            assert.match(xml, /<loc>[^<]*\/catalog<\/loc><lastmod>\d{4}-\d{2}-\d{2}<\/lastmod>/);
+            assert.match(xml, /<loc>[^<]*\/terms<\/loc><\/url>/, 'a static page carries no lastmod');
+        });
     } finally { await t.close(); }
     done();
 })().catch((e) => { console.error(e); process.exit(1); });
