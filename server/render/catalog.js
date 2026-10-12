@@ -152,10 +152,18 @@ ${p.code ? `<p class="hc-code">Code <code>${esc(p.code)}</code></p>` : ''}
 </li>`).join('')}</ul>`;
 }
 
+// With nothing running, the page says what will appear here and under which rules, rather than one bare line.
+const PROMO_RULES = `<div class="hc-empty hc-empty-rich"><p><strong>No promotion is running right now.</strong></p>
+<p>When a provider runs one, it is listed here with:</p>
+<ul class="hc-rules"><li>the offer, code and end date exactly as the provider states them, linked to the provider's own page;</li>
+<li>the day it was checked, and nothing after it ends: an ended offer drops off by itself;</li>
+<li>affiliate links marked beside the link, never changing the order.</li></ul>
+<p>${link('/catalog', 'Compare every plan')} · ${link('/providers', 'See the providers')}</p></div>`;
+
 function promos(list) {
     return `<header class="hc-head"><p class="hc-eyebrow">OpenVibe.Host · hosting compared</p><h1>Hosting promotions</h1>
 <p class="hc-lede">Offers running now, with their codes and end dates as the provider states them. An ended offer drops off by itself.</p></header>
-${promoCards(list)}
+${list.length ? promoCards(list) : PROMO_RULES}
 ${list.some((p) => p.affiliate) ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}
 <p class="hc-links">${link('/catalog', '← Compare plans')}</p>`;
 }

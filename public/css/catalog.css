@@ -47,6 +47,9 @@
 .hc-empty { padding: 1.5rem; border: 1px dashed var(--hs-line); border-radius: 12px; text-align: center; color: var(--hs-muted); }
 .hc-empty p { margin: .3rem 0; }
 .hc-empty strong { color: var(--hs-fg); }
+.hc-empty-rich { text-align: left; max-width: 46rem; }
+.hc-rules { margin: .4rem 0 .8rem; padding-left: 1.2rem; }
+.hc-rules li { margin: .25rem 0; }
 .hc-more { margin: 1rem 0; }
 .hc-links { margin: 1.25rem 0; color: var(--hs-muted); }
 .hc-disclosure { margin: 1.25rem 0; padding: .7rem .9rem; border-radius: 8px; background: var(--hs-card); border-left: 3px solid var(--hs-warn); color: var(--hs-muted); font-size: 14px; }
