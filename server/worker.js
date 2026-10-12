@@ -11,7 +11,7 @@
  */
 const fs = require('fs');
 
-function createWorker({ config, store, domains, blobs, outbox, catalogIngest, log = console }) {
+function createWorker({ config, store, domains, blobs, outbox, catalogIngest, catalogSearch, log = console }) {
     const timers = [];
     let checking = false;
 
@@ -61,8 +61,11 @@ function createWorker({ config, store, domains, blobs, outbox, catalogIngest, lo
             every(3600 * 1000, async () => { try { await sweepObjects(); } catch (err) { log.warn('[Host] object sweep failed:', err.message); } });
             every(24 * 3600 * 1000, async () => { try { await outbox.outbox.prune(); } catch (err) { log.warn('[Host] outbox prune failed:', err.message); } });
             setTimeout(domainTick, 5000).unref();
+            // The catalog in OpenVibe.Search: a minute after boot, hourly, and after each pull (only changes are sent).
+            const searchSweep = async () => { if (!catalogSearch) return; try { await catalogSearch.sweep(); } catch (err) { log.warn('[Host] catalog search sweep failed:', err.message); } };
+            if (catalogSearch) { setTimeout(searchSweep, 60_000).unref(); every(3600 * 1000, searchSweep); }
             if (catalogIngest && catalogIngest.enabled) {
-                const pull = async () => { try { await catalogIngest.pull(); } catch (err) { log.warn('[Host] catalog pull failed:', err.message); } };
+                const pull = async () => { try { await catalogIngest.pull(); } catch (err) { log.warn('[Host] catalog pull failed:', err.message); } await searchSweep(); };
                 every(5 * 60_000, pull);
                 setTimeout(pull, 5000).unref();
             }

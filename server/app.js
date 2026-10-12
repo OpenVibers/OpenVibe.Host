@@ -48,6 +48,7 @@ const { createWorker } = require('./worker');
 const { createCatalog } = require('./catalog/store');
 const { createCommunity } = require('./catalog/community');
 const { createCatalogIngest } = require('./catalog/ingest');
+const { createCatalogSearch } = require('./catalog/search-index');
 const { createCatalogApi, createCatalogPages } = require('./http/catalog');
 const { renderPage, assetVersion, setRelease } = require('./render/layout');
 const pages = require('./render/pages');
@@ -158,9 +159,11 @@ async function createApp(opts = {}) {
     const community = createCommunity({ store, config, fetchImpl: opts.fetchImpl, log });
     const catalog = createCatalog({ store, community, log });
     const catalogIngest = createCatalogIngest({ config, store, catalog, fetchImpl: opts.fetchImpl });
-    const worker = createWorker({ config, store, domains, blobs, outbox, catalogIngest, log });
+    const catalogSearch = createCatalogSearch({ config, store, outbox, log });
+    catalog.onChange(() => { if (config.worker.enabled) catalogSearch.sweepSoon(); });   // the worker's own switch: off in tests and drills
+    const worker = createWorker({ config, store, domains, blobs, outbox, catalogIngest, catalogSearch, log });
 
-    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, siteConfig, siteSources, catalog, community, catalogIngest, auth, viewers, tenant, worker, uploadGate, indexnow, log };
+    const ctx = { config, store, blobs, outbox, access, takedowns, projects, sites, deploys, domains, siteConfig, siteSources, catalog, community, catalogIngest, catalogSearch, auth, viewers, tenant, worker, uploadGate, indexnow, log };
 
     const app = express();
     app.disable('x-powered-by');

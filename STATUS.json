@@ -14,11 +14,11 @@
   "port": 4910,
   "domain": "openvibe.host",
   "tenantDomain": "*.openvibe.host",
-  "contracts": "openvibe-contracts v0.143.0",
+  "contracts": "openvibe-contracts v0.145.0",
   "sdk": "openvibe-sdk v0.44.0",
   "shared": "openvibe-shared v4.0.3",
   "packages": [
-    "openvibe-contracts v0.143.0",
+    "openvibe-contracts v0.145.0",
     "openvibe-sdk v0.44.0",
     "openvibe-shared v4.0.3"
   ],
@@ -68,5 +68,5 @@
     "per-actor limits on Stage B writes (openvibe-sdk/limits)",
     "catalog provider and plan discussion threads on OpenVibe.Community (optional HOST_COMMUNITY_URL; server-rendered comments, after-commit visibility sync)"
   ],
-  "updated": "2026-10-11"
+  "updated": "2026-10-12"
 }
