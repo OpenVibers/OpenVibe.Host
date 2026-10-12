@@ -1,25 +1,11 @@
 'use strict';
-/**
- * Boots Host Stage B on a temp database and object store, with a controllable clock, a DNS table
- * for custom-domain checks and a mock Network, and returns a raw HTTP client that can send any Host
- * header and any request target (encoded traversal, absolute-form, …).
- *
- *   const t = await boot();
- *   await t.api('POST', '/api/v1/projects', { as: user, json: { name: 'x' } })
- *   await t.get('mysite.openvibe.host', '/index.html')
- *   t.dns.set('_openvibe-host.www.example.org', ['openvibe-host-verification=…'])
- */
+/** Boot the catalog with a temporary PGlite database and mock Network. */
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
-const { startNetwork } = require('./mocks');
-const { site: siteTar } = require('./tar');
+const { startNetwork } = require('./network');
 const { cookieNames } = require('../../server/auth/sso');
-
-// The Stage B suites deploy dozens of times a minute as one person: per-actor limits are tested on their own
-// (test/actor-limits.test.js), so they are off here unless a test turns them on.
-if (process.env.HOST_ACTOR_LIMITS === undefined) process.env.HOST_ACTOR_LIMITS = 'off';
 
 function makeClock(start = Date.parse('2026-09-22T12:00:00Z')) {
     let t = start;
@@ -33,40 +19,27 @@ async function boot(opts = {}) {
     const network = await startNetwork();
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ov-host-test-'));
     const clock = opts.clock || makeClock();
-    const dns = new Map();
-    const dnsCalls = [];
-    const resolver = {
-        async resolveTxt(name) {
-            dnsCalls.push(name);
-            if (dns.get('__fail__')) { const e = new Error('timeout'); e.code = 'ETIMEOUT'; throw e; }
-            if (!dns.has(name)) { const e = new Error(`queryTxt ENOTFOUND ${name}`); e.code = 'ENOTFOUND'; throw e; }
-            return dns.get(name).map((v) => [v]);
-        },
-    };
     const env = {
         NODE_ENV: 'test', PORT: '0', BASE_URL: `https://${DASHBOARD}`, TRUST_PROXY: '1',
-        HOST_SITES_DOMAIN: 'openvibe.host',
         OV_NETWORK_URL: network.url, OV_NETWORK_INTERNAL_URL: network.url,
         OV_OAUTH_CLIENT_ID: 'host', OV_OAUTH_CLIENT_SECRET: SECRET, COOKIE_SECURE: 'false',
-        HOST_FORM_SECRET: 'test-form-secret', HOST_WORKER: 'off', HOST_MIN_FREE_BYTES: '0',
-        HOST_STORAGE_DIR: path.join(dir, 'objects'),
-        HOST_PUBLIC_HOSTING: 'on',   // the suites exercise the engine as launched; test/host-launch-switch.test.js covers off
+        HOST_FORM_SECRET: 'test-form-secret', HOST_WORKER: 'off',
         ...(opts.env || {}),
     };
     const configLib = require('../../server/config');
     const { createApp } = require('../../server/app');
     const { createStore } = require('../../server/db');
-    // One database per boot (PGlite, or HOST_TEST_STORE=pg: the containers); a restart keeps it, like a file did.
-    const testdb = await require('../helpers/db').testDb();
+    // One database per boot; a restart keeps it.
+    const testdb = await require('./db').testDb();
     const quiet = { log() {}, warn() {}, error: (...a) => { if (process.env.VERBOSE) console.error(...a); } };
 
     let server = null;
     let built = null;
-    const t = { network, clock, dns, dnsCalls, dir, env, SECRET };
+    const t = { network, clock, dir, env, SECRET };
 
     async function start() {
         const config = configLib.load(env);
-        built = await createApp({ config, store: createStore(testdb.db, { now: clock.now }), now: clock.now, log: quiet, resolver, fetchImpl: opts.fetchImpl, indexnow: opts.indexnow });
+        built = await createApp({ config, store: createStore(testdb.db, { now: clock.now }), now: clock.now, log: quiet, fetchImpl: opts.fetchImpl });
         server = await new Promise((resolve) => { const s = http.createServer(built.app); s.listen(0, '127.0.0.1', () => resolve(s)); });
         t.port = server.address().port;
         t.app = built.app;
@@ -111,30 +84,7 @@ async function boot(opts = {}) {
     t.api = (method, p, o = {}) => request({ ...o, method, host: DASHBOARD, path: p });
     t.get = (host, p, o = {}) => request({ ...o, method: o.method || 'GET', host, path: p });
 
-    /** Outbox rows as parsed envelopes. */
-    t.events = async (type = null) => (await t.ctx.store.db.prepare('SELECT envelope FROM event_outbox ORDER BY id').all()).map((r) => (typeof r.envelope === 'string' ? (typeof r.envelope === 'string' ? (typeof r.envelope === 'string' ? JSON.parse(r.envelope) : r.envelope) : r.envelope) : r.envelope)).filter((e) => !type || e.event_type === type);
-
     t.user = (name, extra) => network.addUser(name, extra);
-    t.project = async (user, name = 'Project', extra = {}) => {
-        const r = await t.api('POST', '/api/v1/projects', { as: user, json: { name, ...extra } });
-        if (r.status !== 201) throw new Error(`project: ${r.status} ${r.text}`);
-        return r.json().project;
-    };
-    t.site = async (user, projectId, name) => {
-        const r = await t.api('POST', `/api/v1/projects/${projectId}/sites`, { as: user, json: { name } });
-        if (r.status !== 201) throw new Error(`site: ${r.status} ${r.text}`);
-        return r.json().site;
-    };
-    /** Upload { path: content } as a tar.gz; returns the response. */
-    t.upload = (user, siteId, files, { activate = true, query = '', gzip = true, raw = null, contentType = 'application/gzip' } = {}) => t.api('POST', `/api/v1/sites/${siteId}/deploys${activate ? '?activate=1' : '?'}${query ? `&${query}` : ''}`, {
-        as: user, body: raw || siteTar(files, { gzip }), headers: { 'content-type': contentType },
-    });
-    t.deploy = async (user, siteId, files, o) => {
-        const r = await t.upload(user, siteId, files, o);
-        if (r.status !== 201) throw new Error(`deploy: ${r.status} ${r.text}`);
-        return r.json().deploy;
-    };
-
     t.restart = async () => { await stop(); await start(); };
     t.close = async () => { await stop(); await testdb.close(); await network.close(); fs.rmSync(dir, { recursive: true, force: true }); };
     await start();

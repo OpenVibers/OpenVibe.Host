@@ -1,6 +1,6 @@
 'use strict';
 const assert = require('assert');
-const { boot, check, done } = require('./stageb/boot');
+const { boot, check, done } = require('./helpers/boot');
 
 (async () => {
     const calls = [];

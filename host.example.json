@@ -893,7 +893,7 @@
       }
     },
     "host": {
-      "_note": "OpenVibe.Host Stage B (tenant static hosting): the Host API service on port 4910. Not deployed as of 22 Sep 2026. Its content-addressed objects live in /var/lib/openvibe-host-api/objects (`HOST_STORAGE_DIR`), which is NOT ovhost's own stateDir (/var/lib/openvibe-host); its database is the PostgreSQL database ov_host. Tenant vhosts: `ovhost nginx tenants host`.",
+      "_note": "OpenVibe.Host hosting comparison catalog on port 4910; PostgreSQL database ov_host.",
       "repo": "/opt/openvibe.host",
       "units": [
         "openvibe-host.service"
@@ -908,8 +908,7 @@
           "OV_NETWORK_URL",
           "OV_OAUTH_CLIENT_ID",
           "OV_OAUTH_CLIENT_SECRET",
-          "HOST_FORM_SECRET",
-          "HOST_SITES_DOMAIN"
+          "HOST_FORM_SECRET"
         ]
       },
       "port": 4910,
@@ -929,27 +928,6 @@
           "database": "ov_host"
         }
       ],
-      "objects": [
-        {
-          "name": "objects",
-          "path": "/var/lib/openvibe-host-api/objects"
-        }
-      ],
-      "nginx": {
-        "tenants": {
-          "sitesDomain": "openvibe.host",
-          "dashboardDomain": "openvibe.host",
-          "wildcardCert": "openvibe.host",
-          "database": {
-            "engine": "postgresql",
-            "database": "ov_host"
-          },
-          "maxUpload": "110m",
-          "replaces": [
-            "openvibe.host-tenants-pending.conf"
-          ]
-        }
-      },
       "drill": {
         "port": 14910,
         "databases": {
@@ -964,38 +942,23 @@
           "HOST_WORKER": "off",
           "EVENTS_URL": "",
           "OV_OAUTH_CLIENT_SECRET": "",
-          "INDEXNOW_KEY": "",
-          "HOST_STORAGE_DIR": "{tmp}/objects",
           "VALKEY_URL": "redis://127.0.0.1:9/0"
         },
-        "requires": [
-          {
-            "file": "server/config.js",
-            "contains": "INDEXNOW_KEY"
-          }
-        ],
-        "dirs": [
-          "{tmp}/objects"
-        ],
         "counts": [
           {
             "db": "host",
-            "table": "host_projects"
+            "table": "catalog_providers"
           },
           {
             "db": "host",
-            "table": "host_sites"
+            "table": "catalog_plans"
           },
           {
             "db": "host",
-            "table": "host_deploys"
-          },
-          {
-            "db": "host",
-            "table": "host_domains"
+            "table": "catalog_promos"
           }
         ],
-        "_notes": "Restores the ov_host database and the archived `objects` directory into {tmp}/objects (HOST_STORAGE_DIR), checking every blob's sha256; tenant content is still not compared (every /api/v1 read needs auth). HOST_WORKER=off stops DNS rechecks and the object sweep."
+        "_notes": "Restores the ov_host catalog database and checks provider, plan and promotion counts."
       }
     },
     "billing": {

@@ -6,7 +6,7 @@
  */
 const assert = require('assert');
 const contracts = require('openvibe-contracts');
-const { boot, check, done } = require('./stageb/boot');
+const { boot, check, done } = require('./helpers/boot');
 
 (async () => {
     const t = await boot();

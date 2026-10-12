@@ -15,7 +15,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { check, done } = require('./stageb/boot');
+const { check, done } = require('./helpers/boot');
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'index.js'), 'utf8');
 
@@ -39,12 +39,12 @@ const src = fs.readFileSync(path.join(__dirname, '..', 'server', 'index.js'), 'u
         assert.ok(/deadlineExitCode:\s*0/.test(src), 'deadlineExitCode is not 0');
     });
 
-    await check('the worker stop is a stop step and the database closes after the drain; the 10 min upload timeout is kept', () => {
+    await check('the worker stop is a stop step and the database closes after the drain; with no uploads, requests time out at 30 s', () => {
         const stop = src.indexOf('() => ctx.worker.stop()');
         const close = src.indexOf('() => ctx.store.close()');
         assert.ok(stop !== -1 && close !== -1, 'worker.stop / store.close steps not found');
         assert.ok(stop < close, 'worker.stop must be a stop step (before the drain and the close steps)');
-        assert.ok(/server\.requestTimeout\s*=\s*10\s*\*\s*60_000/.test(src), 'server.requestTimeout is no longer 10 * 60_000');
+        assert.ok(/server\.requestTimeout\s*=\s*30_000/.test(src), 'server.requestTimeout is not 30_000 (Host takes no uploads since the engine moved to OpenVibe.Space)');
     });
 
     // Boot the real entry point on a temp PGlite database, worker and limits off; main() reads process.env.

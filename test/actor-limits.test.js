@@ -1,7 +1,7 @@
 'use strict';
 // Per-actor limits on Host's writes (server/http/actor-limits.js; roadmap WS-R task 4): a signed-in person is counted
 // by subject and a service by its principal; past the limit 429 rate_limited with Retry-After before the route runs,
-// while another actor passes; deploy uploads have their own tighter number; reads and anonymous callers are never
+// while another actor passes; catalog writes share one bucket; reads and anonymous callers are never
 // counted; the window reopens.
 //   node test/actor-limits.test.js
 const assert = require('assert');
@@ -29,21 +29,21 @@ console.warn = () => {};
         return { status: r.status, retry: r.headers.get('retry-after'), body: await r.json().catch(() => ({})) };
     };
     try {
-        for (let i = 0; i < 5; i++) assert.strictEqual((await call('POST', '/sites/s1/rollback', 'usr_a')).status, 200);
+        for (let i = 0; i < 5; i++) assert.strictEqual((await call('POST', '/catalog/manage/providers', 'usr_a')).status, 200);
         const before = ran;
-        const r = await call('POST', '/sites/s1/rollback', 'usr_a');
+        const r = await call('POST', '/catalog/manage/providers', 'usr_a');
         assert.deepStrictEqual([r.status, r.body.code, Number(r.retry) > 0, ran], [429, 'rate_limited', true, before]);
-        assert.strictEqual((await call('POST', '/sites/s1/rollback', 'svc:tools')).status, 200, 'a service is its own actor');
+        assert.strictEqual((await call('POST', '/catalog/manage/providers', 'svc:tools')).status, 200, 'a service is its own actor');
         for (let i = 0; i < 10; i++) {
-            assert.strictEqual((await call('GET', '/projects', 'usr_a')).status, 200, 'reads are never counted');
-            assert.strictEqual((await call('POST', '/projects')).status, 200, 'anonymous callers keep the address limit');
+            assert.strictEqual((await call('GET', '/catalog/providers', 'usr_a')).status, 200, 'reads are never counted');
+            assert.strictEqual((await call('POST', '/catalog/providers')).status, 200, 'anonymous callers keep the address limit');
         }
         t += 60 * 1000;
         const ups = [];
-        for (let i = 0; i < 6; i++) ups.push((await call('POST', '/sites/s1/deploys', 'usr_b')).status);
+        for (let i = 0; i < 6; i++) ups.push((await call('POST', '/catalog/manage/providers', 'usr_b')).status);
         assert.deepStrictEqual(ups.slice(0, 5), [200, 200, 200, 200, 200]);
         t += 60 * 1000;
-        assert.strictEqual((await call('POST', '/sites/s1/rollback', 'usr_a')).status, 200, 'the next minute');
+        assert.strictEqual((await call('POST', '/catalog/manage/providers', 'usr_a')).status, 200, 'the next minute');
     } finally {
         server.close();
     }

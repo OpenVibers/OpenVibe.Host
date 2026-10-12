@@ -1,24 +1,6 @@
 'use strict';
 
-/**
- * Who is calling, resolved once per request into `req.viewer`:
- *
- *   { kind: 'anonymous' }
- *   { kind: 'user', subject: 'usr_…', staff, user }
- *       API: a Network user JWT in `Authorization: Bearer` (cookies are ignored on /api/v1).
- *       Dashboard: only Host's own __Host-ov_host_session cookie (./sso.js). ov_token (openvibe-sdk/sso)
- *       is display-only for the shared navbar: a tenant page on <site>.openvibe.host can plant one.
- *       staff = the contracts staff map's staff.site.configure (ADR-022):
- *       quotas, takedowns, and maintaining or deleting any project (never deploying to it).
- *   { kind: 'service', service: 'svc:codes' | 'app:app_…', claims, subject, env }
- *       A Network client-credentials token for audience openvibe.host. A first-party service
- *       (svc:) may name the person it acts for with X-OV-Subject; an app (app:) always acts as
- *       itself. `env` is the token's environment claim ("sandbox" is refused on production
- *       projects).
- *
- * Identity never comes from a request body or query. A bad token is refused (problem+json),
- * never downgraded to anonymous.
- */
+/** Resolve catalog API Bearer tokens and page sessions into req.viewer. */
 const contracts = require('openvibe-contracts');
 const { claimsToUser, decodeJwtPayload } = require('openvibe-sdk/sso');
 const { verifyServiceToken } = require('openvibe-sdk/auth');
@@ -76,10 +58,8 @@ function createViewerResolver({ auth, config, log = console }) {
     async function fromUserToken(token) {
         const claims = await auth.verify(token);
         if (!claims || (typeof claims.sub === 'string' && PRINCIPAL_SUB.test(claims.sub))) return null;
-        // Network signs FedCM ID assertions (typ "fedcm", aud = any OpenVibe RP origin, including
-        // tenant subdomains of openvibe.host) with the same key and issuer as access tokens. An
-        // assertion is only ever swapped at /oauth/token, never presented as a session. Access
-        // tokens carry no typ.
+        // FedCM ID assertions use the same issuer as access tokens, but are only swapped
+        // at /oauth/token and must never be accepted as sessions.
         if (claims.typ !== undefined || claims.nonce !== undefined) return null;
         const subject = ids.isSubjectId('user', claims.subject_id) ? claims.subject_id : null;
         if (!subject) return null;
