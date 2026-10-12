@@ -76,7 +76,7 @@ Stage A adds a few safety rules of its own:
 - OpenVibe.Contracts (`openvibe-contracts` v0.107.0; `host.*` capabilities and the `host` manifest were released in v0.24.0, v0.32.0 added the takedown routes to `host.site.manage`, v0.83.0 added `host.site.config`, and v0.107.0 adds the planned `host.resource.read` and the git-source routes to `host.site.manage`/`host.deploy.create`): service manifests (vhost rendering, snapshots, the first-party domain list), ids, problem+json, service-token verification, capability checks, the `common.resource-summary@1`/`common.resource-list-result@1` schemas and the `contracts.resources` OVRN helpers (ADR-048).
 - OpenVibe.Network (Stage B): SSO for the dashboard, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay.
 - OpenVibe.Events (Stage B): `host.*` events through the `openvibe-sdk` v0.44.0 transactional outbox (openvibe-sdk/limits for the per-actor limits).
-- `openvibe-shared` v3.0.1 (Stage B): shared chrome (Host's own pages are composed with `openvibe-shared/shell`), legal pages, `/release.json`, `/metrics`, `/api/ready`.
+- `openvibe-shared` v3.0.1 (Stage B): the OpenVibe Frame (Host's own pages are composed with `openvibe-shared/shell`), legal pages, `/release.json`, `/metrics`, `/api/ready`.
 - OpenVibe.Media (Stage B, opt-in): with `HOST_OBJECT_STORE=media`, deploy objects are written through to Media's Object API v2 (`openvibe-sdk/media`) and local disk becomes the read cache; unset keeps them on local disk (see [Storage](#storage)).
 
 ## Capabilities
@@ -465,7 +465,7 @@ These tenant events have subject `deploy` and visibility `internal`; `host.deplo
 
 ### Dashboard
 
-Server-rendered pages with the shared chrome (`openvibe-shared` v3.0.1 `shell.page`: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
+Server-rendered pages with the OpenVibe Frame (`openvibe-shared` v3.0.1 `shell.page`: navbar and theme loader from the Network, `<noscript>` navigation, SSR footer, app icon, legal pages). Every action is a plain form, so it works without JavaScript: projects, quotas and usage, members, sites, folder or archive upload, deploys with activate/rollback/delete, activation history, upload logs and file lists, domains with their DNS records and a "check DNS now" button. Pages are `private, no-store`, `noindex`, `frame-ancestors 'none'`.
 
 ### Observability
 
@@ -480,13 +480,13 @@ Server-rendered pages with the shared chrome (`openvibe-shared` v3.0.1 `shell.pa
 - OpenVibe.Network OAuth client **`host`**, redirect `https://openvibe.host/auth/callback`, scope `profile theme`. The same client is the service principal `svc:host`.
 - Grant `[host, events.event.publish, openvibe.events]`.
 - With `HOST_OBJECT_STORE=media`: grants `[host, media.object.upload, openvibe.media]`, `[host, media.object.read, openvibe.media]`, `[host, media.object.list, openvibe.media]` and `[host, media.object.delete, openvibe.media]`, covering the `host` namespace and its subtree (`host.*`), plus a `host` tenant in Media. Network-side; Host asks for the verbs as its scope.
-- Callers of Host get `[<client>, host.site.manage | host.deploy.create | host.domain.manage, openvibe.host]` as needed. None exist yet (Codes, the expected first caller, is not built).
-- The resource index is read the other way round: **OpenVibe.Services** (not built yet) calls `GET /api/v1/resources` on `svc:services` with `host.resource.read` for audience `openvibe.host`, without `X-OV-Subject` (the capability is first-party and answers the whole index).
+- Callers of Host get `[<client>, host.site.manage | host.deploy.create | host.domain.manage, openvibe.host]` as needed. None exist yet (Codes, the expected first caller, has not adopted Host yet).
+- The resource index is read the other way round: **OpenVibe.Services** calls `GET /api/v1/resources` on `svc:services` with `host.resource.read` for audience `openvibe.host`, without `X-OV-Subject` (the capability is first-party and answers the whole index).
 - Released in `openvibe-contracts` v0.107.0 (CI contract check blocking); v0.32.0 added the takedown routes to `host.site.manage.implementedBy` and v0.107.0 added the git-source routes. `host.resource.read` stays `planned` with an empty `implementedBy` until Opus flips it after the deploy.
 
 ### Deploying Stage B (for the operator)
 
-The service runs on the host (loopback, since 2026-09-23) and the pending tenant vhost of step 9 is installed; the launch has not been run.
+The service runs on the host (loopback, since 2026-09-23) behind openvibe.host, and the tenant vhost of step 9 is installed. Public hosting stays off (`HOST_PUBLIC_HOSTING`, Host#47): only staff create projects until the owner's launch gates clear (plan T20).
 
 1. **DNS.** `openvibe.host` and `*.openvibe.host`: `A`/`AAAA` records to the host. If the zone is on Cloudflare, keep `*.openvibe.host` **DNS-only** (grey cloud), or set `HOST_CNAME_TARGET` to a DNS-only name: custom domains in other accounts cannot CNAME to a proxied hostname (Cloudflare error 1014). Set `HOST_ORIGIN_IPV4`/`HOST_ORIGIN_IPV6` if tenants should be told the addresses for apex domains.
 2. **Wildcard certificate.** A DNS-01 challenge is required for `*.openvibe.host`, for example `certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/certbot-cloudflare.ini -d openvibe.host -d '*.openvibe.host'`. The credentials file is root-only (0600), outside every repository, and never passed to Host. The certificate lands in `/etc/letsencrypt/live/openvibe.host/`; another location is passed with `--wildcard-cert <name|dir>`.
