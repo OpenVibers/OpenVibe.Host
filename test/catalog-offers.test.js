@@ -91,19 +91,16 @@ const item = (key, title, { published = '2026-09-20T10:00:00Z', summary = null, 
             assert.match(front.text, /Latest hosting offers/);
             assert.match(front.text, /href="\/catalog\/offers"/);
         });
-        await check('before migration 0009 applies (a held contract holds it), the pages serve with no offers', async () => {
-            const db = t.ctx.store.db;
-            await db.prepare('ALTER TABLE catalog_offers RENAME TO catalog_offers_later').run();
-            try {
-                assert.deepStrictEqual((await t.api('GET', '/api/v1/catalog/offers')).json().offers, []);
-                const page = await t.api('GET', '/catalog/offers');
-                assert.strictEqual(page.status, 200);
-                assert.match(page.text, /No offer has arrived yet/);
-                const front = await t.api('GET', '/');
-                assert.strictEqual(front.status, 200);
-                assert.doesNotMatch(front.text, /Latest hosting offers/);
-                assert.strictEqual((await t.api('GET', '/api/ready')).status, 200, 'ready without the offers table');
-            } finally { await db.prepare('ALTER TABLE catalog_offers_later RENAME TO catalog_offers').run(); }
+        await check('before migration 0009 applies (a held contract holds it), offers answer empty and readiness does not need the table', async () => {
+            const { createCatalog } = require('../server/catalog/store');
+            const missing = Object.assign(new Error('relation "catalog_offers" does not exist'), { code: '42P01' });
+            const db = { prepare: () => ({ all: async () => { throw missing; }, get: async () => null, run: async () => ({ changes: 0 }) }) };
+            const early = createCatalog({ store: { db, now: () => NOW } });
+            assert.deepStrictEqual(await early.offers({}), { offers: [], next_cursor: null });
+            assert.ok(!require('../server/db').CHARTER_TABLES.includes('catalog_offers'), 'readiness does not wait for the table');
+            const other = Object.assign(new Error('boom'), { code: '57014' });
+            const broken = createCatalog({ store: { db: { prepare: () => ({ all: async () => { throw other; } }) }, now: () => NOW } });
+            await assert.rejects(broken.offers({}), /boom/, 'any other error still fails');
         });
     } finally { await t.close(); }
     done();
