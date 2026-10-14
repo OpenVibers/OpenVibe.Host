@@ -48,6 +48,18 @@ function lightsail(x, id) {
         ipv4: ipv6Only ? 0 : 1, locations: typeof x.location === 'string' && x.location ? [x.location] : null,
     };
 }
+// Vultr's plan types as its pricing page names them; a plan is named from its type, CPU vendor, vCPUs and memory
+// ("High Performance AMD · 1 vCPU, 1 GB"), never by its API id alone.
+const VULTR_TYPES = Object.freeze({ vc2: 'Cloud Compute', vhf: 'High Frequency', vhp: 'High Performance', voc: 'Optimized Cloud', vcg: 'Cloud GPU', vbm: 'Bare Metal', vdc: 'Dedicated Cloud' });
+function vultrName(x, id) {
+    const type = VULTR_TYPES[x.type];
+    const vcpu = Number(x.vcpu_count), ram = Number(x.ram);
+    if (!type || !Number.isFinite(vcpu) || !Number.isFinite(ram) || ram <= 0) return id;
+    const vendor = /-amd$/.test(id) ? ' AMD' : /-intel$/.test(id) ? ' Intel' : '';
+    const memory = ram >= 1024 ? `${Math.round((ram / 1024) * 10) / 10} GB` : `${ram} MB`;
+    return `${type}${vendor} · ${vcpu} vCPU, ${memory}`;
+}
+
 function mapItem(item) {
     const provider = SOURCES[item && item.source_key];
     if (!provider) return null;
@@ -63,12 +75,15 @@ function mapItem(item) {
     const vultr = item.source_key === 'vultr-plans';
     const monthly = number(vultr ? x.monthly_cost : x.price_monthly, 'monthly price');
     if (monthly == null) throw new TypeError('missing monthly price');
+    // A free tier (Vultr's "-free" plan answers $0 with conditions attached) is not a price to compare: held, not listed.
+    if (monthly <= 0 || (vultr && /-free$/.test(id))) return null;
+    const disks = vultr && x.disk_count != null ? number(x.disk_count, 'disk count') : 1;
     return {
-        ...common, name: vultr ? id : ((typeof item.title === 'string' && item.title.trim()) || id),
-        kind: vultr && x.type === 'vdc' ? 'dedicated' : 'cloud',
+        ...common, name: vultr ? vultrName(x, id) : ((typeof item.title === 'string' && item.title.trim()) || id),
+        kind: vultr && ['vdc', 'vbm'].includes(x.type) ? 'dedicated' : 'cloud',
         vcpu: number(vultr ? x.vcpu_count : x.vcpus, 'vcpu'),
         ram_mb: number(vultr ? x.ram : x.memory, 'ram'),
-        disk_gb: vultr ? number(x.disk, 'disk') : (x.disk == null ? null : number(x.disk, 'disk') / 1024),
+        disk_gb: vultr ? (x.disk == null ? null : number(x.disk, 'disk') * (disks || 1)) : (x.disk == null ? null : number(x.disk, 'disk') / 1024),
         disk_type: vultr ? (['vhf', 'vhp'].includes(x.type) ? 'nvme' : x.type === 'vc2' ? 'ssd' : null) : null,
         bandwidth_gb: number(vultr ? x.bandwidth : x.transfer, 'bandwidth'),
         price_monthly: monthly, price_hourly: number(vultr ? x.hourly_cost : x.price_hourly, 'hourly price'),

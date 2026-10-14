@@ -28,6 +28,18 @@ const item = (key, id, fields, time = at, title = id) => ({ id: `itm_${'0'.repea
             assert.strictEqual(mapItem(item('vultr-plans', 'vdc-1', { monthly_cost: 50, type: 'vdc' })).kind, 'dedicated');
             assert.strictEqual(mapItem(item('vultr-plans', 'vhf-1', { monthly_cost: 10, type: 'vhf' })).disk_type, 'nvme');
         });
+        await check('Vultr plans are named as Vultr names them, bare metal is dedicated, disks add up, and a free tier is not a price', async () => {
+            const name = (id, f) => mapItem(item('vultr-plans', id, { monthly_cost: 6, ...f })).name;
+            assert.strictEqual(name('vc2-1c-1gb', { type: 'vc2', vcpu_count: 1, ram: 1024 }), 'Cloud Compute · 1 vCPU, 1 GB');
+            assert.strictEqual(name('vhp-2c-4gb-amd', { type: 'vhp', vcpu_count: 2, ram: 4096 }), 'High Performance AMD · 2 vCPU, 4 GB');
+            assert.strictEqual(name('vhp-1c-1gb-intel', { type: 'vhp', vcpu_count: 1, ram: 1024 }), 'High Performance Intel · 1 vCPU, 1 GB');
+            assert.strictEqual(name('vc2-1c-0.5gb', { type: 'vc2', vcpu_count: 1, ram: 512 }), 'Cloud Compute · 1 vCPU, 512 MB');
+            assert.strictEqual(name('odd-plan', { type: 'xyz', vcpu_count: 1, ram: 1024 }), 'odd-plan', 'an unknown type keeps its id');
+            const metal = mapItem(item('vultr-plans', 'vbm-4c-32gb', { type: 'vbm', vcpu_count: 4, ram: 32768, disk: 240, disk_count: 2, monthly_cost: 120 }));
+            assert.deepStrictEqual([metal.kind, metal.disk_gb], ['dedicated', 480]);
+            assert.strictEqual(mapItem(item('vultr-plans', 'vc2-1c-0.5gb-free', { type: 'vc2', vcpu_count: 1, ram: 512, monthly_cost: 0 })), null);
+            assert.strictEqual(await catalog.applyItem(item('vultr-plans', 'vc2-1c-0.5gb-free', { type: 'vc2', vcpu_count: 1, ram: 512, monthly_cost: 0 })), 'hold', 'held, and the feed moves past it');
+        });
         await check('an AWS Lightsail bundle maps from the price list text, with its monthly price from 744 hours', async () => {
             const ls = { usagetype: 'USE1-BundleUsage:0.5GB', vcpu: '2', memory: '0.5GB', storage: '20GB', transfer: '1TB', location: 'US East (N. Virginia)', region: 'us-east-1', price_hourly: '0.0067200000', price_unit: 'Hrs' };
             const p = mapItem(item('aws-lightsail-bundles', '8E4A4X47ZPXKB2KD', ls, at, ls.usagetype));
