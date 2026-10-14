@@ -14,7 +14,7 @@ const frame = require('openvibe-shared/frame');
 const shell = require('openvibe-shared/shell');
 
 const NETWORK_URL = 'https://openvibe.network';
-const NAV_LINKS = () => [{ label: 'Compare', href: '/catalog' }, { label: 'Promotions', href: '/catalog/promos' }];
+const NAV_LINKS = () => [{ label: 'Compare', href: '/catalog' }, { label: 'Offers', href: '/catalog/offers' }, { label: 'Promotions', href: '/catalog/promos' }];
 const DESCRIPTION = 'OpenVibe.Host: hosting plans compared, every price dated and sourced.';
 const SITE_NAME = 'OpenVibe.Host';
 const PUBLIC_DIR = path.join(__dirname, '..', '..', 'public');

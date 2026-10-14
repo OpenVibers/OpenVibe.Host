@@ -78,6 +78,18 @@
 .hc-promo-meta { font-size: 13px; color: var(--hs-muted); }
 .hc-code code { padding: 2px 8px; border-radius: 6px; background: var(--hs-bg); border: 1px dashed var(--hs-line); font-size: 14px; user-select: all; }
 
+/* Offers. */
+.hc-offers { list-style: none; margin: 0; padding: 0; border: 1px solid var(--hs-line); border-radius: 12px; background: var(--hs-card); }
+.hc-offer { display: grid; grid-template-columns: 9.5rem 1fr; gap: .25rem 1rem; padding: .8rem 1rem; overflow-wrap: anywhere; }
+.hc-offer + .hc-offer { border-top: 1px solid var(--hs-line); }
+.hc-offer p { margin: 0; font-size: 13px; color: var(--hs-muted); }
+.hc-offer-price { display: flex; flex-direction: column; }
+.hc-offer strong { font-size: 1.05rem; color: var(--hs-fg); }
+.hc-offer h3 { margin: 0 0 .3rem; font-size: 1rem; }
+.hc-offer h3 a:not(:hover) { color: var(--hs-fg); text-decoration: none; }
+.hc-filters .hc-check { flex-direction: row; align-items: center; }
+.hc-filters .hc-check input { width: auto; }
+
 /* A plan. */
 .hc-plan { display: grid; grid-template-columns: minmax(16rem, 22rem) 1fr 1fr; gap: 1.25rem; align-items: start; }
 .hc-plan h2 { margin-top: 0; font-size: 1rem; }
@@ -134,6 +146,8 @@
   .hc-table td[data-label="Provider"]::before { display: none; }
   .hc-table td[data-label="Checked"] { grid-column: 1 / -1; white-space: normal; }
   .hc-filters { grid-template-columns: 1fr 1fr; }
+  .hc-offer { grid-template-columns: 1fr; }
+  .hc-offer-price { flex-flow: row wrap; gap: 0 .6rem; }
   .hc-filter-actions { grid-column: 1 / -1; }
   .hc-spec { grid-template-columns: 1fr 1fr; }
 }
