@@ -156,8 +156,8 @@ async function createApp(opts = {}) {
     app.get('/updates', (_req, res) => res.type('html').send(renderPage({ title: 'What shipped on OpenVibe.Host', body: frame.updatesBody({ service: 'host', siteName: 'OpenVibe.Host' }) + `<script src="${ovServe.url('shipped.js')}" defer></script>`, config, path: '/updates', indexable: true })));
     app.get('/', viewers.middleware('dashboard'), async (req, res, next) => {
         try {
-            const [result, providers, promos, stats] = await Promise.all([catalog.plans({}), catalog.providers(), catalog.promos(), catalog.stats()]);
-            res.type('html').send(renderPage({ body: catalogRender.front({ plans: result.plans, providers, promos, stats }), viewer: req.viewer, config, path: '/', indexable: true, styles: [showcase.STYLESHEET], css: ['css/catalog.css'], jsonLd: catalogRender.jsonLd.front(config.baseUrl, result.plans) }));
+            const [result, providers, promos, stats, recent] = await Promise.all([catalog.plans({}), catalog.providers(), catalog.promos(), catalog.stats(), catalog.offers({})]);
+            res.type('html').send(renderPage({ body: catalogRender.front({ plans: result.plans, providers, promos, stats, offers: recent.offers }), viewer: req.viewer, config, path: '/', indexable: true, styles: [showcase.STYLESHEET], css: ['css/catalog.css'], jsonLd: catalogRender.jsonLd.front(config.baseUrl, result.plans) }));
         } catch (err) { next(err); }
     });
     app.use((req, res) => req.path.startsWith('/api/') ? contracts.http.sendProblem(res, 404, 'route.not_found', { detail: 'Not found', ctx: req.ov }) : res.status(404).type('html').send(renderPage({ title: 'Not found', body: '<h1>Not found</h1>', config, path: req.originalUrl })));

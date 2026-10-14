@@ -22,6 +22,7 @@ function createCatalogApi({ catalog, viewers, actorLimits }) {
     router.get('/providers', run(async () => ({ providers: await catalog.providers() })));
     router.get('/providers/:slug', run(async (req) => ({ provider: await catalog.providers(req.params.slug) })));
     router.get('/promos', run(async () => ({ promos: await catalog.promos() })));
+    router.get('/offers', run(async (req) => await catalog.offers(req.query)));
     for (const type of ['providers', 'plans', 'promos']) {
         router.post(`/${type}`, guard('host.catalog.manage'), staff, catalogJsonBody, run(async (req) => ({ [type.slice(0, -1)]: await catalog.save(type, req.body, null, req.viewer.subject) }), 201));
         router.patch(`/${type}/:id`, guard('host.catalog.manage'), staff, catalogJsonBody, run(async (req) => ({ [type.slice(0, -1)]: await catalog.save(type, req.body, req.params.id, req.viewer.subject) })));
@@ -84,6 +85,14 @@ function createCatalogPages({ catalog, community, config, viewers, actorLimits, 
     }));
     router.get('/promos', view(async (req, res) => {
         page(req, res, 'Hosting promotions', render.promos(await catalog.promos()), true, 'Hosting promotions running now, with their codes and end dates as the providers state them.');
+    }));
+    router.get('/offers', view(async (req, res) => {
+        // Sorting by price stays within one currency (nothing is converted): the page picks USD when none is chosen.
+        const query = { ...req.query };
+        if (query.sort === 'price' && !query.currency) query.currency = 'USD';
+        const result = await catalog.offers(query);
+        page(req, res, 'Hosting offers', render.offers({ result, query }), !Object.keys(req.query).length,
+            'Hosting offers from LowEndTalk and LowEndBox, newest first or cheapest a month, each with the price its headline states and the day it was posted.');
     }));
     router.get('/manage', view(async (req, res) => {
         if (req.viewer.kind !== 'user' || !req.viewer.staff) throw new ApiError(403, 'host.catalog.forbidden', 'Staff access required');

@@ -8,6 +8,7 @@
  *   provider(p)                                  /catalog/providers/:slug
  *   plan(p)                                      /catalog/plans/:id
  *   promos(list)                                 /catalog/promos
+ *   offers({ result, query })                    /catalog/offers: what providers post on LowEndTalk and LowEndBox
  *
  * Every price shows when it was checked and links where it came from; an unknown value reads "Unknown", never 0;
  * affiliate links carry rel="sponsored nofollow noopener" with the provider's own disclosure beside them, and the
@@ -16,6 +17,7 @@
 const showcase = require('openvibe-shared/showcase');
 const seo = require('openvibe-shared/seo');
 const { esc } = require('./layout');
+const { MAX_AGE_DAYS } = require('../catalog/offers');
 
 const DISCLOSURE = 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.';
 const KINDS = [['', 'Any kind'], ['cloud', 'Cloud'], ['vps', 'VPS'], ['dedicated', 'Dedicated'], ['storage', 'Storage'], ['domain', 'Domains']];
@@ -227,6 +229,51 @@ ${p.affiliate_url ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}
 <p class="hc-links">${link('/catalog', '← Compare plans')}</p>`;
 }
 
+// Offers (server/catalog/offers.js): headlines from LowEndTalk's Offers board and LowEndBox, each with the cheapest
+// price per month or year its headline (or the post's opening) states, and that price a month.
+const OFFER_SORTS = [['new', 'Newest'], ['price', 'Cheapest a month']];
+const OFFER_CURRENCIES = [['', 'Any currency'], ['USD', 'USD ($)'], ['EUR', 'EUR (€)'], ['GBP', 'GBP (£)']];
+const OFFER_SOURCES = [['', 'Both boards'], ['lowendtalk-offers', 'LowEndTalk Offers'], ['lowendbox-posts', 'LowEndBox']];
+const daysAgo = (iso, now) => Math.floor((now - Date.parse(iso)) / 86400000);
+function offerItem(o, now) {
+    const age = daysAgo(o.published_at, now);
+    const monthly = o.price_period === 'year' ? money(o.price_monthly, o.price_currency) : null;
+    const price = o.price_text
+        ? `<p class="hc-offer-price"><strong>${esc(o.price_text)}</strong>${monthly ? `<span>${esc(monthly)} a month</span>` : ''}${o.price_from === 'post' ? '<span>stated in the post</span>' : ''}</p>`
+        : '<p class="hc-offer-price">Price in the post</p>';
+    const when = `<time datetime="${esc(o.published_at)}">${esc(day(o.published_at))}</time>`;
+    return `<li class="hc-offer">${price}
+<div class="hc-offer-body"><h3><a href="${esc(o.url)}" rel="nofollow ugc noopener">${esc(o.title)}</a></h3>
+<p class="hc-offer-meta">${esc(o.source)}${o.poster ? ` · posted by ${esc(o.poster)}` : ''} · ${when}${age > 30 ? ` <span class="hc-chip" title="Offers often end; the post says whether this one still runs">${age} days old</span>` : ''}</p></div></li>`;
+}
+function offers({ result, query = {}, now = Date.now() }) {
+    const q = query || {};
+    const list = result.offers;
+    const filtered = ['currency', 'max_monthly', 'source', 'priced'].some((k) => q[k]);
+    const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog/offers?${new URLSearchParams({ ...q, cursor: result.next_cursor })}`, 'Next 50 offers →', 'button hc-button-quiet')}</p>` : '';
+    return `<header class="hc-head"><p class="hc-eyebrow">OpenVibe.Host · hosting compared</p><h1>Hosting offers</h1>
+<p class="hc-lede">What providers post on LowEndTalk's Offers board and LowEndBox, with the price each headline states and that price a month. Sort by the monthly price within one currency; nothing is converted.</p></header>
+<form class="hc-filters" method="get" action="/catalog/offers" role="search" aria-label="Filter hosting offers">
+${select('sort', 'Sort by', OFFER_SORTS, q.sort || 'new')}
+${select('currency', 'Currency', OFFER_CURRENCIES, q.currency)}
+${input('max_monthly', 'Max a month', q.max_monthly, 'type="number" min="0" step="0.01" inputmode="decimal" placeholder="Any"')}
+${select('source', 'Board', OFFER_SOURCES, q.source)}
+<label class="hc-check"><input type="checkbox" name="priced" value="1"${q.priced === '1' ? ' checked' : ''}> <span>Only with a stated price</span></label>
+<div class="hc-filter-actions"><button type="submit">Show offers</button> <a href="/catalog/offers" class="hc-reset">Reset</a></div>
+</form>
+${list.length ? `<ol class="hc-offers" aria-label="${list.length}${result.next_cursor ? '+' : ''} offers">${list.map((o) => offerItem(o, now)).join('')}</ol>`
+        : filtered ? `<div class="hc-empty"><p><strong>No offer matches these filters.</strong></p><p>${link('/catalog/offers', 'Clear the filters')} or widen one of them.</p></div>`
+            : '<div class="hc-empty"><p><strong>No offer has arrived yet.</strong></p><p>Offers arrive as LowEndTalk\'s and LowEndBox\'s feeds are read, every hour.</p></div>'}
+${next}
+<section class="hc-method" aria-labelledby="hc-offers-method-h"><h2 id="hc-offers-method-h">How offers are read</h2><ul>
+<li><strong>From the boards' own feeds.</strong> LowEndTalk's Offers board, where providers post their offers, and LowEndBox's offer posts, through OpenVibe.Sources. Each headline links to its post, which has the details and the final word.</li>
+<li><strong>The price as stated.</strong> The cheapest "per month" or "per year" price the headline states, or the post's opening when the headline states none. A yearly price is shown a month too (divided by 12). A price without a period is not read.</li>
+<li><strong>Dated.</strong> Every offer shows the day it was posted; one older than 30 days is marked, and offers older than ${MAX_AGE_DAYS} days drop off.</li>
+<li><strong>Not for sale.</strong> The order comes only from the sort you pick. No provider pays to be listed here.</li>
+</ul></section>
+<p class="hc-links">${link('/catalog', '← Compare plans')} · ${link('/catalog/promos', 'Current promotions')}</p>`;
+}
+
 /** JSON-LD for the catalog pages (only indexable pages carry it; renderPage drops it otherwise). */
 const planUrl = (base, p) => `${base}/catalog/plans/${encodeURIComponent(p.id)}`;
 const jsonLd = {
@@ -254,7 +301,7 @@ const jsonLd = {
 };
 
 /** The front page of the hosting comparison. */
-function front({ plans, providers, promos: live, stats }) {
+function front({ plans, providers, promos: live, stats, offers: recent = [], now = Date.now() }) {
     const aside = plans.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
 <p class="hc-aside-h">Lowest monthly prices right now</p>
 <ol>${plans.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
@@ -265,7 +312,7 @@ function front({ plans, providers, promos: live, stats }) {
         title: 'Hosting, compared honestly.',
         accent: 'Every price dated and sourced.',
         lede: 'Cloud, VPS and dedicated plans from providers\' official APIs, side by side: price per month, per vCPU and per GB, the day each price was checked and a link to where it came from. Sorted by what you ask for, never by who pays.',
-        actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Current promotions', href: '/catalog/promos' }],
+        actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Latest offers', href: '/catalog/offers' }],
         note: stats.plans ? `${stats.plans} plans from ${stats.providers} provider${stats.providers === 1 ? '' : 's'} so far. More providers join as their sources are checked.` : 'The catalog is filling up: providers join as their official sources are checked and enabled.',
         aside: aside ? { html: aside } : undefined,
     }) + `<section class="sc-sec">${planTable(plans.slice(0, 8), { caption: 'Lowest price first' })}
@@ -279,8 +326,9 @@ function front({ plans, providers, promos: live, stats }) {
             { icon: 'ov:search', title: 'Compare what matters', text: 'Sort by monthly price, or by price per vCPU, per GB of RAM or per GB of disk. Unknown stays unknown.' },
             { icon: 'ov:account', title: 'Ranked by you', text: 'No paid placement. Affiliate links are marked, disclosed beside the link, and never change the order.' },
         ],
-    }) + (live.length ? `<section class="sc-sec"><h2>Promotions running now</h2>${promoCards(live.slice(0, 3))}<p class="hc-more">${link('/catalog/promos', 'All promotions →')}</p></section>` : '')
+    }) + (recent.length ? `<section class="sc-sec"><h2>Latest hosting offers</h2><ol class="hc-offers">${recent.slice(0, 6).map((o) => offerItem(o, now)).join('')}</ol><p class="hc-more">${link('/catalog/offers', 'Every offer, by price or date →')}</p></section>` : '')
+    + (live.length ? `<section class="sc-sec"><h2>Promotions running now</h2>${promoCards(live.slice(0, 3))}<p class="hc-more">${link('/catalog/promos', 'All promotions →')}</p></section>` : '')
     + `<p class="hc-own">Want to host a site with OpenVibe? ${link('https://openvibe.space', 'Visit OpenVibe.Space')}.</p>`;
 }
 
-module.exports = { front, catalog, providerList, provider, plan, promos, planTable, jsonLd, DISCLOSURE, money, bytesMb, sizeGb };
+module.exports = { front, catalog, providerList, provider, plan, promos, offers, planTable, jsonLd, DISCLOSURE, money, bytesMb, sizeGb };

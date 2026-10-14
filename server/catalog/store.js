@@ -3,6 +3,7 @@
 const { newId } = require('../ids');
 const { ApiError } = require('../http/errors');
 const { mapItem } = require('./mapping');
+const offerFeed = require('./offers');
 const invalid = (message) => { throw new ApiError(422, 'host.catalog.invalid', message); };
 const missing = () => { throw new ApiError(404, 'host.catalog.not_found', 'Catalog entry not found'); };
 const fields = {
@@ -102,6 +103,7 @@ function createCatalog({ store, community = null, log = console }) {
         return await get(type, newKey);
     });
     async function applyItem(item, t = db) {
+        if (item && offerFeed.SOURCES[item.source_key]) return await applyOffer(item, t);
         if (item && item.removed) return 'hold';
         const v = mapItem(item);
         if (!v) return 'hold';
@@ -125,6 +127,58 @@ function createCatalog({ store, community = null, log = console }) {
             await t.prepare(`INSERT INTO catalog_plans (${Object.keys(all).join(', ')}) VALUES (${Object.keys(all).map(() => '?').join(', ')})`).run(...Object.values(all));
         }
         return 'applied';
+    }
+    // An offer post from a feed (server/catalog/offers.js): inserted once, its headline and stated price updated when
+    // the source revises it; a post the source removed is hidden.
+    async function applyOffer(item, t) {
+        const now = store.now();
+        if (item.removed) {
+            const r = await t.prepare("UPDATE catalog_offers SET status = 'hidden', updated_at = ? WHERE source_key = ? AND external_id = ? AND status = 'active'").run(now, item.source_key, String(item.identity || ''));
+            return r.changes ? 'removed' : 'hold';
+        }
+        const v = offerFeed.mapOffer(item, now);
+        if (!v) return 'hold';
+        const cols = ['source_item_id', 'title', 'poster', 'url', 'published_at', 'price_text', 'price_from', 'price_amount', 'price_currency', 'price_period', 'price_monthly', 'checked_at'];
+        const old = await t.prepare('SELECT id, checked_at FROM catalog_offers WHERE source_key = ? AND external_id = ?').get(v.source_key, v.external_id);
+        if (old) {
+            if (v.checked_at < Number(old.checked_at)) return 'hold';
+            await t.prepare(`UPDATE catalog_offers SET ${cols.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(...cols.map((k) => v[k]), now, old.id);
+        } else {
+            const all = { id: newId('catalogOffer', now), source_key: v.source_key, external_id: v.external_id, ...Object.fromEntries(cols.map((k) => [k, v[k]])), status: 'active', first_seen_at: v.first_seen_at, created_at: now, updated_at: now };
+            await t.prepare(`INSERT INTO catalog_offers (${Object.keys(all).join(', ')}) VALUES (${Object.keys(all).map(() => '?').join(', ')})`).run(...Object.values(all));
+        }
+        return 'applied';
+    }
+    // Offers posted in the last MAX_AGE_DAYS: newest first, or by the stated monthly price within one currency.
+    const OFFER_SORTS = { new: 'published_at DESC, id DESC', price: 'price_monthly ASC, published_at DESC, id DESC' };
+    const offerOut = (o) => ({ ...o, source: offerFeed.SOURCES[o.source_key] ? offerFeed.SOURCES[o.source_key].label : o.source_key, published_at: new Date(Number(o.published_at)).toISOString(), checked_at: new Date(Number(o.checked_at)).toISOString(),
+        price_amount: o.price_amount == null ? null : Number(o.price_amount), price_monthly: o.price_monthly == null ? null : Number(o.price_monthly) });
+    async function offers(query = {}) {
+        const allowed = new Set(['sort', 'currency', 'max_monthly', 'source', 'priced', 'cursor']);
+        for (const k of Object.keys(query)) if (!allowed.has(k) || Array.isArray(query[k])) invalid(`Invalid filter: ${k}`);
+        const sort = query.sort || 'new';
+        if (!OFFER_SORTS[sort]) invalid('Invalid sort');
+        if (sort === 'price' && !query.currency) invalid('Sorting by price needs a currency: prices are never converted');
+        const args = [store.now() - offerFeed.MAX_AGE_DAYS * 86400000];
+        let where = "status = 'active' AND published_at >= ?";
+        if (query.currency) {
+            if (!['USD', 'EUR', 'GBP'].includes(query.currency)) invalid('Invalid currency');
+            where += ' AND price_currency = ?'; args.push(query.currency);
+        }
+        if (query.source) {
+            if (!offerFeed.SOURCES[query.source]) invalid('Invalid source');
+            where += ' AND source_key = ?'; args.push(query.source);
+        }
+        if (query.priced === '1') where += ' AND price_monthly IS NOT NULL';
+        if (query.max_monthly != null && query.max_monthly !== '') {
+            const n = Number(query.max_monthly);
+            if (!Number.isFinite(n) || n < 0) invalid('Invalid max_monthly');
+            where += ' AND price_monthly <= ?'; args.push(n);
+        }
+        const offset = query.cursor == null ? 0 : Number(query.cursor);
+        if (!Number.isSafeInteger(offset) || offset < 0) invalid('Invalid cursor');
+        const rows = await db.prepare(`SELECT * FROM catalog_offers WHERE ${where} ORDER BY ${OFFER_SORTS[sort]} LIMIT 51 OFFSET ${offset}`).all(...args);
+        return { offers: rows.slice(0, 50).map(offerOut), next_cursor: rows.length > 50 ? String(offset + 50) : null };
     }
     const planOut = (p) => ({ ...p, affiliate_rel: p.affiliate_url ? 'sponsored nofollow noopener' : null, affiliate_disclosure: p.affiliate_url ? 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.' : null, price_per_vcpu: p.vcpu > 0 ? Number(p.price_monthly) / Number(p.vcpu) : null, price_per_gb_ram: p.ram_mb > 0 ? Number(p.price_monthly) * 1024 / Number(p.ram_mb) : null, price_per_gb_disk: p.disk_gb > 0 ? Number(p.price_monthly) / Number(p.disk_gb) : null, checked_at: new Date(Number(p.checked_at)).toISOString() });
     async function plans(query = {}) {
@@ -178,6 +232,6 @@ function createCatalog({ store, community = null, log = console }) {
     }
     // Each public plan with the day its price was last checked, and its provider's slug, so the sitemap can date pages.
     async function sitemapPlans() { return await db.prepare("SELECT p.id, p.checked_at, v.slug AS provider_slug FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY p.id").all(); }
-    return { onChange: (fn) => listeners.push(fn), save, get, applyItem, plans, plan, providers, promos, currencies: currenciesInUse, stats, sitemapPlans, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
+    return { onChange: (fn) => listeners.push(fn), save, get, applyItem, plans, plan, providers, promos, offers, currencies: currenciesInUse, stats, sitemapPlans, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
 }
 module.exports = { createCatalog };
