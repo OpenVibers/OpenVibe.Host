@@ -91,6 +91,20 @@ const item = (key, title, { published = '2026-09-20T10:00:00Z', summary = null, 
             assert.match(front.text, /Latest hosting offers/);
             assert.match(front.text, /href="\/catalog\/offers"/);
         });
+        await check('before migration 0009 applies (a held contract holds it), the pages serve with no offers', async () => {
+            const db = t.ctx.store.db;
+            await db.prepare('ALTER TABLE catalog_offers RENAME TO catalog_offers_later').run();
+            try {
+                assert.deepStrictEqual((await t.api('GET', '/api/v1/catalog/offers')).json().offers, []);
+                const page = await t.api('GET', '/catalog/offers');
+                assert.strictEqual(page.status, 200);
+                assert.match(page.text, /No offer has arrived yet/);
+                const front = await t.api('GET', '/');
+                assert.strictEqual(front.status, 200);
+                assert.doesNotMatch(front.text, /Latest hosting offers/);
+                assert.strictEqual((await t.api('GET', '/api/ready')).status, 200, 'ready without the offers table');
+            } finally { await db.prepare('ALTER TABLE catalog_offers_later RENAME TO catalog_offers').run(); }
+        });
     } finally { await t.close(); }
     done();
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -177,7 +177,14 @@ function createCatalog({ store, community = null, log = console }) {
         }
         const offset = query.cursor == null ? 0 : Number(query.cursor);
         if (!Number.isSafeInteger(offset) || offset < 0) invalid('Invalid cursor');
-        const rows = await db.prepare(`SELECT * FROM catalog_offers WHERE ${where} ORDER BY ${OFFER_SORTS[sort]} LIMIT 51 OFFSET ${offset}`).all(...args);
+        let rows;
+        try {
+            rows = await db.prepare(`SELECT * FROM catalog_offers WHERE ${where} ORDER BY ${OFFER_SORTS[sort]} LIMIT 51 OFFSET ${offset}`).all(...args);
+        } catch (err) {
+            // Before migration 0009 has applied (a held contract migration holds it), there are no offers yet.
+            if (err && err.code === '42P01') return { offers: [], next_cursor: null };
+            throw err;
+        }
         return { offers: rows.slice(0, 50).map(offerOut), next_cursor: rows.length > 50 ? String(offset + 50) : null };
     }
     const planOut = (p) => ({ ...p, affiliate_rel: p.affiliate_url ? 'sponsored nofollow noopener' : null, affiliate_disclosure: p.affiliate_url ? 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.' : null, price_per_vcpu: p.vcpu > 0 ? Number(p.price_monthly) / Number(p.vcpu) : null, price_per_gb_ram: p.ram_mb > 0 ? Number(p.price_monthly) * 1024 / Number(p.ram_mb) : null, price_per_gb_disk: p.disk_gb > 0 ? Number(p.price_monthly) / Number(p.disk_gb) : null, checked_at: new Date(Number(p.checked_at)).toISOString() });

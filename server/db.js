@@ -9,7 +9,9 @@ const { createDiscussionRefs } = require('openvibe-publishing/discussion');
 const MIGRATIONS = path.join(__dirname, '..', 'migrations');
 const DEV_PGLITE = path.join(__dirname, '..', 'data', 'pglite');
 
-const CHARTER_TABLES = ['host_catalog_discussion_refs', 'catalog_providers', 'catalog_plans', 'catalog_price_changes', 'catalog_promos', 'catalog_offers', 'catalog_ingest_cursor'];
+// catalog_offers (0009) is not required yet: the 0008 contract holds every later migration until 2026-10-19 00:37 UTC
+// (sdk/db keeps the order), and the offers page shows none until then. Required again once 0009 has applied.
+const CHARTER_TABLES = ['host_catalog_discussion_refs', 'catalog_providers', 'catalog_plans', 'catalog_price_changes', 'catalog_promos', 'catalog_ingest_cursor'];
 
 /**
  * The serving handle (ADR-035): DATABASE_URL through PgBouncer; in development without it, an embedded PGlite database
