@@ -91,6 +91,17 @@ const item = (key, title, { published = '2026-09-20T10:00:00Z', summary = null, 
             assert.match(front.text, /Latest hosting offers/);
             assert.match(front.text, /href="\/catalog\/offers"/);
         });
+        await check('before migration 0009 applies (a held contract holds it), offers answer empty and readiness does not need the table', async () => {
+            const { createCatalog } = require('../server/catalog/store');
+            const missing = Object.assign(new Error('relation "catalog_offers" does not exist'), { code: '42P01' });
+            const db = { prepare: () => ({ all: async () => { throw missing; }, get: async () => null, run: async () => ({ changes: 0 }) }) };
+            const early = createCatalog({ store: { db, now: () => NOW } });
+            assert.deepStrictEqual(await early.offers({}), { offers: [], next_cursor: null });
+            assert.ok(!require('../server/db').CHARTER_TABLES.includes('catalog_offers'), 'readiness does not wait for the table');
+            const other = Object.assign(new Error('boom'), { code: '57014' });
+            const broken = createCatalog({ store: { db: { prepare: () => ({ all: async () => { throw other; } }) }, now: () => NOW } });
+            await assert.rejects(broken.offers({}), /boom/, 'any other error still fails');
+        });
     } finally { await t.close(); }
     done();
 })().catch((e) => { console.error(e); process.exit(1); });
