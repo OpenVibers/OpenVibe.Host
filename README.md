@@ -338,7 +338,7 @@ the owner's gates (go-ahead, a DMCA agent, a Public Suffix List entry for openvi
 Part of the [OpenVibe network](https://openvibe.network). Built in the open by [OpenVibers](https://github.com/OpenVibers).
 
 <!-- versions:start -->
-- openvibe-contracts: v0.172.1
+- openvibe-contracts: v0.186.0
 - openvibe-sdk: v0.44.0
 - openvibe-shared: v4.2.0
 - openvibe-publishing: v1.4.0

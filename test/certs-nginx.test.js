@@ -66,7 +66,8 @@ runTests([
         assert.match(live.out, /location \/ws\/ \{[\s\S]*proxy_set_header Upgrade \$http_upgrade;[\s\S]*proxy_set_header Connection \$ovlive_connection;/);
         assert.ok(!/\{\{/.test(live.out), 'no unfilled template variables');
         const plain = await host.cli('nginx', 'render', 'media', '--variant', 'http');
-        assert.match(plain.out, /server_name openvibe\.media;/);
+        // Media serves its S3 surface on the same certificate (openvibe-contracts: media's domains include s3.openvibe.media).
+        assert.match(plain.out, /server_name openvibe\.media s3\.openvibe\.media;/);
         assert.ok(!/proxy_buffering off/.test(plain.out));
         assert.strictEqual(host.read('/etc/nginx/sites-available/openvibe.events.conf'), null, 'render alone writes nothing');
         assert.ok(!host.calls.some((c) => c.cmd === 'nginx' || (c.cmd === 'systemctl' && c.args[0] === 'reload')));
