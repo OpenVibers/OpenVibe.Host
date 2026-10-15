@@ -79,6 +79,10 @@ runTests([
         assert.ok(step.includes('then verb=rotate; else verb=create; fi'), step);
         assert.ok(step.includes('"$verb" bot --env-file /etc/openvibe/bot.env'), step);
         assert.match(r.remaining.join('\n'), /ovhost validate bot; ovhost deploy bot --restart/);
+        // The steps that were missed for fifteen services: scraping, the browser check and a restore drill.
+        assert.match(r.remaining.join('\n'), /prometheus-config\.js/);
+        assert.match(r.remaining.join('\n'), /add bot to --sites in openvibe-browsercheck\.service/);
+        assert.match(r.remaining.join('\n'), /ovhost backup bot --logical; ovhost drill bot/);
         const repeat = await cli('service', 'add', 'bot');
         assert.strictEqual(repeat.code, 1);
         assert.match(repeat.out, /already exists/);
