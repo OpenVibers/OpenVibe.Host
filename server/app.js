@@ -93,6 +93,7 @@ async function createApp(opts = {}) {
     app.locals.metrics = registry;
     app.locals.ctx = ctx;
     app.use(sharedMetrics.httpMetrics(registry).middleware);
+    app.use(require('openvibe-sdk/service').telemetryMiddleware);   // request telemetry: a no-op until server/index.js calls telemetry.init()
     const catalogHost = new URL(config.baseUrl).hostname.toLowerCase();
     app.use((req, res, next) => {
         let hostname;
