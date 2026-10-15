@@ -15,11 +15,11 @@
   "domain": "openvibe.host",
   "contracts": "openvibe-contracts v0.172.1",
   "sdk": "openvibe-sdk v0.44.0",
-  "shared": "openvibe-shared v4.1.9",
+  "shared": "openvibe-shared v4.2.0",
   "packages": [
     "openvibe-contracts v0.172.1",
     "openvibe-sdk v0.44.0",
-    "openvibe-shared v4.1.9"
+    "openvibe-shared v4.2.0"
   ],
   "capabilities": [
     "host.catalog.manage"
