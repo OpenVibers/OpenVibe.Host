@@ -19,6 +19,9 @@ function load(env = process.env) {
         nodeEnv,
         isProduction,
         baseUrl,
+        // IndexNow (openvibe-shared/indexnow): with a key, each catalog page a pull adds or reprices is sent to search
+        // engines in one batch, and the key is served at /<key>.txt. Unset: off.
+        indexnow: { key: String(env.INDEXNOW_KEY || '').trim() },
         trustProxy: env.TRUST_PROXY != null ? Number(env.TRUST_PROXY) : 1,   // nginx (realip) → Node
 
         // PostgreSQL (ADR-035): DATABASE_URL serves (PgBouncer), DATABASE_DIRECT_URL migrates (owner role).

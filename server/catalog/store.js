@@ -47,7 +47,13 @@ const clean = (type, input, current, now) => {
     }
     return v;
 };
-function createCatalog({ store, community = null, log = console }) {
+function createCatalog({ store, community = null, log = console, indexnow = null, baseUrl = null }) {
+    // IndexNow (openvibe-shared/indexnow): a page the catalog pull adds or reprices is sent to search engines with the
+    // sitemap, in one batch. Only these transitions announce; a plan re-checked at the same price does not.
+    const announce = (paths) => {
+        if (!paths.length || !indexnow || !indexnow.enabled || !baseUrl) return;
+        indexnow.pingSoon([...paths, '/sitemap.xml'].map((path) => `${baseUrl}${path}`));
+    };
     const db = store.db;
     const listeners = [];
     const changed = (type) => { for (const fn of listeners) { try { fn(type); } catch { /* a listener never breaks a save */ } } };
@@ -109,23 +115,28 @@ function createCatalog({ store, community = null, log = console }) {
         if (!v) return 'hold';
         const now = store.now();
         let p = await t.prepare('SELECT * FROM catalog_providers WHERE slug = ?').get(v.provider.slug);
+        const fresh = [];
         if (!p) {
             const id = newId('catalogProvider', now);
             await t.prepare('INSERT INTO catalog_providers (id, slug, name, homepage_url, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, v.provider.slug, v.provider.name, v.provider.homepage_url, 'active', now, now);
-            p = { id };
+            p = { id, status: 'active' };
+            fresh.push(`/catalog/providers/${encodeURIComponent(v.provider.slug)}`);
         }
         const old = await t.prepare('SELECT * FROM catalog_plans WHERE provider_id = ? AND external_id = ?').get(p.id, v.external_id);
         const cols = ['name', 'kind', 'vcpu', 'ram_mb', 'disk_gb', 'disk_type', 'bandwidth_gb', 'unmetered', 'port_mbps', 'ipv4', 'locations', 'currency', 'price_monthly', 'price_hourly', 'source_key', 'source_item_id', 'source_url', 'checked_at'];
         if (old) {
             if (old.origin !== 'sources' || v.checked_at < Number(old.checked_at)) return 'hold';
             if (Number(old.price_monthly) !== v.price_monthly || old.currency !== v.currency) {
+                if (old.status === 'active' && p.status === 'active') fresh.push(`/catalog/plans/${encodeURIComponent(old.id)}`);
                 await t.prepare('INSERT INTO catalog_price_changes (plan_id, observed_at, currency, price_monthly_before, price_monthly_after) VALUES (?, ?, ?, ?, ?) ON CONFLICT DO NOTHING').run(old.id, v.checked_at, v.currency, old.price_monthly, v.price_monthly);
             }
             await t.prepare(`UPDATE catalog_plans SET ${cols.map((k) => `${k} = ?`).join(', ')}, last_seen_at = ?, updated_at = ? WHERE id = ?`).run(...cols.map((k) => v[k]), v.checked_at, now, old.id);
         } else {
             const all = { id: newId('catalogPlan', now), provider_id: p.id, external_id: v.external_id, ...Object.fromEntries(cols.map((k) => [k, v[k]])), origin: 'sources', first_seen_at: v.first_seen_at, last_seen_at: v.checked_at, status: 'active', created_at: now, updated_at: now };
             await t.prepare(`INSERT INTO catalog_plans (${Object.keys(all).join(', ')}) VALUES (${Object.keys(all).map(() => '?').join(', ')})`).run(...Object.values(all));
+            if (p.status === 'active') fresh.push(`/catalog/plans/${encodeURIComponent(all.id)}`, `/catalog/providers/${encodeURIComponent(v.provider.slug)}`);
         }
+        announce([...new Set(fresh)]);
         return 'applied';
     }
     // An offer post from a feed (server/catalog/offers.js): inserted once, its headline and stated price updated when
@@ -146,6 +157,7 @@ function createCatalog({ store, community = null, log = console }) {
         } else {
             const all = { id: newId('catalogOffer', now), source_key: v.source_key, external_id: v.external_id, ...Object.fromEntries(cols.map((k) => [k, v[k]])), status: 'active', first_seen_at: v.first_seen_at, created_at: now, updated_at: now };
             await t.prepare(`INSERT INTO catalog_offers (${Object.keys(all).join(', ')}) VALUES (${Object.keys(all).map(() => '?').join(', ')})`).run(...Object.values(all));
+            announce(['/catalog/offers']);
         }
         return 'applied';
     }

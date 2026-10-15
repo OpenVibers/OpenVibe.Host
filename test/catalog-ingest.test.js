@@ -113,6 +113,20 @@ const item = (key, id, fields, time = at, title = id) => ({ id: `itm_${'0'.repea
             const result = await on.pull();
             assert.strictEqual(result.unknown, 1); assert.strictEqual(result.after, 1);
         });
+        await check('IndexNow: a new plan announces its page and its provider; a re-check at the same price is quiet; a new price announces the plan', async () => {
+            const pinged = [];
+            const indexnow = { enabled: true, pingSoon: (urls) => { pinged.push(...urls); return urls.length; } };
+            const announcing = createCatalog({ store, indexnow, baseUrl: 'https://openvibe.host' });
+            const linode = { vcpus: 2, memory: 4096, disk: 81920, transfer: 4000, price_monthly: 24, price_hourly: 0.036, class: 'standard' };
+            await announcing.applyItem(item('linode-types', 'g6-standard-2', linode, at, 'Linode 4 GB'));
+            const id = (await db.db.prepare("SELECT id FROM catalog_plans WHERE external_id = 'g6-standard-2'").get()).id;
+            assert.deepStrictEqual(pinged, [`https://openvibe.host/catalog/plans/${id}`, 'https://openvibe.host/catalog/providers/linode', 'https://openvibe.host/sitemap.xml']);
+            pinged.length = 0;
+            await announcing.applyItem(item('linode-types', 'g6-standard-2', linode, '2026-10-12T12:00:00Z', 'Linode 4 GB'));
+            assert.deepStrictEqual(pinged, [], 'the same price checked again announces nothing');
+            await announcing.applyItem(item('linode-types', 'g6-standard-2', { ...linode, price_monthly: 26 }, '2026-10-13T12:00:00Z', 'Linode 4 GB'));
+            assert.deepStrictEqual(pinged, [`https://openvibe.host/catalog/plans/${id}`, 'https://openvibe.host/sitemap.xml']);
+        });
     } finally { await db.close(); }
     done();
 })().catch((e) => { console.error(e); process.exit(1); });
