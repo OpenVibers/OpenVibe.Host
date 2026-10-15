@@ -14,6 +14,39 @@ The inventory `drill` block maps each database to its `DATABASE_URL` and `DATABA
 |---|---|---|---|
 | 2026-09-25 18:55 | 2178 (3.5 MB, `--pick --max-mb 200`, real `GET /v/2178?raw=1`) | before: served from R2 · evict: R2 copy removed, row → b2 · from B2: served from the canonical copy with the same first MiB · re-warm: R2 copy restored from B2 (HEAD verified), row → r2 · after: served from R2 again; `media_locations` b2 and r2 present. Artifact `/opt/openvibe.media/data/drills/r2-eviction-2178-2026-09-25T18-55-13-212Z.json` | passed |
 
+## PostgreSQL drill log
+
+The logical dumps a drill restores are taken **weekly** for most services; the nightly run covers their databases
+through pgBackRest (`verified` in the run record) and does not write a new dump. A drill restores the newest dump, so
+it can be up to a week old: tables a migration added since are missing, and counts drift by a week of writes. Take a
+fresh dump first when that matters:
+
+```
+sudo ovhost backup <service> --logical
+sudo ovhost drill <service>
+```
+
+`countsTolerance` in a drill block allows for the rows a busy table gains between the dump and the count.
+
+| Date (UTC) | Service | Dump | Checks | Result |
+|---|---|---|---|---|
+| 2026-10-15 08:07 | news | nightly 03:46 | stories and topics compared identical; `news_topics` 12, `news_stories` 0, `news_source_items` 237/234 (Sources keeps feeding it; tolerance 20 added) | passed |
+| 2026-10-15 08:07 | food | weekly, 10-10 | `/api/ready` 200; `food_plans`, `food_pantry` equal | passed |
+| 2026-10-15 08:08 | help | weekly, 10-10 | `/api/ready` 200; `help_tickets`, `help_messages` equal | passed |
+| 2026-10-15 08:08 | inventory | weekly, 10-09 | `/api/ready` 200; `inventory_definitions` 70 = 70, instances 175/153, ledger 289/255 (tolerance 50) | passed |
+| 2026-10-15 08:08 | play | nightly 03:48 | `/api/ready` 200; titles, achievements, unlocks and scores equal | passed |
+| 2026-10-15 08:08 | zone | nightly 03:48 | `/api/ready` 200; `zone_zones` 2, `zone_usage` 5 equal | passed |
+| 2026-10-15 08:13 | work | fresh (the weekly one predated `work_applications`) | `/api/ready` 200; `work_listings` 5909 = 5909, saved searches and applications equal | passed |
+| 2026-10-15 08:13 | rent | fresh (the weekly one predated `area_price_index`) | `/api/ready` 200; `area_price_index` 9415 = 9415, listings and saved searches equal | passed |
+| 2026-10-15 08:13 | media-hub | fresh (the weekly one predated `video_playlists`) | `/api/ready` 200; files, folders, shares and playlists equal | passed |
+| 2026-10-15 08:14 | quest | fresh (the 10-09 one was 29 rows behind) | `/api/ready` 200; progress 33, completions 23, badges 23 equal | passed |
+| 2026-10-15 08:14 | actor | fresh (the weekly one predated `actor_agents`) | `/api/ready` 200 (its readiness needs an agent system: the drill's local-model URL is a closed port and no task runs); tasks 17, agents and approvals equal | passed |
+| 2026-10-15 08:14 | ai | fresh, 69 MB | `/api/health` identical; models 10, routes 34, templates 49, workflows 84, quotas 5, citations 42 equal | passed |
+
+The ten services built after the first drills (actor, food, help, work, quest, rent, media-hub, inventory, play, zone)
+got their drill blocks in the production inventory on 2026-10-15. Each boots with no service credentials (no token,
+event relay or subscription), Valkey on a closed port, its workers off and every outbound service URL on a closed port.
+
 ## Drilling an off-host copy
 
 Scheduled backups and their encrypted off-host copies are described in [backups.md](backups.md).
