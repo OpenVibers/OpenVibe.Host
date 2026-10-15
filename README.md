@@ -268,6 +268,8 @@ Two things deploy from this repository:
   Rollback: ovhost puts the previous sha back by itself when `/api/ready` does not answer 2xx after the
   restart; afterwards `sudo ovhost rollback host --to <sha>`. Migrations only add tables and columns.
 
+Request telemetry (plan T1 step 10) aggregates each HTTP request by route template, method and status class, never by raw URL. Once a minute, one `http.request` sample per key plus the active-requests, p95 latency and event-loop-lag gauges go into this service's own `telemetry_samples` table (openvibe-sdk 0.46 telemetry, the `platform.telemetry-sample@1` shape, migration `0010_telemetry.sql`); rows older than 14 days are deleted daily. `/shared` files, static assets, health, readiness and `/metrics` are not counted. `server/app.js` mounts openvibe-sdk's `telemetryMiddleware` (a no-op until init); `server/index.js` calls `telemetry.init()` at production start, runs the 14-day retention and flushes on stop.
+
 ## Installing on the host (for the operator)
 
 This was done on 2026-09-23 (the CLI and inventory are installed); the steps stay for a rebuild:
