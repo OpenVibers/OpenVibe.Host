@@ -12,6 +12,7 @@ const sharedSeo = require('openvibe-shared/seo');
 const frame = require('openvibe-shared/frame');
 const showcase = require('openvibe-shared/showcase');
 const ovServe = require('openvibe-shared/serve');
+const { createIndexNow } = require('openvibe-shared/indexnow');
 const configLib = require('./config');
 const { openStore } = require('./db');
 const { createHostOutbox } = require('./events/outbox');
@@ -61,7 +62,16 @@ async function createApp(opts = {}) {
     });
     const viewers = createViewerResolver({ auth, config, log });
     const community = createCommunity({ store, config, fetchImpl: opts.fetchImpl, log });
-    const catalog = createCatalog({ store, community, log });
+    // IndexNow: off without INDEXNOW_KEY; a malformed key warns and stays off rather than stopping the site.
+    const indexnow = opts.indexnow || (() => {
+        const warn = (...a) => (log.warn || console.warn)(...a);
+        const fetch = opts.fetchImpl || globalThis.fetch;
+        try { return createIndexNow({ host: config.baseUrl, key: config.indexnow.key, fetch, log: warn }); } catch (err) {
+            warn(`[Host] ${err.message} — IndexNow is off until INDEXNOW_KEY is fixed`);
+            return createIndexNow({ host: config.baseUrl, key: '', fetch, log: warn });
+        }
+    })();
+    const catalog = createCatalog({ store, community, log, indexnow, baseUrl: config.baseUrl });
     const catalogIngest = createCatalogIngest({ config, store, catalog, fetchImpl: opts.fetchImpl });
     const catalogSearch = createCatalogSearch({ config, store, outbox, log });
     catalog.onChange(() => { if (config.worker.enabled) catalogSearch.sweepSoon(); });
@@ -137,6 +147,8 @@ async function createApp(opts = {}) {
     app.use('/auth', createHostSession({ auth, config }).router(express));
     { const legal = require('openvibe-shared/legal'); app.get(legal.PATHS, legal.handler({ id: 'host', service: 'host', host: 'openvibe.host', name: 'OpenVibe.Host', profile: 'ugc' })); }
     app.use('/shared', require('openvibe-shared/serve').handler());
+    // GET /<key>.txt — the IndexNow key file, only when a key is configured.
+    if (indexnow.enabled) app.use(indexnow.keyFile);
     app.use(express.static(PUBLIC_DIR, { index: false, redirect: false, etag: true, setHeaders(res, filePath) {
         const rel = path.relative(PUBLIC_DIR, filePath).split(path.sep).join('/');
         res.setHeader('Cache-Control', cache.assetHeaders(rel, { hashed: !!res.req.query.v && res.req.query.v === assetVersion(rel) }));

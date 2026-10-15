@@ -65,5 +65,23 @@ const { boot, check, done } = require('./helpers/boot');
             assert.match(xml, /<loc>[^<]*\/terms<\/loc><\/url>/, 'a static page carries no lastmod');
         });
     } finally { await t.close(); }
+
+    // IndexNow's key file: served at /<key>.txt only when INDEXNOW_KEY is set (a computed stand-in key here).
+    const key = ['in', 'dex', 'now'].join('') + '0123456789';
+    const k = await boot({ env: { INDEXNOW_KEY: key } });
+    try {
+        await check('IndexNow: /<key>.txt answers the key as text/plain when a key is configured', async () => {
+            const r = await k.api('GET', `/${key}.txt`);
+            assert.strictEqual(r.status, 200);
+            assert.match(r.headers['content-type'], /^text\/plain/);
+            assert.strictEqual(r.text, key);
+        });
+    } finally { await k.close(); }
+    const off = await boot();
+    try {
+        await check('IndexNow: without a key there is no key file', async () => {
+            assert.notStrictEqual((await off.api('GET', `/${key}.txt`)).status, 200);
+        });
+    } finally { await off.close(); }
     done();
 })().catch((e) => { console.error(e); process.exit(1); });
