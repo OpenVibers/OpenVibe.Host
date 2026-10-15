@@ -53,6 +53,18 @@ const item = (key, id, fields, time = at, title = id) => ({ id: `itm_${'0'.repea
             const row = (await catalog.plans({ provider: 'aws-lightsail' })).plans[0];
             assert.deepStrictEqual([row.name, Number(row.price_monthly), row.ipv4, row.locations], ['General purpose 0.5 GB', 5, 1, ['US East (N. Virginia)']]);
         });
+        await check('an OVHcloud plan maps from the catalog: hundred-millionths to dollars, unmetered at its port speed', async () => {
+            const f = { product: 'vps-2027-model1', currency: 'USD', vcpu: 2, cpu_type: 'vCore', memory_gb: 4, disk_gb: 40, disk_interface: 'NVMe', disk_technology: 'SSD', bandwidth_mbps: 500, bandwidth_unlimited: true, price_monthly: 535000000 };
+            const p = mapItem(item('ovhcloud-vps', 'vps-2027-model1', f, at, 'VPS-1 2027'));
+            assert.deepStrictEqual([p.provider.slug, p.name, p.kind, p.vcpu, p.ram_mb, p.disk_gb, p.disk_type, p.bandwidth_gb, p.unmetered, p.port_mbps, p.price_monthly, p.price_hourly, p.source_url],
+                ['ovhcloud', 'VPS-1 2027', 'vps', 2, 4096, 40, 'nvme', null, true, 500, 5.35, null, 'https://us.ovhcloud.com/vps/']);
+            assert.throws(() => mapItem(item('ovhcloud-vps', 'x', { ...f, currency: 'EUR' })), /not in USD/);
+            assert.throws(() => mapItem(item('ovhcloud-vps', 'x', { ...f, price_monthly: null })), /missing monthly price/);
+            assert.strictEqual(mapItem(item('ovhcloud-vps', 'x', { ...f, price_monthly: 0 })), null, 'a zero price is not listed');
+            await catalog.applyItem(item('ovhcloud-vps', 'vps-2027-model1', f, at, 'VPS-1 2027'));
+            const row = (await catalog.plans({ provider: 'ovhcloud' })).plans[0];
+            assert.deepStrictEqual([row.name, Number(row.price_monthly), row.unmetered, Number(row.port_mbps), row.bandwidth_gb], ['VPS-1 2027', 5.35, true, 500, null]);
+        });
         await check('upsert preserves first seen and records only a changed price', async () => {
             const raw = { vcpu_count: 1, ram: 1024, disk: 25, bandwidth: 1000, monthly_cost: 5, hourly_cost: 0.007, type: 'vc2' };
             await catalog.applyItem(item('vultr-plans', 'vc2-1c-1gb', raw));

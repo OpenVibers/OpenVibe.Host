@@ -6,6 +6,7 @@ const SOURCES = Object.freeze({
     'vultr-plans': { slug: 'vultr', name: 'Vultr', homepage_url: 'https://www.vultr.com/', source_url: 'https://www.vultr.com/pricing/' },
     'linode-types': { slug: 'linode', name: 'Linode', homepage_url: 'https://www.linode.com/', source_url: 'https://www.linode.com/pricing/' },
     'aws-lightsail-bundles': { slug: 'aws-lightsail', name: 'Amazon Lightsail', homepage_url: 'https://aws.amazon.com/lightsail/', source_url: 'https://aws.amazon.com/lightsail/pricing/' },
+    'ovhcloud-vps': { slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://us.ovhcloud.com/', source_url: 'https://us.ovhcloud.com/vps/' },
 });
 const number = (v, field) => {
     if (v == null) return null;
@@ -45,7 +46,27 @@ function lightsail(x, id) {
         // Lightsail bills a bundle by the hour up to its monthly price, which is the hourly rate for 744 hours (a 31-day
         // month): 0.00672 an hour is the $5.00 bundle AWS lists.
         price_monthly: Math.round(hourly * 744 * 100) / 100, price_hourly: hourly,
-        ipv4: ipv6Only ? 0 : 1, locations: typeof x.location === 'string' && x.location ? [x.location] : null,
+        ipv4: ipv6Only ? 0 : 1, locations: typeof x.location === 'string' && x.location ? [x.location] : null, unmetered: null, port_mbps: null,
+    };
+}
+// OVHcloud's public catalog (Sources `ovhcloud-vps`): the plan's hardware joined from its product, and its monthly
+// no-commitment price in hundred-millionths of the currency (535000000 is the $5.35 VPS-1). Traffic is unmetered at
+// the plan's bandwidth, which is a port speed in Mbit/s, not a transfer allowance.
+function ovhcloud(x, id, title) {
+    if (x.currency !== 'USD') throw new TypeError('OVHcloud price is not in USD');
+    const units = number(x.price_monthly, 'monthly price');
+    if (units == null) throw new TypeError('missing monthly price');
+    const monthly = Math.round(units / 1e6) / 100;
+    if (monthly <= 0) return null;
+    const memoryGb = number(x.memory_gb, 'memory');
+    const unmetered = x.bandwidth_unlimited === true;
+    return {
+        name: (typeof title === 'string' && title.trim()) || id, kind: 'vps',
+        vcpu: number(x.vcpu, 'vcpu'), ram_mb: memoryGb == null ? null : Math.round(memoryGb * 1024),
+        disk_gb: number(x.disk_gb, 'disk'),
+        disk_type: /nvme/i.test(String(x.disk_interface || '')) ? 'nvme' : /ssd/i.test(String(x.disk_technology || '')) ? 'ssd' : null,
+        bandwidth_gb: null, unmetered: unmetered || null, port_mbps: number(x.bandwidth_mbps, 'bandwidth'),
+        price_monthly: monthly, price_hourly: null, ipv4: null, locations: null,
     };
 }
 // Vultr's plan types as its pricing page names them; a plan is named from its type, CPU vendor, vCPUs and memory
@@ -72,6 +93,10 @@ function mapItem(item) {
         source_url: provider.source_url, checked_at: Date.parse(item.provenance.retrieved_at), first_seen_at: Date.parse(item.provenance.first_seen_at),
     };
     if (item.source_key === 'aws-lightsail-bundles') return { ...common, ...lightsail(x, id) };
+    if (item.source_key === 'ovhcloud-vps') {
+        const plan = ovhcloud(x, id, item.title);
+        return plan && { ...common, ...plan };
+    }
     const vultr = item.source_key === 'vultr-plans';
     const monthly = number(vultr ? x.monthly_cost : x.price_monthly, 'monthly price');
     if (monthly == null) throw new TypeError('missing monthly price');
@@ -87,7 +112,7 @@ function mapItem(item) {
         disk_type: vultr ? (['vhf', 'vhp'].includes(x.type) ? 'nvme' : x.type === 'vc2' ? 'ssd' : null) : null,
         bandwidth_gb: number(vultr ? x.bandwidth : x.transfer, 'bandwidth'),
         price_monthly: monthly, price_hourly: number(vultr ? x.hourly_cost : x.price_hourly, 'hourly price'),
-        ipv4: null, locations: null,
+        ipv4: null, locations: null, unmetered: null, port_mbps: null,
     };
 }
 module.exports = { SOURCES, mapItem };
