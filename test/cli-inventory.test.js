@@ -17,7 +17,10 @@ runTests([
     test('host.example.json is a valid inventory for every service on the host', () => {
         const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'host.example.json'), 'utf8'));
         const inv = normalise(raw);
-        assert.deepStrictEqual(Object.keys(inv.services), ['network', 'live', 'media', 'tools', 'community', 'events', 'games', 'sites', 'host', 'billing', 'chat', 'search', 'sources', 'wiki', 'blog', 'tips', 'vip', 'news', 'reviews', 'deals', 'coupons', 'trade', 'codes', 'ai', 'bot', 'openre']);
+        // Every service on the host (2026-10-15): Sites retired, and the fourteen added since the first copy of this file.
+        assert.deepStrictEqual(Object.keys(inv.services), ['network', 'live', 'media', 'tools', 'community', 'events', 'games', 'host', 'billing', 'chat', 'search', 'sources', 'wiki', 'blog', 'tips', 'vip', 'news', 'reviews', 'deals', 'coupons', 'trade', 'codes', 'ai', 'bot', 'openre',
+            'actor', 'food', 'help', 'work', 'quest', 'rent', 'media-hub', 'inventory', 'play', 'zone', 'watch', 'run', 'services', 'space']);
+        assert.ok(Object.values(inv.services).filter((s) => s.databases.length).every((s) => s.drill), 'every service with a database has a restore drill');
         assert.strictEqual(inv.services.live.socketUnit, 'openvibe-live.socket');
         assert.ok(!inv.services.live.units.includes('openvibe-live.socket'));
         assert.strictEqual(inv.services.live.protected.url, 'http://127.0.0.1:3000/api/streams');
@@ -25,7 +28,7 @@ runTests([
         assert.deepStrictEqual([inv.services.media.protected.kind, inv.services.media.protected.field], ['http-json-count', 'recordings_in_progress']);
         // Every service on the host is deployed by a strategy (WS-N task 11): Games by pnpm-build.
         assert.ok(Object.values(inv.services).every((s) => s.managed), 'every service is managed');
-        assert.deepStrictEqual(Object.fromEntries(['live', 'tools', 'sites', 'games', 'openre', 'network'].map((id) => [id, inv.services[id].strategy])), { live: 'release-layout', tools: 'multi-app', sites: 'static-build', games: 'pnpm-build', openre: 'release-layout', network: 'git-checkout' });
+        assert.deepStrictEqual(Object.fromEntries(['live', 'tools', 'games', 'openre', 'network'].map((id) => [id, inv.services[id].strategy])), { live: 'release-layout', tools: 'multi-app', games: 'pnpm-build', openre: 'release-layout', network: 'git-checkout' });
         // Live's and OpenRestream's release layouts are root-owned clones (git as root); their services and drills run as ubuntu.
         for (const s of Object.values(inv.services)) assert.strictEqual(s.owner, ['live', 'openre'].includes(s.id) ? 'root' : 'ubuntu', `${s.id} checkout owner`);
         assert.strictEqual(inv.services.live.runAs, 'ubuntu');
@@ -34,7 +37,6 @@ runTests([
         assert.strictEqual(inv.services.live.codeDir, '/opt/openvibe.live/current');
         assert.strictEqual(inv.services.live.release.git, '/opt/openvibe.live/repo');
         assert.strictEqual(inv.services.openre.release.git, '/opt/openre.stream/repo');
-        assert.deepStrictEqual(inv.services.sites.nginx.skipVhosts, ['openvibe.bot.conf']);
         assert.deepStrictEqual([inv.services.bot.nginx.vhost, inv.services.bot.nginx.repoVhost, inv.services.bot.nginx.installOnDeploy], ['openvibe.bot.conf', 'deploy/nginx/openvibe.bot.conf', true]);
         assert.strictEqual(inv.services.bot.installUnits, true);
         assert.strictEqual(inv.services.bot.enableUnits, true);

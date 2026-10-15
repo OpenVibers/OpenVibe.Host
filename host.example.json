@@ -856,42 +856,6 @@
         "policy": "report"
       }
     },
-    "sites": {
-      "metrics": false,
-      "repo": "/opt/openvibe.sites",
-      "strategy": "static-build",
-      "_strategyNote": "Sites deploy/scripts/deploy.sh as ovhost deploy sites: the pull always comes first (ovhost fetches and fast-forwards before building, so a stale checkout never installs old vhosts); the tracked dist/ a previous build rewrote (dates) is restored from git before the merge (generated); npm ci; node build.js; every deploy/nginx/*.conf installed and enabled, nginx -t, reload, and on a failed nginx -t the previous vhost files come back and nginx is not reloaded; then one release notification per dist/<domain>/release.json. A vhost that left the repository is named, never removed.",
-      "generated": [
-        "dist/"
-      ],
-      "units": [],
-      "install": {
-        "command": [
-          "npm",
-          "ci",
-          "--omit=dev",
-          "--no-audit",
-          "--no-fund"
-        ],
-        "always": true
-      },
-      "build": [
-        [
-          "node",
-          "build.js"
-        ]
-      ],
-      "nginx": {
-        "repoVhosts": "deploy/nginx/*.conf",
-        "installOnDeploy": true,
-        "skipVhosts": [
-          "openvibe.bot.conf"
-        ]
-      },
-      "announce": {
-        "releaseFiles": "dist/*/release.json"
-      }
-    },
     "host": {
       "_note": "OpenVibe.Host hosting comparison catalog on port 4910; PostgreSQL database ov_host.",
       "repo": "/opt/openvibe.host",
@@ -2202,6 +2166,1013 @@
       },
       "drain": {
         "policy": "refuse"
+      }
+    },
+    "actor": {
+      "_note": "Added 2026-10-08 (plan T17): OpenVibe.Actor, the task router, at openvibe.actor on loopback :4950.",
+      "repo": "/opt/openvibe.actor",
+      "units": [
+        "openvibe-actor.service"
+      ],
+      "unitSources": {
+        "openvibe-actor.service": "deploy/systemd/openvibe-actor.service"
+      },
+      "envFile": "/etc/openvibe/actor.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 4950,
+      "ready": {
+        "url": "http://127.0.0.1:4950/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "actor",
+          "engine": "postgresql",
+          "database": "ov_actor"
+        }
+      ],
+      "drill": {
+        "port": 14950,
+        "databases": {
+          "actor": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "ACTOR_EVENTS_URL": "",
+          "ACTOR_EVENTS_SECRET": "",
+          "ACTOR_DEEPSEEK_API_KEY": "",
+          "ACTOR_OPENAI_API_KEY": "",
+          "ACTOR_LOCAL_LLM_URL": "http://127.0.0.1:9/v1",
+          "ACTOR_SEARCH_URL": "http://127.0.0.1:9",
+          "ACTOR_TOOLS_URL": "http://127.0.0.1:9",
+          "ACTOR_MAX_RUNNING": "0",
+          "ACTOR_AGENTS_TICK_MAX": "0",
+          "ACTOR_WEBHOOK_INTERVAL_MS": "86400000"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "actor",
+            "table": "tasks"
+          },
+          {
+            "db": "actor",
+            "table": "actor_agents"
+          },
+          {
+            "db": "actor",
+            "table": "actor_approvals"
+          }
+        ],
+        "countsTolerance": 20,
+        "_notes": "Drill 2026-10-15: the restored copy boots with no service credentials (no tokens, no event relay or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness. No model keys and no running slots, so a queued task is never resumed against a provider. Readiness needs one agent system: the local model URL is a closed port."
+      }
+    },
+    "food": {
+      "_note": "Added 2026-10-08 (plan T19): OpenVibe.Food, food near you, meal plans and a pantry, at openvibe.food on loopback :4970.",
+      "repo": "/opt/openvibe.food",
+      "units": [
+        "openvibe-food.service"
+      ],
+      "unitSources": {
+        "openvibe-food.service": "deploy/systemd/openvibe-food.service"
+      },
+      "envFile": "/etc/openvibe/food.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 4970,
+      "ready": {
+        "url": "http://127.0.0.1:4970/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "food",
+          "engine": "postgresql",
+          "database": "ov_food"
+        }
+      ],
+      "drill": {
+        "port": 14960,
+        "databases": {
+          "food": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "FOOD_EVENTS_URL": "",
+          "FOOD_EVENTS_SECRET": "",
+          "OV_AI_INTERNAL_URL": "",
+          "FOOD_NOMINATIM_URL": "http://127.0.0.1:9",
+          "FOOD_OVERPASS_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "food",
+            "table": "food_plans"
+          },
+          {
+            "db": "food",
+            "table": "food_pantry"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "Drill 2026-10-15: the restored copy boots with no service credentials (no tokens, no event relay or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      }
+    },
+    "help": {
+      "_note": "Added 2026-10-08 (plan T19): OpenVibe.Help, the help centre and support tickets, at openvibe.help on loopback :5020.",
+      "repo": "/opt/openvibe.help",
+      "units": [
+        "openvibe-help.service"
+      ],
+      "unitSources": {
+        "openvibe-help.service": "deploy/systemd/openvibe-help.service"
+      },
+      "envFile": "/etc/openvibe/help.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5020,
+      "ready": {
+        "url": "http://127.0.0.1:5020/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "help",
+          "engine": "postgresql",
+          "database": "ov_help"
+        }
+      ],
+      "drill": {
+        "port": 14970,
+        "databases": {
+          "help": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "HELP_EVENTS_URL": "",
+          "HELP_EVENTS_SECRET": "",
+          "HELP_SEARCH_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "help",
+            "table": "help_tickets"
+          },
+          {
+            "db": "help",
+            "table": "help_messages"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "Drill 2026-10-15: the restored copy boots with no service credentials (no tokens, no event relay or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      }
+    },
+    "work": {
+      "_note": "Added 2026-10-08 (plan T19): OpenVibe.Work, job listings from open boards and saved searches, at openvibe.work on loopback :4960.",
+      "repo": "/opt/openvibe.work",
+      "units": [
+        "openvibe-work.service"
+      ],
+      "unitSources": {
+        "openvibe-work.service": "deploy/systemd/openvibe-work.service"
+      },
+      "envFile": "/etc/openvibe/work.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 4960,
+      "ready": {
+        "url": "http://127.0.0.1:4960/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "work",
+          "engine": "postgresql",
+          "database": "ov_work"
+        }
+      ],
+      "drill": {
+        "port": 14980,
+        "databases": {
+          "work": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "WORK_EVENTS_URL": "",
+          "WORK_EVENTS_SECRET": "",
+          "WORK_INGEST": "off",
+          "WORK_ACTOR_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "work",
+            "table": "work_listings"
+          },
+          {
+            "db": "work",
+            "table": "work_saved_searches"
+          },
+          {
+            "db": "work",
+            "table": "work_applications"
+          }
+        ],
+        "countsTolerance": 400,
+        "_notes": "Drill 2026-10-15: the restored copy boots with no service credentials (no tokens, no event relay or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness. work_listings moves with every six-hourly ingest (new and expired listings): tolerance 400."
+      }
+    },
+    "quest": {
+      "_note": "Added 2026-10-08 (plan T19): OpenVibe.Quest, the shared quest log, at openvibe.quest on loopback :4980.",
+      "repo": "/opt/openvibe.quest",
+      "units": [
+        "openvibe-quest.service"
+      ],
+      "unitSources": {
+        "openvibe-quest.service": "deploy/systemd/openvibe-quest.service"
+      },
+      "envFile": "/etc/openvibe/quest.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 4980,
+      "ready": {
+        "url": "http://127.0.0.1:4980/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "quest",
+          "engine": "postgresql",
+          "database": "ov_quest"
+        }
+      ],
+      "drill": {
+        "port": 14990,
+        "databases": {
+          "quest": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "QUEST_EVENTS_URL": "",
+          "QUEST_EVENTS_SECRET": "",
+          "QUEST_COINS": "off",
+          "QUEST_ITEMS": "off",
+          "OV_INVENTORY_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "quest",
+            "table": "quest_progress"
+          },
+          {
+            "db": "quest",
+            "table": "quest_completions"
+          },
+          {
+            "db": "quest",
+            "table": "quest_badges"
+          }
+        ],
+        "countsTolerance": 20,
+        "_notes": "Drill 2026-10-15: the restored copy boots with no service credentials (no tokens, no event relay or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      }
+    },
+    "rent": {
+      "_note": "Added 2026-10-08 (plan T19): OpenVibe.Rent, listings people post, at openvibe.rent on loopback :5010.",
+      "repo": "/opt/openvibe.rent",
+      "units": [
+        "openvibe-rent.service"
+      ],
+      "unitSources": {
+        "openvibe-rent.service": "deploy/systemd/openvibe-rent.service"
+      },
+      "envFile": "/etc/openvibe/rent.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5010,
+      "ready": {
+        "url": "http://127.0.0.1:5010/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "rent",
+          "engine": "postgresql",
+          "database": "ov_rent"
+        }
+      ],
+      "drill": {
+        "port": 15000,
+        "databases": {
+          "rent": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "RENT_EVENTS_URL": "",
+          "RENT_EVENTS_SECRET": ""
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "rent",
+            "table": "rent_listings"
+          },
+          {
+            "db": "rent",
+            "table": "rent_saved_searches"
+          },
+          {
+            "db": "rent",
+            "table": "area_price_index"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "Drill 2026-10-15: the restored copy boots with no service credentials (no tokens, no event relay or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      }
+    },
+    "media-hub": {
+      "_note": "Added 2026-10-08 (plan T10/T19): OpenVibe.MediaHub, openvibe.download as a private drive (pics and video coming), loopback :4990.",
+      "repo": "/opt/openvibe.download",
+      "units": [
+        "openvibe-media-hub.service"
+      ],
+      "unitSources": {
+        "openvibe-media-hub.service": "deploy/systemd/openvibe-media-hub.service"
+      },
+      "envFile": "/etc/openvibe/media-hub.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 4990,
+      "ready": {
+        "url": "http://127.0.0.1:4990/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "media-hub",
+          "engine": "postgresql",
+          "database": "ov_media_hub"
+        }
+      ],
+      "drill": {
+        "port": 15010,
+        "databases": {
+          "media-hub": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "MEDIAHUB_EVENTS_URL": "",
+          "MEDIAHUB_EVENTS_SECRET": "",
+          "MEDIAHUB_MEDIA_URL": "http://127.0.0.1:9",
+          "MEDIAHUB_LIVE_URL": "http://127.0.0.1:9",
+          "MEDIAHUB_CHAT_URL": "http://127.0.0.1:9",
+          "MEDIAHUB_TMP_DIR": "{tmp}/tmp"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "media-hub",
+            "table": "mh_files"
+          },
+          {
+            "db": "media-hub",
+            "table": "mh_folders"
+          },
+          {
+            "db": "media-hub",
+            "table": "mh_shares"
+          },
+          {
+            "db": "media-hub",
+            "table": "video_playlists"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "Drill 2026-10-15: the restored copy boots with no service credentials (no tokens, no event relay or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      }
+    },
+    "inventory": {
+      "_note": "Added 2026-10-09 (plan T21, ADR-054): OpenVibe.Inventory, the network-wide inventory at inventory.openvibe.network, loopback :5030.",
+      "repo": "/opt/inventory.openvibe.network",
+      "units": [
+        "openvibe-inventory.service"
+      ],
+      "unitSources": {
+        "openvibe-inventory.service": "deploy/systemd/openvibe-inventory.service"
+      },
+      "envFile": "/etc/openvibe/inventory.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5030,
+      "ready": {
+        "url": "http://127.0.0.1:5030/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "inventory",
+          "engine": "postgresql",
+          "database": "ov_inventory"
+        }
+      ],
+      "drill": {
+        "port": 15020,
+        "databases": {
+          "inventory": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "EVENTS_URL": "",
+          "INVENTORY_EVENTS_SECRET": "",
+          "OV_MEDIA_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "inventory",
+            "table": "inventory_definitions"
+          },
+          {
+            "db": "inventory",
+            "table": "inventory_instances"
+          },
+          {
+            "db": "inventory",
+            "table": "inventory_ledger"
+          }
+        ],
+        "countsTolerance": 50,
+        "_notes": "Drill 2026-10-15: the restored copy boots with no service credentials (no tokens, no event relay or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      }
+    },
+    "play": {
+      "_note": "Added 2026-10-14 (Games ADR-0007 decision 10, contracts 0.172.0): OpenVibe.Play, achievements and leaderboards at play.openvibe.network, loopback :5040.",
+      "repo": "/opt/play.openvibe.network",
+      "units": [
+        "openvibe-play.service"
+      ],
+      "unitSources": {
+        "openvibe-play.service": "deploy/systemd/openvibe-play.service"
+      },
+      "envFile": "/etc/openvibe/play.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5040,
+      "ready": {
+        "url": "http://127.0.0.1:5040/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "play",
+          "engine": "postgresql",
+          "database": "ov_play"
+        }
+      ],
+      "drill": {
+        "port": 15030,
+        "databases": {
+          "play": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "EVENTS_URL": "",
+          "PLAY_EVENTS_SECRET": ""
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "play",
+            "table": "play_titles"
+          },
+          {
+            "db": "play",
+            "table": "play_achievements"
+          },
+          {
+            "db": "play",
+            "table": "play_unlocks"
+          },
+          {
+            "db": "play",
+            "table": "play_scores"
+          }
+        ],
+        "countsTolerance": 50,
+        "_notes": "Drill 2026-10-15: the restored copy boots with no service credentials (no tokens, no event relay or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      }
+    },
+    "zone": {
+      "_note": "Added 2026-10-14 (ADR-031 amendment, contracts 0.173.0): OpenVibe.Zone, private S3-compatible storage zones at openvibe.zone, loopback :5050. Media serves the bytes (s3.openvibe.media / s3.openvibe.network).",
+      "repo": "/opt/openvibe.zone",
+      "units": [
+        "openvibe-zone.service"
+      ],
+      "unitSources": {
+        "openvibe-zone.service": "deploy/systemd/openvibe-zone.service"
+      },
+      "envFile": "/etc/openvibe/zone.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5050,
+      "ready": {
+        "url": "http://127.0.0.1:5050/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "zone",
+          "engine": "postgresql",
+          "database": "ov_zone"
+        }
+      ],
+      "drill": {
+        "port": 15040,
+        "databases": {
+          "zone": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "EVENTS_URL": "",
+          "ZONE_EVENTS_SECRET": "",
+          "MEDIA_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "zone",
+            "table": "zone_zones"
+          },
+          {
+            "db": "zone",
+            "table": "zone_usage"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "Drill 2026-10-15: the restored copy boots with no service credentials (no tokens, no event relay or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      }
+    },
+    "watch": {
+      "_note": "Added 2026-10-07 (plan T18): OpenVibe.Watch on loopback :4730; no public vhost until its product surface ships.",
+      "repo": "/opt/openvibe.watch",
+      "units": [
+        "openvibe-watch.service"
+      ],
+      "unitSources": {
+        "openvibe-watch.service": "deploy/systemd/openvibe-watch.service"
+      },
+      "envFile": "/etc/openvibe/watch.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 4730,
+      "ready": {
+        "url": "http://127.0.0.1:4730/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "watch",
+          "engine": "postgresql",
+          "database": "ov_watch"
+        }
+      ],
+      "drill": {
+        "port": 14730,
+        "databases": {
+          "watch": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "WATCH_WORKER": "off",
+          "EVENTS_URL": "",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
+        },
+        "counts": [
+          {
+            "db": "watch",
+            "table": "watches"
+          },
+          {
+            "db": "watch",
+            "table": "observations"
+          },
+          {
+            "db": "watch",
+            "table": "check_runs"
+          }
+        ],
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "keys": [
+              "ready",
+              "checks"
+            ]
+          },
+          {
+            "path": "/api/health"
+          }
+        ]
+      }
+    },
+    "run": {
+      "_note": "Added 2026-10-07 (plan T14): OpenVibe.Run on loopback :4920; jobs dispatch through Bot's internal jobs API.",
+      "repo": "/opt/openvibe.run",
+      "units": [
+        "openvibe-run.service"
+      ],
+      "unitSources": {
+        "openvibe-run.service": "deploy/systemd/openvibe-run.service"
+      },
+      "envFile": "/etc/openvibe/run.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 4920,
+      "ready": {
+        "url": "http://127.0.0.1:4920/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "run",
+          "engine": "postgresql",
+          "database": "ov_run"
+        }
+      ],
+      "drill": {
+        "port": 14920,
+        "databases": {
+          "run": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "RUN_POLL_MS": "0",
+          "EVENTS_URL": "",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
+        },
+        "counts": [
+          {
+            "db": "run",
+            "table": "run_jobs"
+          }
+        ],
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "keys": [
+              "ready",
+              "checks"
+            ]
+          },
+          {
+            "path": "/api/health"
+          }
+        ]
+      }
+    },
+    "services": {
+      "_note": "Added 2026-10-07 (plan T13): OpenVibe.Services on loopback :4930.",
+      "repo": "/opt/openvibe.services",
+      "units": [
+        "openvibe-services.service"
+      ],
+      "unitSources": {
+        "openvibe-services.service": "deploy/systemd/openvibe-services.service"
+      },
+      "envFile": "/etc/openvibe/services.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 4930,
+      "ready": {
+        "url": "http://127.0.0.1:4930/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "services",
+          "engine": "postgresql",
+          "database": "ov_services"
+        }
+      ],
+      "drill": {
+        "port": 14930,
+        "databases": {
+          "services": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "EVENTS_URL": "",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
+        },
+        "counts": [],
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "keys": [
+              "ready",
+              "checks"
+            ]
+          },
+          {
+            "path": "/api/health"
+          }
+        ]
+      }
+    },
+    "space": {
+      "_note": "Added 2026-10-07 (plan T10 step 3): OpenVibe.Space, the forum moved off OpenVibe.Community; loopback :4940 behind openvibe.space.",
+      "repo": "/opt/openvibe.space",
+      "units": [
+        "openvibe-space.service"
+      ],
+      "unitSources": {
+        "openvibe-space.service": "deploy/systemd/openvibe-space.service"
+      },
+      "envFile": "/etc/openvibe/space.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 4940,
+      "ready": {
+        "url": "http://127.0.0.1:4940/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "space",
+          "engine": "postgresql",
+          "database": "ov_space"
+        }
+      ],
+      "drill": {
+        "port": 14940,
+        "databases": {
+          "space": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "EVENTS_URL": "",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VALKEY_URL": "redis://127.0.0.1:9/0"
+        },
+        "counts": [
+          {
+            "db": "space",
+            "table": "spaces"
+          },
+          {
+            "db": "space",
+            "table": "threads"
+          },
+          {
+            "db": "space",
+            "table": "posts"
+          }
+        ],
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "keys": [
+              "ready",
+              "checks"
+            ]
+          },
+          {
+            "path": "/api/health"
+          }
+        ]
+      },
+      "nginx": {
+        "vhost": "openvibe.space.conf",
+        "repoVhost": "deploy/nginx/openvibe.space.conf",
+        "variant": "http"
       }
     }
   }
