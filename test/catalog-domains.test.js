@@ -176,7 +176,11 @@ function fakeRegistry() {
         });
 
         await check('without the domain tables (a held migration) the pages still answer and a name can be checked', async () => {
-            await t.ctx.store.db.exec('DROP TABLE catalog_tld_price_changes; DROP TABLE catalog_tld_prices;');
+            // The app role cannot drop tables on PostgreSQL: every statement naming them answers as PostgreSQL does when they are missing.
+            const db = t.ctx.store.db;
+            const prepare = db.prepare;
+            const missing = () => Promise.reject(Object.assign(new Error('relation "catalog_tld_prices" does not exist'), { code: '42P01' }));
+            db.prepare = (sql) => (/catalog_tld_/.test(sql) ? { all: missing, get: missing, run: missing } : prepare.call(db, sql));
             const index = await t.api('GET', '/catalog/domains');
             assert.strictEqual(index.status, 200);
             assert.match(index.text, /Is your name free\?/);
@@ -187,6 +191,7 @@ function fakeRegistry() {
             assert.strictEqual((await t.api('GET', '/sitemap.xml')).status, 200);
             assert.strictEqual((await t.api('GET', '/catalog/providers/porkbun')).status, 200);
             assert.strictEqual((await t.api('GET', '/api/v1/catalog/domains/check?name=taken.com')).json().check.status, 'registered');
+            db.prepare = prepare;
         });
     } finally { await t.close(); }
     done();
