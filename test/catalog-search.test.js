@@ -65,6 +65,28 @@ const { boot, check, done } = require('./helpers/boot');
             assert.strictEqual(lastFor(other.id).event_type, 'host.index_document.deleted');
             assert.strictEqual(lastFor(v.id).event_type, 'host.index_document.deleted');
         });
+
+        await check('each domain ending is a document (id tld-<tld>); one no registrar sells any more becomes a tombstone', async () => {
+            const at = '2026-10-16T12:00:00Z';
+            let n = 0;
+            const item = (tld, fields, removed = null) => ({ id: `itm_${String(++n).padStart(26, '0')}`, source_key: 'porkbun-tld-pricing', category: 'hosting', kind: 'tld_price', identity: tld, title: tld,
+                fields: { special_type: null, ...fields }, revision: 1, removed, provenance: { retrieved_at: at, first_seen_at: at } });
+            await t.ctx.catalog.applyItem(item('dev', { registration: '8.75', renewal: '12.87', transfer: '12.87' }));
+            await t.ctx.catalog.applyItem(item('co.uk', { registration: '5.79', renewal: '7.10', transfer: '7.10' }));
+            const res = await t.ctx.catalogSearch.sweep();
+            assert.strictEqual(res.tld.sent, 2);
+            const docs = (await events()).filter((e) => e.payload && e.payload.type === 'tld').map((e) => { assert.deepStrictEqual(contracts.validate(`${e.event_type}@1`, e.payload).errors || [], []); return e.payload; });
+            const dev = docs.find((d) => d.id === 'tld-dev');
+            assert.strictEqual(dev.canonical_url, `${t.config.baseUrl}/catalog/domains/dev`);
+            assert.strictEqual(dev.title, '.dev domain prices: from $8.75 the first year');
+            assert.match(dev.summary, /^renews from \$12\.87 a year · five years from \$60\.23 · 1 registrar · checked 2026-10-16$/);
+            assert.deepStrictEqual(dev.facets, { kind: 'generic', register_usd: 8.75, renew_usd: 12.87 });
+            assert.ok(docs.some((d) => d.id === 'tld-co.uk' && d.facets.kind === 'second-level'));
+            await t.ctx.catalog.applyItem(item('dev', {}, { at, reason: 'gone' }));
+            await t.ctx.catalogSearch.sweep();
+            const last = (await events()).filter((e) => (e.payload && e.payload.id === 'tld-dev') || (e.subject && e.subject.id === 'tld-dev')).pop();
+            assert.strictEqual(last.event_type, 'host.index_document.deleted');
+        });
     } finally {
         await t.close();
     }
