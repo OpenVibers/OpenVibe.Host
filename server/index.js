@@ -21,6 +21,13 @@ const telemetryRetention = startTelemetryRetention({ db: ctx.store.db, log: cons
 server.requestTimeout = 30_000;
 ctx.outbox.start();
 ctx.worker.start();
+// The two account subscriptions at OpenVibe.Events (ADR-033), created when missing; off without EVENTS_URL,
+// HOST_EVENTS_SECRET or the client secret.
+const { startSubscriptions, TOPICS } = require('openvibe-sdk/account-data');
+const subscriptions = startSubscriptions({
+    topics: TOPICS, eventsUrl: config.events.url, endpoint: `http://127.0.0.1:${config.port}/internal/events`, secret: config.events.secrets[0],
+    networkInternalUrl: config.networkInternalUrl, clientId: config.oauth.clientId, clientSecret: config.oauth.clientSecret,
+});
 
 // Signals belong to the kit: the worker stops taking new work, requests in flight drain for at most
 // 4000 ms (a shorter drain than the 10 min upload timeout cuts an upload exactly as the old 5 s
@@ -29,7 +36,7 @@ ctx.worker.start();
 const { stop } = gracefulStop({
     name: 'Host',
     server,
-    stop: [() => ctx.worker.stop()],
+    stop: [() => ctx.worker.stop(), () => { if (subscriptions) subscriptions.stop(); }],
     close: [
         () => ctx.outbox.stop(),
         () => ctx.stopMetrics(),

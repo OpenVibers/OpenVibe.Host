@@ -34,6 +34,26 @@ OpenVibe's own static hosting moved to OpenVibe.Space ([below](#static-hosting-m
 - **Pages.** `/catalog`, `/catalog/providers`, `/catalog/providers/:slug`, `/catalog/plans/:id`, `/catalog/promos`, `/catalog/offers` and `/catalog/domains` (with each ending's page and the name check). They are server-rendered and work without JavaScript; the styles are `public/css/catalog.css`.
 - **Discussion.** Active public provider and plan pages lazily resolve Community threads with refs `{ service: 'host', type: 'provider', id: provider.id }` and `{ service: 'host', type: 'plan', id: plan.id }` (plus a display label), then render recent comments with a link to the thread on OpenVibe.Community. Host stores only the thread reference. `HOST_COMMUNITY_URL` enables the internal client; `OV_COMMUNITY_URL` sets the public link. With the internal URL unset, no Discussion block appears. Hidden providers and hidden or gone plans have no public page; status changes hide or reopen existing threads after commit. Host's Network service principal needs `community.comment.write` and `community.comment.moderate` for audience `openvibe.community`.
 
+## The console (your servers, every provider)
+
+Plan T20 step 3, the owner's "our own system that combines em somehow". At `/console` a signed-in person connects their
+own hosting accounts (`server/console/`): Linode (Akamai), DigitalOcean, Vultr and Hetzner Cloud, with their own API
+tokens.
+
+- **Tokens.** Each token is checked with its provider when added, then sealed with AES-256-GCM under
+  `HOST_CREDENTIALS_KEY` (32 bytes, hex or base64). It is never shown again; only its last four characters are kept in
+  clear, to tell tokens apart. It is opened only to call that provider's API host. Disconnecting deletes it.
+- **The server list.** Every server across the accounts in one list: status, region, plan, size, IPv4 and monthly
+  price, with totals per currency. Each account is cached for a minute; Refresh asks again.
+- **Actions.** Power on, power off and reboot reach the provider, and each one is logged for the person.
+- **The comparison.** When the catalog has a plan with at least the same vCPU and memory for 15% less, the server
+  links to it.
+- **Account data.** Export and deletion (ADR-033) go through openvibe-sdk/account-data (`server/account-data.js`,
+  signed with `HOST_EVENTS_SECRET`). The export carries the accounts (never a token) and the action log; deletion
+  removes both.
+- **Without the key.** Without `HOST_CREDENTIALS_KEY` the console connects nothing and says so.
+- Migration 0013 creates `host_console_accounts`, `host_console_actions` and `account_data_events`.
+
 ## Static hosting moved
 
 The static hosting engine (Stage B: projects, sites, immutable content-addressed deploys, activation and rollback, previews, Git ingest, per-site configuration, custom domains, takedowns, the resource index and the dashboard) moved to **[OpenVibe.Space](https://openvibe.space)** on 2026-10-12 (plan T20 step 2), where sites are served at `<name>.openvibe.website` under `space.*` capabilities and events (openvibe-contracts 0.149.0). Production Host had 0 projects, 0 sites and 0 deploys, so no data moved.
@@ -76,6 +96,7 @@ Stage A adds a few safety rules of its own:
 
 - Stage A: the host inventory (services, units, env names, ports, probes, drain policy), environment validation, release install and rollback for git-checkout services, readiness and drain orchestration, the release log, certificate inventory, nginx vhost rendering and transactional install, config snapshots, scheduled backups (pgBackRest verification and logical PostgreSQL dumps) with retention and encrypted off-host copies, restore drills.
 - The hosting comparison catalog: providers, plans, price history, promotions and their sources (migrations 0005-0007), offers (0009), registrars' domain prices and their history (0011), and the catalog's Search documents (`host.index_document.*`).
+- The console: a person's connected hosting accounts (sealed tokens) and the actions they took (migration 0013).
 - Later (Stage C): sandbox profiles, budgets, secret references, outbound policy.
 - Host roles, provisioned from code so any machine can take them: the **data role** (`roles/data/`, ADR-035): PostgreSQL 18, PgBouncer, pgBackRest, Valkey and their exporters, plus `add-service.sh` giving each service its database, roles and Valkey user. `ovhost data provision <svc>` runs `add-service.sh` from the installed CLI, redacting every URL and password: [docs/data-provisioning.md](docs/data-provisioning.md).
 
@@ -92,6 +113,7 @@ Stage A adds a few safety rules of its own:
 - OpenVibe.Contracts (`openvibe-contracts`, pinned below): `host.catalog.manage`, the catalog's `host.index_document.*` events, and `host.release.published` from `ovhost announce`.
 - OpenVibe.Network: SSO for catalog staff, the JWKS that verifies user and service tokens, client-credentials tokens for the outbox relay and `ovhost alerts relay`.
 - OpenVibe.Events: the catalog's events through the `openvibe-sdk` transactional outbox, and `ovhost announce`.
+- Linode, DigitalOcean, Vultr and Hetzner Cloud APIs: the console, with each person's own token, only for them.
 - OpenVibe.Sources (optional): price ingestion for the catalog (`HOST_CATALOG_INGEST`); OpenVibe.Search: the catalog's pages as documents; OpenVibe.Community (optional): discussion on provider and plan pages; OpenVibe.Watch: the "Tell me when this price changes" link on plan pages (a link, no call).
 - `openvibe-shared` (the OpenVibe Frame, legal pages, `/release.json`, `/metrics`, `/api/ready`) and `openvibe-publishing` (ingest and the search feed).
 

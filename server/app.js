@@ -81,6 +81,7 @@ async function createApp(opts = {}) {
     catalog.onChange(() => { if (config.worker.enabled) catalogSearch.sweepSoon(); });
     const worker = createWorker({ config, outbox, catalogIngest, catalogSearch, log });
     const ctx = { config, store, outbox, catalog, domainCheck, community, catalogIngest, catalogSearch, auth, viewers, worker, log };
+    ctx.console = require('./console/console').createConsole({ store, config, catalog, fetchImpl: opts.fetchImpl, log });
     const app = express();
     app.disable('x-powered-by');
     app.disable('etag');
@@ -165,6 +166,19 @@ async function createApp(opts = {}) {
         try { const result = await catalogIngest.consume(req.body, req.headers); res.status(result.status).json(result); }
         catch (err) { require('./http/errors').sendError(res, req, err, log); }
     });
+    // ── OpenVibe.Events → Host (loopback only: nginx answers 404 for /internal/) ──
+    // network.account.export_requested and network.account.deleted (ADR-033) through openvibe-sdk/account-data, which reads
+    // the raw body itself (the v2 signature covers it) and refuses a request that came through a proxy.
+    {
+        const { createNetworkSender } = require('openvibe-sdk/account-data');
+        const accountData = require('./account-data').create({ db: store.db, log });
+        const accountSend = opts.accountSend || (config.oauth.clientSecret
+            ? createNetworkSender({ networkInternalUrl: config.networkInternalUrl, clientId: config.oauth.clientId, clientSecret: config.oauth.clientSecret, ...(opts.fetchImpl ? { fetch: opts.fetchImpl } : {}) })
+            : async () => { throw new Error('OV_OAUTH_CLIENT_SECRET is not set: Host cannot answer account events'); });
+        app.locals.accountData = accountData;
+        app.post('/internal/events', accountData.consumer({ secrets: config.events.secrets, send: accountSend, log }));
+    }
+    app.use('/console', rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }), require('./console/pages').createConsolePages(ctx));
     app.use('/api/v1/catalog', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }), createCatalogApi(ctx));
     const movedApi = (req, res) => res.status(410).type('application/problem+json').json({ code: 'host.moved_to_space', title: 'Static hosting moved', detail: MOVED, url: SPACE_URL });
     const movedPage = (req, res) => res.status(410).type('html').send(renderPage({ title: 'Static hosting moved', body: `<h1>Static hosting moved</h1><p>${MOVED} <a href="${SPACE_URL}">Visit OpenVibe.Space</a>.</p>`, config, path: req.originalUrl }));
