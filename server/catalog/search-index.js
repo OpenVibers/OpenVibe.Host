@@ -2,7 +2,8 @@
 
 /**
  * The hosting catalog in OpenVibe.Search (openvibe-publishing/search-feed): one search.index-document@1 per public
- * catalog page, a plan (/catalog/plans/<id>) or a provider (/catalog/providers/<slug>), sent as
+ * catalog page, a plan (/catalog/plans/<id>), a provider (/catalog/providers/<slug>) or a domain ending
+ * (/catalog/domains/<tld>, id tld-<tld>), sent as
  * host.index_document.upserted|deleted through Host's events outbox (contracts 0.145.0). A hidden or gone entry, or a
  * plan of a hidden provider, becomes a tombstone. The document says what the page shows: the plan's specifications,
  * its monthly price and currency and the day it was checked; a plan from OpenVibe.Sources names its source as
@@ -17,6 +18,7 @@
  */
 const { createSearchFeed } = require('openvibe-publishing/search-feed');
 const { money, bytesMb, sizeGb } = require('../render/catalog');
+const { displayTld, tldKind, KIND_LABEL } = require('./domains');
 
 const KINDS = { cloud: 'Cloud', vps: 'VPS', dedicated: 'Dedicated server', storage: 'Storage', domain: 'Domain' };
 const day = (ms) => (Number.isFinite(Number(ms)) ? new Date(Number(ms)).toISOString().slice(0, 10) : null);
@@ -63,6 +65,33 @@ function providerDocument(row) {
     };
 }
 
+// A domain ending's page (/catalog/domains/<tld>): the cheapest prices at any registrar (USD), dated, with the cheapest
+// registrar's price list as provenance. id tld-<tld> (contracts 0.199.0).
+function tldDocument(row) {
+    const shown = displayTld(row.tld);
+    const reg = row.register != null ? money(row.register, 'USD') : null;
+    const ren = row.renew != null ? money(row.renew, 'USD') : null;
+    const five = row.five_year != null ? money(row.five_year, 'USD') : null;
+    const n = Number(row.registrars) || 0;
+    const checked = day(row.checked_at);
+    return {
+        listed: n > 0,
+        title: `${shown} domain prices${reg ? `: from ${reg} the first year` : ''}`,
+        summary: [ren ? `renews from ${ren} a year` : null, five ? `five years from ${five}` : null, `${n} registrar${n === 1 ? '' : 's'}`, checked ? `checked ${checked}` : null].filter(Boolean).join(' · '),
+        body: [`${shown} domain names`, `Kind: ${KIND_LABEL[tldKind(row.tld)] || 'Generic'}`,
+            reg ? `First year from ${reg}` : null, ren ? `Renewal from ${ren} a year` : null, five ? `Five years from ${five}` : null,
+            `Listed by ${n} registrar${n === 1 ? '' : 's'}${checked ? `, checked ${checked}` : ''}`].filter(Boolean).join('\n'),
+        facets: { kind: tldKind(row.tld), ...(row.register != null ? { register_usd: Number(row.register) } : {}), ...(row.renew != null ? { renew_usd: Number(row.renew) } : {}) },
+        authorship: { mode: 'imported' },
+        provenance: row.source_url ? [{ service: 'host', type: 'registrar_price_list', id: String(row.id).slice(0, 128), label: `${row.registrar || 'Registrar'} price list`, url: row.source_url, retrievedAt: iso(row.checked_at) }] : [],
+        publishedAt: iso(row.first_seen_at),
+        updatedAt: iso(row.checked_at),
+    };
+}
+
+// Before migration 0011 applies (a held contract holds it) there is no price table: no ending to send yet.
+const orNone = (p) => p.catch((err) => { if (err && err.code === '42P01') return []; throw err; });
+
 function createCatalogSearch({ config, store, outbox, log = console }) {
     const db = store.db;
     const feed = createSearchFeed({
@@ -86,6 +115,22 @@ function createCatalogSearch({ config, store, outbox, log = console }) {
                     FROM catalog_providers v WHERE v.id > $1 ORDER BY v.id LIMIT $2`, [after, limit]),
                 exists: async (ids) => (await db.many('SELECT id FROM catalog_providers WHERE id = ANY($1)', [ids])).map((r) => r.id),
             },
+            tld: {
+                page: (row) => `/catalog/domains/${encodeURIComponent(row.tld)}`,
+                document: tldDocument,
+                // Every ending any registrar has listed: its active prices aggregated (none active: unlisted, a tombstone).
+                rows: (after, limit) => orNone(db.many(`SELECT 'tld-' || p.tld AS id, p.tld,
+                        MIN(p.register) FILTER (WHERE p.status = 'active' AND v.status = 'active') AS register,
+                        MIN(p.renew) FILTER (WHERE p.status = 'active' AND v.status = 'active') AS renew,
+                        MIN(COALESCE(p.register, p.renew) + 4 * COALESCE(p.renew, p.register)) FILTER (WHERE p.status = 'active' AND v.status = 'active') AS five_year,
+                        COUNT(*) FILTER (WHERE p.status = 'active' AND v.status = 'active') AS registrars,
+                        MAX(p.checked_at) AS checked_at, MIN(p.first_seen_at) AS first_seen_at,
+                        (array_agg(p.source_url ORDER BY p.register NULLS LAST))[1] AS source_url,
+                        (array_agg(v.name ORDER BY p.register NULLS LAST))[1] AS registrar
+                    FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id
+                    GROUP BY p.tld HAVING 'tld-' || p.tld > $1 ORDER BY 1 LIMIT $2`, [after, limit])),
+                exists: async (ids) => (await orNone(db.many("SELECT DISTINCT 'tld-' || tld AS id FROM catalog_tld_prices WHERE 'tld-' || tld = ANY($1)", [ids]))).map((r) => r.id),
+            },
         },
     });
 
@@ -104,7 +149,7 @@ function createCatalogSearch({ config, store, outbox, log = console }) {
         soon = setTimeout(() => { soon = null; sweep().catch((err) => log.warn(`[Search] catalog sweep failed: ${(err && err.message) || err}`)); }, delayMs);
         if (soon.unref) soon.unref();
     }
-    return { feed, sweep, sweepSoon, planDocument, providerDocument };
+    return { feed, sweep, sweepSoon, planDocument, providerDocument, tldDocument };
 }
 
-module.exports = { createCatalogSearch, planDocument, providerDocument };
+module.exports = { createCatalogSearch, planDocument, providerDocument, tldDocument };
