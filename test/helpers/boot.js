@@ -39,7 +39,7 @@ async function boot(opts = {}) {
 
     async function start() {
         const config = configLib.load(env);
-        built = await createApp({ config, store: createStore(testdb.db, { now: clock.now }), now: clock.now, log: quiet, fetchImpl: opts.fetchImpl, rdap: opts.rdap });
+        built = await createApp({ config, store: createStore(testdb.db, { now: clock.now }), now: clock.now, log: quiet, fetchImpl: opts.fetchImpl, rdap: opts.rdap, accountSend: opts.accountSend });
         server = await new Promise((resolve) => { const s = http.createServer(built.app); s.listen(0, '127.0.0.1', () => resolve(s)); });
         t.port = server.address().port;
         t.app = built.app;

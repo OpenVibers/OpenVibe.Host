@@ -46,6 +46,9 @@ function load(env = process.env) {
         events: {
             url: trim(env.EVENTS_URL || ''),
             intervalMs: int(env.EVENTS_RELAY_INTERVAL_MS, 2000),
+            // OpenVibe.Events → Host (ADR-033 account export and deletion, server/account-data.js): the secret(s) that sign
+            // its deliveries to /internal/events (32+ characters); the first one is what the subscriptions are made with.
+            secrets: String(env.HOST_EVENTS_SECRET || '').split(',').map((x) => x.trim()).filter(Boolean),
         },
         community: {
             internalUrl: trim(env.HOST_COMMUNITY_URL || ''),
@@ -56,6 +59,9 @@ function load(env = process.env) {
 
         catalog: { ingest: String(env.HOST_CATALOG_INGEST || 'off').trim().toLowerCase() === 'on', sourcesUrl: trim(env.HOST_CATALOG_SOURCES_URL || ''), webhookSecrets: list(env.HOST_CATALOG_WEBHOOK_SECRETS) },
 
+        // The console (server/console/): a person's own hosting accounts, their tokens sealed with HOST_CREDENTIALS_KEY
+        // (32 bytes, hex or base64). Without it the console shows servers of no account and connects none.
+        console: { credentialsKey: env.HOST_CREDENTIALS_KEY || '', maxAccounts: int(env.HOST_CONSOLE_MAX_ACCOUNTS, 10) },
         worker: {
             enabled: env.HOST_WORKER !== 'off',
             id: env.HOST_WORKER_ID || `host-${process.pid}`,
