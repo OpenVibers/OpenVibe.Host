@@ -115,6 +115,31 @@ runTests([
             assert.match(missing.err, /browser harness not found \(tried .*none\.js\)/);
         } finally { server.close(); fs.rmSync(dir, { recursive: true, force: true }); }
     }),
+    test('Network restarting: the registry is asked again after an error or an empty list, then the run goes on', async () => {
+        let asked = 0;
+        const site = http.createServer((req, res) => {
+            const port = site.address().port;
+            if (req.url === '/api/v1/registry/services') {
+                asked += 1;
+                if (asked === 1) { res.writeHead(503, { 'content-type': 'text/html' }); return res.end('restarting'); }
+                res.writeHead(200, { 'content-type': 'application/json' });
+                return res.end(JSON.stringify({ services: asked === 2 ? [] : [{ id: 'good', publicOrigin: `http://good.localhost:${port}` }] }));
+            }
+            res.writeHead(200, { 'content-type': 'text/html' }); res.end('<!doctype html><title>x</title>');
+        });
+        await new Promise((ok) => site.listen(0, '127.0.0.1', ok));
+        const dir = tmp();
+        try {
+            const env = { OV_NETWORK_ORIGIN: `http://127.0.0.1:${site.address().port}`, STUB_CALLS: path.join(dir, 'calls.jsonl'), BROWSER_CHECK_REGISTRY_WAIT_MS: '20' };
+            const r = await runScript(['--harness', STUB, '--sites', 'good', '--no-axe', '--no-nav'], env);
+            assert.strictEqual(r.code, 0, r.err + r.out);
+            assert.strictEqual(asked, 3, 'an error, an empty list, then the services');
+            assert.match(r.err, /registry: HTTP 503 \(Network restarting\?\)/);
+            const down = await runScript(['--harness', STUB, '--sites', 'good'], { ...env, OV_NETWORK_ORIGIN: 'http://127.0.0.1:9', BROWSER_CHECK_REGISTRY_TRIES: '2' });
+            assert.strictEqual(down.code, 2);
+            assert.match(down.err, /Network's registry gave no services after 2 tries/);
+        } finally { site.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+    }),
     test('--remote: the script and harness go over ssh into a temp dir, run with --json there, the report is written here', async () => {
         const server = await serve();
         const dir = tmp();

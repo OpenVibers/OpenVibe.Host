@@ -86,15 +86,34 @@ async function get(url, accept = '*/*') {
     return { status: r.status, type: r.headers.get('content-type') || '', body: await r.text() };
 }
 
+/**
+ * The services with a public origin, from Network's registry. A run right after Network's own release can meet Network
+ * restarting (an error, or an empty list): it asks again, up to REGISTRY_TRIES times REGISTRY_WAIT_MS apart.
+ */
+const REGISTRY_TRIES = Math.max(1, Number(process.env.BROWSER_CHECK_REGISTRY_TRIES) || 6);
+const REGISTRY_WAIT_MS = Math.max(0, Number(process.env.BROWSER_CHECK_REGISTRY_WAIT_MS) || 10_000);
 async function registry() {
-    const r = await get(`${NETWORK}/api/v1/registry/services`, 'application/json');
-    const body = JSON.parse(r.body);
-    const out = [];
-    for (const s of Array.isArray(body) ? body : body.services || []) {
-        const o = s.publicOrigin || s.public_origin;
-        if (o && /^https?:\/\//.test(o)) out.push({ id: s.id || s.name, origin: new URL(o).origin });
+    let last = null;
+    for (let attempt = 1; attempt <= REGISTRY_TRIES; attempt++) {
+        try {
+            const r = await get(`${NETWORK}/api/v1/registry/services`, 'application/json');
+            if (r.status === 200) {
+                const body = JSON.parse(r.body);
+                const out = [];
+                for (const s of Array.isArray(body) ? body : body.services || []) {
+                    const o = s.publicOrigin || s.public_origin;
+                    if (o && /^https?:\/\//.test(o)) out.push({ id: s.id || s.name, origin: new URL(o).origin });
+                }
+                if (out.length) return out;
+                last = 'an empty list';
+            } else last = `HTTP ${r.status}`;
+        } catch (err) { last = err.message; }
+        if (attempt < REGISTRY_TRIES) {
+            errLog(`registry: ${last} (Network restarting?); asking again in ${Math.round(REGISTRY_WAIT_MS / 1000)} s`);
+            await new Promise((resolve) => setTimeout(resolve, REGISTRY_WAIT_MS));
+        }
     }
-    return out;
+    throw new Error(`Network's registry gave no services after ${REGISTRY_TRIES} tries (${last})`);
 }
 
 // Sites the run did not check, with the reason: listed in the summary and the report, never left out
