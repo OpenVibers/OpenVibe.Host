@@ -321,7 +321,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], now
         id: 'why',
         title: 'Why this comparison is different',
         items: [
-            { icon: 'ov:check', title: 'Sourced, not scraped', text: 'Plans come from providers\' official APIs or from staff entries that name their source page. Nothing is estimated.' },
+            { icon: 'ov:check', title: 'Straight from the source', text: 'Every provider in one table, from their own APIs or from staff entries that name the page they came from. Nothing is estimated.' },
             { icon: 'ov:history', title: 'Dated prices', text: 'Every price shows when it was last checked, and price changes are kept as a history per plan.' },
             { icon: 'ov:search', title: 'Compare what matters', text: 'Sort by monthly price, or by price per vCPU, per GB of RAM or per GB of disk. Unknown stays unknown.' },
             { icon: 'ov:account', title: 'Ranked by you', text: 'No paid placement. Affiliate links are marked, disclosed beside the link, and never change the order.' },
