@@ -5,12 +5,16 @@ const contracts = require('openvibe-contracts');
 const { ApiError, run, privateNoStore, sendError } = require('./errors');
 const { renderPage, esc } = require('../render/layout');
 const render = require('../render/catalog');
+const renderDomains = require('../render/domains');
+const rateLimit = require('express-rate-limit');
 const { csrfToken, checkCsrf, sameOrigin } = require('../auth/forms');
 const { guard } = require('../auth/viewer');
 const cache = require('openvibe-shared/cache-policy');
 
 const disclosure = render.DISCLOSURE;
-function createCatalogApi({ catalog, viewers, actorLimits }) {
+// A name check asks a registry: 30 a minute per address, below every registry's own RDAP limit.
+const checkLimit = () => rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
+function createCatalogApi({ catalog, domainCheck, viewers, actorLimits }) {
     const router = express.Router();
     router.use(viewers.middleware('api'));
     if (actorLimits) router.use(actorLimits);
@@ -23,6 +27,9 @@ function createCatalogApi({ catalog, viewers, actorLimits }) {
     router.get('/providers/:slug', run(async (req) => ({ provider: await catalog.providers(req.params.slug) })));
     router.get('/promos', run(async () => ({ promos: await catalog.promos() })));
     router.get('/offers', run(async (req) => await catalog.offers(req.query)));
+    router.get('/domains', run(async (req) => await catalog.domains.list(req.query)));
+    router.get('/domains/check', checkLimit(), run(async (req) => ({ check: await domainCheck.check(req.query.name) })));
+    router.get('/domains/:tld', run(async (req) => ({ tld: await catalog.domains.tld(req.params.tld) })));
     for (const type of ['providers', 'plans', 'promos']) {
         router.post(`/${type}`, guard('host.catalog.manage'), staff, catalogJsonBody, run(async (req) => ({ [type.slice(0, -1)]: await catalog.save(type, req.body, null, req.viewer.subject) }), 201));
         router.patch(`/${type}/:id`, guard('host.catalog.manage'), staff, catalogJsonBody, run(async (req) => ({ [type.slice(0, -1)]: await catalog.save(type, req.body, req.params.id, req.viewer.subject) })));
@@ -30,7 +37,7 @@ function createCatalogApi({ catalog, viewers, actorLimits }) {
     router.use((err, req, res, next) => { if (res.headersSent) return next(err); sendError(res, req, err); });
     return router;
 }
-function createCatalogPages({ catalog, community, config, viewers, actorLimits, log = console }) {
+function createCatalogPages({ catalog, domainCheck, community, config, viewers, actorLimits, log = console }) {
     const router = express.Router();
     router.use(viewers.middleware('dashboard'));
     if (actorLimits) router.use(actorLimits);
@@ -93,6 +100,29 @@ function createCatalogPages({ catalog, community, config, viewers, actorLimits, 
         const result = await catalog.offers(query);
         page(req, res, 'Hosting offers', render.offers({ result, query }), !Object.keys(req.query).length,
             'Hosting offers from LowEndTalk and LowEndBox, newest first or cheapest a month, each with the price its headline states and the day it was posted.');
+    }));
+    router.get('/domains', view(async (req, res) => {
+        const [result, stats] = await Promise.all([catalog.domains.list(req.query), catalog.domains.stats()]);
+        page(req, res, 'Compare domain prices', renderDomains.index({ result, query: req.query, stats, registrars: stats.registrars }), !Object.keys(req.query).length,
+            'Domain prices compared: what registrars charge for each ending for the first year, a renewal and a transfer, five years added up, and a name check at the registry.',
+            renderDomains.jsonLd.index(config.baseUrl, result.tlds));
+    }));
+    router.get('/domains/check', checkLimit(), view(async (req, res) => {
+        if (typeof req.query.name !== 'string' || !req.query.name.trim()) return res.redirect(303, '/catalog/domains');
+        let c;
+        try { c = await domainCheck.check(req.query.name); } catch (err) {
+            if (err.status !== 422) throw err;
+            cachePage(req, res, false);
+            return res.status(422).type('html').send(renderPage({ title: 'Check a domain name', body: `<h1>That is not a domain name</h1><p>${esc(err.message)}</p><p><a href="/catalog/domains">Check another name</a></p>`, viewer: req.viewer, config, path: req.originalUrl, css: ['css/catalog.css'] }));
+        }
+        page(req, res, `${c.display}: is it taken?`, renderDomains.check(c), false, `Whether ${c.display} is registered, and what it costs at each registrar.`);
+    }));
+    router.get('/domains/:tld', view(async (req, res) => {
+        const t = await catalog.domains.tld(req.params.tld);
+        if (req.params.tld !== t.tld) return res.redirect(301, `/catalog/domains/${encodeURIComponent(t.tld)}`);
+        page(req, res, `${t.display} domain prices`, renderDomains.tld(t, { baseUrl: config.baseUrl, watchUrl: config.watch && config.watch.publicUrl }), true,
+            `${t.display} domains from ${render.money(t.cheapest.register, 'USD') || 'an unknown price'} the first year, renewing from ${render.money(t.cheapest.renew, 'USD') || 'an unknown price'}: every registrar's price, dated and sourced.`,
+            renderDomains.jsonLd.tld(config.baseUrl, t));
     }));
     router.get('/manage', view(async (req, res) => {
         if (req.viewer.kind !== 'user' || !req.viewer.staff) throw new ApiError(403, 'host.catalog.forbidden', 'Staff access required');

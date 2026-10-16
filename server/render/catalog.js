@@ -3,7 +3,7 @@
 /**
  * The hosting catalog's pages (plan T20 step 3: hosting compared). Server-rendered, complete without JavaScript:
  *
- *   front({ plans, providers, promos, stats })   the signed-out front page of openvibe.host
+ *   front({ plans, providers, promos, stats, domains })   the front page of openvibe.host (`domains`: render/domains.js frontSection)
  *   catalog({ result, query, providers })        /catalog: the filterable comparison table
  *   provider(p)                                  /catalog/providers/:slug
  *   plan(p)                                      /catalog/plans/:id
@@ -187,10 +187,10 @@ function provider(p, discussion = null) {
     return `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog', 'Catalog')} / ${link('/catalog/providers', 'Providers')}</nav>
 <header class="hc-head hc-head-row">
 <div><h1>${esc(p.name)}</h1>${p.description ? `<p class="hc-lede">${esc(p.description)}</p>` : ''}
-<p class="hc-facts">${p.plans.length} plan${p.plans.length === 1 ? '' : 's'} listed${cheapest ? ` · from <strong>${esc(money(cheapest.price_monthly, cheapest.currency))}</strong>/mo` : ''}${p.homepage_url ? ` · ${out(p.homepage_url, esc(new URL(p.homepage_url).hostname))}` : ''}</p></div>
+<p class="hc-facts">${p.plans.length || !p.domains ? `${p.plans.length} plan${p.plans.length === 1 ? '' : 's'} listed` : ''}${cheapest ? ` · from <strong>${esc(money(cheapest.price_monthly, cheapest.currency))}</strong>/mo` : ''}${p.domains ? `${p.plans.length ? ' · ' : ''}${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `${p.domains.toLocaleString('en')} domain endings priced`)}` : ''}${p.homepage_url ? ` · ${out(p.homepage_url, esc(new URL(p.homepage_url).hostname))}` : ''}</p></div>
 ${visit(p)}
 </header>
-${p.plans.length ? planTable(p.plans, { caption: `${p.name}'s plans, lowest price first`, showProvider: false }) : '<div class="hc-empty"><p>No plan of this provider is listed right now.</p></div>'}
+${p.plans.length ? planTable(p.plans, { caption: `${p.name}'s plans, lowest price first`, showProvider: false }) : p.domains ? `<p class="hc-more">${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `See ${esc(p.name)}'s domain prices →`, 'button')}</p>` : '<div class="hc-empty"><p>No plan of this provider is listed right now.</p></div>'}
 ${discussionSection(discussion)}
 <h2>Promotions</h2>
 ${promoCards(p.promos, { showProvider: false })}
@@ -301,7 +301,7 @@ const jsonLd = {
 };
 
 /** The front page of the hosting comparison. */
-function front({ plans, providers, promos: live, stats, offers: recent = [], now = Date.now() }) {
+function front({ plans, providers, promos: live, stats, offers: recent = [], domains: domainSection = '', now = Date.now() }) {
     const aside = plans.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
 <p class="hc-aside-h">Lowest monthly prices right now</p>
 <ol>${plans.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
@@ -312,11 +312,12 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], now
         title: 'Hosting, compared honestly.',
         accent: 'Every price dated and sourced.',
         lede: 'Cloud, VPS and dedicated plans from providers\' official APIs, side by side: price per month, per vCPU and per GB, the day each price was checked and a link to where it came from. Sorted by what you ask for, never by who pays.',
-        actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Latest offers', href: '/catalog/offers' }],
+        actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Domain prices', href: '/catalog/domains' }, { label: 'Latest offers', href: '/catalog/offers' }],
         note: stats.plans ? `${stats.plans} plans from ${stats.providers} provider${stats.providers === 1 ? '' : 's'} so far. More providers join as their sources are checked.` : 'The catalog is filling up: providers join as their official sources are checked and enabled.',
         aside: aside ? { html: aside } : undefined,
     }) + `<section class="sc-sec">${planTable(plans.slice(0, 8), { caption: 'Lowest price first' })}
 <p class="hc-more">${link('/catalog', 'Filter and sort every plan →', 'button')}</p></section>`
+    + domainSection
     + showcase.features({
         id: 'why',
         title: 'Why this comparison is different',

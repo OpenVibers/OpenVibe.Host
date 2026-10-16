@@ -3,6 +3,7 @@
 const ingest = require('openvibe-publishing/ingest');
 const { SOURCES } = require('./mapping');
 const offers = require('./offers');
+const domains = require('./domains');
 function createCatalogIngest({ config, store, catalog, fetchImpl, source }) {
     if (!config.catalog.ingest || !config.catalog.sourcesUrl) return { enabled: false, pull: async () => ({ disabled: true }), consume: async () => ({ status: 503, code: 'ingest.disabled' }) };
     const sources = source || ingest.createSourcesClient({ config: { ...config, sources: { internalUrl: config.catalog.sourcesUrl, category: 'hosting' } }, fetchImpl });
@@ -14,7 +15,7 @@ function createCatalogIngest({ config, store, catalog, fetchImpl, source }) {
             let unknown = 0;
             const result = await ingest.pullChanges({ db: store.db, cursor, source: sources, name: 'sources.hosting.after', apply: async (item, t) => {
                 const result = await catalog.applyItem(item, t);
-                if (result === 'hold' && !SOURCES[item.source_key] && !offers.SOURCES[item.source_key]) unknown++;
+                if (result === 'hold' && !SOURCES[item.source_key] && !offers.SOURCES[item.source_key] && !domains.SOURCES[item.source_key]) unknown++;
                 return result;
             } });
             return { ...result, unknown };

@@ -18,8 +18,8 @@ const BUDGETS = {
     jsRawKB: 250,   // 239.1 (openvibe-shared 2.6.0 served scripts; was 212.2 on 2.2.0)
     jsBrotliKB: 60,   // 56.3 (was 49.9)
     cssFiles: 3,   // 3 (host.css, openvibe-shared showcase.css, catalog.css: the front page is the hosting catalog since Host#69)
-    cssRawKB: 28.5,   // 27.2 (2026-10-15 showcase.css 4.1.5; 25 before, 14.8 before catalog.css)
-    cssBrotliKB: 6.5,   // 5.7 (3.6 before catalog.css)
+    cssRawKB: 31,   // 29.9 (2026-10-16 the domain comparison's styles; 27.2 with showcase.css 4.1.5, 14.8 before catalog.css)
+    cssBrotliKB: 7,   // 6.4 (5.7 before the domain styles, 3.6 before catalog.css)
     externalFiles: 1,   // 0
 };
 

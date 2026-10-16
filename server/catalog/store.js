@@ -4,6 +4,8 @@ const { newId } = require('../ids');
 const { ApiError } = require('../http/errors');
 const { mapItem } = require('./mapping');
 const offerFeed = require('./offers');
+const domainFeed = require('./domains');
+const { createDomainStore } = require('./domain-store');
 const invalid = (message) => { throw new ApiError(422, 'host.catalog.invalid', message); };
 const missing = () => { throw new ApiError(404, 'host.catalog.not_found', 'Catalog entry not found'); };
 const fields = {
@@ -55,6 +57,7 @@ function createCatalog({ store, community = null, log = console, indexnow = null
         indexnow.pingSoon([...paths, '/sitemap.xml'].map((path) => `${baseUrl}${path}`));
     };
     const db = store.db;
+    const domains = createDomainStore({ store, announce });
     const listeners = [];
     const changed = (type) => { for (const fn of listeners) { try { fn(type); } catch { /* a listener never breaks a save */ } } };
     let visibilityQueue = Promise.resolve();
@@ -110,6 +113,7 @@ function createCatalog({ store, community = null, log = console, indexnow = null
     });
     async function applyItem(item, t = db) {
         if (item && offerFeed.SOURCES[item.source_key]) return await applyOffer(item, t);
+        if (item && domainFeed.SOURCES[item.source_key]) return await domains.apply(item, t);
         if (item && item.removed) return 'hold';
         const v = mapItem(item);
         if (!v) return 'hold';
@@ -230,7 +234,7 @@ function createCatalog({ store, community = null, log = console, indexnow = null
         if (slug) {
             const p = await db.prepare("SELECT * FROM catalog_providers WHERE slug = ? AND status = 'active'").get(slug);
             if (!p) missing();
-            return { ...providerOut(p), plans: (await db.prepare("SELECT * FROM catalog_plans WHERE provider_id = ? AND status = 'active' ORDER BY price_monthly, id").all(p.id)).map((row) => planOut({ ...row, provider_name: p.name, provider_slug: p.slug, affiliate_url: p.affiliate_url, affiliate_note: p.affiliate_note })), promos: await promos(p.id) };
+            return { ...providerOut(p), plans: (await db.prepare("SELECT * FROM catalog_plans WHERE provider_id = ? AND status = 'active' ORDER BY price_monthly, id").all(p.id)).map((row) => planOut({ ...row, provider_name: p.name, provider_slug: p.slug, affiliate_url: p.affiliate_url, affiliate_note: p.affiliate_note })), promos: await promos(p.id), domains: await domains.countFor(p.id) };
         }
         return (await db.prepare("SELECT * FROM catalog_providers WHERE status = 'active' ORDER BY name, id").all()).map(providerOut);
     }
@@ -251,6 +255,6 @@ function createCatalog({ store, community = null, log = console, indexnow = null
     }
     // Each public plan with the day its price was last checked, and its provider's slug, so the sitemap can date pages.
     async function sitemapPlans() { return await db.prepare("SELECT p.id, p.checked_at, v.slug AS provider_slug FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY p.id").all(); }
-    return { onChange: (fn) => listeners.push(fn), save, get, applyItem, plans, plan, providers, promos, offers, currencies: currenciesInUse, stats, sitemapPlans, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
+    return { onChange: (fn) => listeners.push(fn), save, get, applyItem, domains, plans, plan, providers, promos, offers, currencies: currenciesInUse, stats, sitemapPlans, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
 }
 module.exports = { createCatalog };
