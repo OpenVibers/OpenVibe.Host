@@ -190,3 +190,24 @@
   /* The list of endings stays short on a phone: the first year, the renewal and five years; the rest is on each ending's page. */
   .hd-list td[data-label="Transfer"], .hd-list td[data-label="Registrars"], .hd-list td[data-label="Checked"] { display: none; }
 }
+
+/* Benchmarks (server/render/benchmarks.js). */
+.hb-scores { display: grid; grid-template-columns: minmax(14rem, 20rem) 1fr; gap: 1.25rem; align-items: start; margin-bottom: 1rem; }
+.hb-scores h2 { margin-top: 0; font-size: 1rem; }
+.hb-scores .hc-big { margin: 0; }
+.hb-label { margin: 0 0 .3rem; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--hs-muted); }
+.hb-command { margin: 0 0 1rem; padding: 1rem; border-radius: 12px; border: 1px solid var(--hs-line); background: var(--hs-bg); overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; user-select: all; }
+.hb-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: .75rem; padding: 1rem; border: 1px solid var(--hs-line); border-radius: 12px; background: var(--hs-card); }
+.hb-form label { display: flex; flex-direction: column; gap: .3rem; font-size: 13px; color: var(--hs-muted); }
+.hb-form label span { font-weight: 600; }
+.hb-form input, .hb-form select { width: 100%; box-sizing: border-box; min-height: 2.4rem; color: var(--hs-fg); background: var(--hs-bg); }
+.hb-form button { min-height: 2.4rem; font-weight: 700; background: var(--accent-strong, #2563eb); color: var(--on-accent-strong, #fff); }
+.hb-error { padding: .7rem .9rem; border-radius: 8px; border-left: 3px solid var(--hs-bad); background: var(--hs-card); }
+.hb-summary { margin: 1.5rem 0; padding: 1rem 1.2rem; border: 1px solid var(--hs-line); border-radius: 12px; background: var(--hs-card); }
+.hb-summary h2 { margin: 0 0 .4rem; font-size: 1.05rem; }
+.hb-summary p { margin: .35rem 0; }
+@media (max-width: 44rem) {
+  .hb-scores { grid-template-columns: 1fr; }
+  .hb-table td.hb-gb { grid-column: 2; order: -1; text-align: right; align-self: start; }
+  .hb-table td.hb-gb::before { display: none; }
+}

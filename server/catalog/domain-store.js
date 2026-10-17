@@ -39,7 +39,7 @@ function createDomainStore({ store, announce = () => {} }) {
 
     async function ready() {
         if (isReady) return true;
-        const r = await db.prepare("SELECT to_regclass('public.catalog_tld_prices') AS t").get();
+        const r = await db.prepare("SELECT to_regclass('catalog_tld_prices') AS t").get();
         isReady = Boolean(r && r.t);
         return isReady;
     }
