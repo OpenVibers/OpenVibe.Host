@@ -43,6 +43,8 @@ runTests([
         assert.match(r.out, /proxy_hide_header Set-Cookie;/);
         assert.match(r.out, /location ~ \^\/\(api\/v1\/\)\?sites\/\[A-Za-z0-9_\]\+\/deploys\$ \{[\s\S]*client_max_body_size 110m;/);
         assert.match(r.out, /location = \/metrics \{ return 404; \}/);
+        assert.match(r.out, /location = \/auth\/me \{\n +limit_req zone=ovhost_api burst=30 nodelay;/, 'the session read on every page load is not held to the sign-in limit');
+        assert.match(r.out, /location \/auth\/ \{\n +limit_req zone=ovhost_auth burst=10 nodelay;/);
         assert.match(r.out, /server_name www\.tenant-a\.org;\n\n    ssl_certificate +\/etc\/letsencrypt\/live\/www\.tenant-a\.org\/fullchain\.pem;/, 'HTTPS where a certificate exists');
         assert.ok(!/server_name docs\.tenant-b\.net;\n\n    ssl_certificate/.test(r.out), 'no HTTPS block without a certificate');
         assert.match(r.out, /server_name docs\.tenant-b\.net;[\s\S]*?location \/ \{ return 404; \}/, 'ACME only until the certificate exists');
