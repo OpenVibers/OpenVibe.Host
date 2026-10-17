@@ -114,7 +114,7 @@
 .hc-comment ol { margin: .5rem 0 0 1rem; }
 
 /* The front page's hero aside: the five lowest prices. */
-.hc-aside { padding: 1rem 1.1rem; border-radius: 16px; border: 1px solid var(--hs-line); background: var(--hs-card); min-width: min(100%, 20rem); }
+.hc-aside { box-sizing: border-box; padding: 1rem 1.1rem; border-radius: 16px; border: 1px solid var(--hs-line); background: var(--hs-card); min-width: min(100%, 20rem); }   /* border-box: the minimum includes the padding (it stuck 37 px out of its column on phones) */
 .hc-aside-h { margin: 0 0 .5rem; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--hs-muted); }
 .hc-aside ol { list-style: none; margin: 0; padding: 0; }
 .hc-aside li a { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 1rem; padding: .55rem 0; border-bottom: 1px solid var(--hs-line); color: var(--hs-fg); text-decoration: none; }
