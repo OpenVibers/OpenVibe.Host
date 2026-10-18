@@ -99,7 +99,7 @@ function createCatalogPages({ catalog, domainCheck, community, config, viewers, 
         if (query.sort === 'price' && !query.currency) query.currency = 'USD';
         const result = await catalog.offers(query);
         page(req, res, 'Hosting offers', render.offers({ result, query }), !Object.keys(req.query).length,
-            'Hosting offers from LowEndTalk and LowEndBox, newest first or cheapest a month, each with the price its headline states and the day it was posted.');
+            'Hosting offers from LowEndSpirit\'s Offers board, newest first or cheapest a month, each with the price its headline states and the day it was posted.');
     }));
     router.get('/domains', view(async (req, res) => {
         const [result, stats] = await Promise.all([catalog.domains.list(req.query), catalog.domains.stats()]);
