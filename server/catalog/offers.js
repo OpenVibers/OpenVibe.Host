@@ -1,9 +1,10 @@
 'use strict';
 
 /**
- * Hosting offers (plan T20 step 3, "a modern LowEndBox with honest data"): what providers post on LowEndTalk's Offers
- * board and LowEndBox's offer posts, from their public RSS feeds through OpenVibe.Sources (category hosting, plain
- * `rss` items: title, link, date, author, a short plain-text summary).
+ * Hosting offers (plan T20 step 3, "a modern LowEndBox with honest data"): what providers post on LowEndSpirit's Offers
+ * board, from its public RSS feed through OpenVibe.Sources (category hosting, plain `rss` items: title, link, date,
+ * author, a short plain-text summary). LowEndTalk's and LowEndBox's feeds answer 403 to the production host's network
+ * (2026-10-18), so their sources are off; their entries stay here for any item already stored and if they answer again.
  *
  * Host keeps the headline, the poster, the date and the link, and reads one price out of the headline (or, when the
  * headline states none, out of the post's opening): the cheapest "<amount> per <month|year>" it states, kept as the
@@ -12,6 +13,7 @@
  * price shows "Price in the post".
  */
 const SOURCES = Object.freeze({
+    'lowendspirit-offers': { label: 'LowEndSpirit', board: 'Offers', home: 'https://lowendspirit.com/categories/offers' },
     'lowendtalk-offers': { label: 'LowEndTalk', board: 'Offers', home: 'https://lowendtalk.com/categories/offers' },
     'lowendbox-posts': { label: 'LowEndBox', board: null, home: 'https://lowendbox.com/' },
 });

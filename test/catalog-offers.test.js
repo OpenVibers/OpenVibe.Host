@@ -39,6 +39,9 @@ const item = (key, title, { published = '2026-09-20T10:00:00Z', summary = null, 
         assert.ok(mapOffer(item('lowendbox-posts', 'VPSPioneer: France from $2.49/Month!', { categories: ['Editorial & News'] }), NOW));
         assert.ok(mapOffer(item('lowendbox-posts', 'Velohost returns', { categories: ['Low End Virtual'] }), NOW));
         assert.strictEqual(mapOffer(item('lowendtalk-offers', 'Old $1/mo', { published: '2026-01-01T00:00:00Z' }), NOW), null);
+        // LowEndSpirit's Offers board, the one the production host can read (LowEndTalk and LowEndBox answer it 403).
+        const les = mapOffer(item('lowendspirit-offers', '1.99€/2TB Per Month Storage Box! The Eternal Väinämöinen', { identity: 'https://lowendspirit.com/discussion/10922' }), NOW);
+        assert.ok(les && les.source_key === 'lowendspirit-offers', 'a LowEndSpirit offer maps');
         assert.strictEqual(mapOffer({ source_key: 'vultr-plans' }, NOW), null, 'a plan source is not an offer source');
         assert.throws(() => mapOffer(item('lowendtalk-offers', ''), NOW), /title/);
     });
