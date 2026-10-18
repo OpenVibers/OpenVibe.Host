@@ -303,6 +303,31 @@ runTests([
         assert.ok(host.calls.some((c) => c.cmd === 'git' && c.args.includes('remove')), 'pruned through git worktree remove');
     }),
 
+    test('live: the release the running process started from survives pruning while static deploys move current on', async () => {
+        const host = await liveHost();
+        host.push({ 'server/index.js': 'v2();' }, 'server');
+        assert.strictEqual((await host.cli('deploy', 'live')).code, 0);
+        const running = host.current();
+        // Four static-only deploys: `current` moves four times, the process keeps running from `running`.
+        for (let i = 1; i <= 4; i++) {
+            host.exec.sleep(1000);
+            host.push({ 'public/app.js': `app${i}();` }, `static ${i}`);
+            const r = await host.cli('deploy', 'live');
+            assert.strictEqual(r.code, 0, r.out);
+            assert.match(r.out, /without a restart/);
+        }
+        assert.deepStrictEqual(host.restarts(), ['openvibe-live.service'], 'one restart, for the server change');
+        const ids = await host.releaseIds();
+        assert.ok(ids.includes(running), `the running process's release is kept (${ids.join(' ')})`);
+        assert.ok(ids.includes(host.current()));
+        assert.strictEqual(ids.length, 4, 'keep (3) plus the one the process runs from');
+        // Once the process restarts onto `current`, its old release is pruned like any other.
+        host.exec.sleep(1000);
+        host.push({ 'server/index.js': 'v3();' }, 'server again');
+        assert.strictEqual((await host.cli('deploy', 'live')).code, 0);
+        assert.ok(!(await host.releaseIds()).includes(running));
+    }),
+
     test('live: the entry may name the current link as its repo; the release root is its parent', async () => {
         const { normalise } = require('../lib/inventory');
         const inv = normalise({ services: { live: { repo: '/opt/openvibe.live/current', owner: 'root', strategy: 'release-layout', units: ['openvibe-live.service'] } } });
