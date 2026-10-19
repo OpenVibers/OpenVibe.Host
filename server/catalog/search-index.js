@@ -89,9 +89,6 @@ function tldDocument(row) {
     };
 }
 
-// Before migration 0011 applies (a held contract holds it) there is no price table: no ending to send yet.
-const orNone = (p) => p.catch((err) => { if (err && err.code === '42P01') return []; throw err; });
-
 function createCatalogSearch({ config, store, outbox, log = console }) {
     const db = store.db;
     const feed = createSearchFeed({
@@ -119,7 +116,7 @@ function createCatalogSearch({ config, store, outbox, log = console }) {
                 page: (row) => `/catalog/domains/${encodeURIComponent(row.tld)}`,
                 document: tldDocument,
                 // Every ending any registrar has listed: its active prices aggregated (none active: unlisted, a tombstone).
-                rows: (after, limit) => orNone(db.many(`SELECT 'tld-' || p.tld AS id, p.tld,
+                rows: (after, limit) => db.many(`SELECT 'tld-' || p.tld AS id, p.tld,
                         MIN(p.register) FILTER (WHERE p.status = 'active' AND v.status = 'active') AS register,
                         MIN(p.renew) FILTER (WHERE p.status = 'active' AND v.status = 'active') AS renew,
                         MIN(COALESCE(p.register, p.renew) + 4 * COALESCE(p.renew, p.register)) FILTER (WHERE p.status = 'active' AND v.status = 'active') AS five_year,
@@ -128,8 +125,8 @@ function createCatalogSearch({ config, store, outbox, log = console }) {
                         (array_agg(p.source_url ORDER BY p.register NULLS LAST))[1] AS source_url,
                         (array_agg(v.name ORDER BY p.register NULLS LAST))[1] AS registrar
                     FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id
-                    GROUP BY p.tld HAVING 'tld-' || p.tld > $1 ORDER BY 1 LIMIT $2`, [after, limit])),
-                exists: async (ids) => (await orNone(db.many("SELECT DISTINCT 'tld-' || tld AS id FROM catalog_tld_prices WHERE 'tld-' || tld = ANY($1)", [ids]))).map((r) => r.id),
+                    GROUP BY p.tld HAVING 'tld-' || p.tld > $1 ORDER BY 1 LIMIT $2`, [after, limit]),
+                exists: async (ids) => (await db.many("SELECT DISTINCT 'tld-' || tld AS id FROM catalog_tld_prices WHERE 'tld-' || tld = ANY($1)", [ids])).map((r) => r.id),
             },
         },
     });

@@ -2,9 +2,6 @@
 /**
  * Domain prices in the catalog (migrations/0011_catalog_domains.sql, server/catalog/domains.js): one row per registrar
  * and TLD, applied from Sources items; the TLD table, a TLD's page and the cheapest price for a list of endings.
- *
- * Until 0011 has applied (a held contract migration holds every later one) the tables do not exist: reads answer
- * empty and `ready()` is false, so pages leave the price sections out rather than fail.
  */
 const { newId } = require('../ids');
 const { ApiError } = require('../http/errors');
@@ -28,24 +25,12 @@ const KINDS = {
     'second-level': "position('.' in p.tld) > 0",
     internationalized: "position('.' in p.tld) = 0 AND p.tld LIKE 'xn--%'",
 };
-const missingTable = (err) => err && err.code === '42P01';
 const n = (v) => (v == null ? null : Number(v));
 const iso = (ms) => (ms == null ? null : new Date(Number(ms)).toISOString());
 
 function createDomainStore({ store, announce = () => {} }) {
     const db = store.db;
     let known = { at: 0, set: new Set() };
-    let isReady = null;
-
-    async function ready() {
-        if (isReady) return true;
-        const r = await db.prepare("SELECT to_regclass('catalog_tld_prices') AS t").get();
-        isReady = Boolean(r && r.t);
-        return isReady;
-    }
-    async function safe(fn, fallback) {
-        try { return await fn(); } catch (err) { if (missingTable(err)) { isReady = false; return fallback; } throw err; }
-    }
 
     async function apply(item, t = db) {
         const now = store.now();
@@ -115,24 +100,20 @@ function createDomainStore({ store, announce = () => {} }) {
             if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(String(query.registrar))) invalid('Invalid registrar');
             where += ' AND v.slug = ?'; args.push(query.registrar);
         }
-        return await safe(async () => {
-            const rows = await db.prepare(`SELECT p.tld, 'USD' AS currency, MIN(p.register) AS register, MIN(p.renew) AS renew, MIN(p.transfer) AS transfer, MIN(${FIVE_YEAR}) AS five_year, COUNT(*) AS registrars, MAX(p.checked_at) AS checked_at
-                FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${where} GROUP BY p.tld ORDER BY ${SORTS[sort]} LIMIT ${PAGE + 1} OFFSET ${offset}`).all(...args);
-            return { tlds: rows.slice(0, PAGE).map(tldRow), next_cursor: rows.length > PAGE ? String(offset + PAGE) : null };
-        }, { tlds: [], next_cursor: null });
+        const rows = await db.prepare(`SELECT p.tld, 'USD' AS currency, MIN(p.register) AS register, MIN(p.renew) AS renew, MIN(p.transfer) AS transfer, MIN(${FIVE_YEAR}) AS five_year, COUNT(*) AS registrars, MAX(p.checked_at) AS checked_at
+            FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${where} GROUP BY p.tld ORDER BY ${SORTS[sort]} LIMIT ${PAGE + 1} OFFSET ${offset}`).all(...args);
+        return { tlds: rows.slice(0, PAGE).map(tldRow), next_cursor: rows.length > PAGE ? String(offset + PAGE) : null };
     }
 
     /** One TLD: every registrar's price (cheapest first year first) and the latest price changes. */
     async function tld(input) {
         const t = domains.normalizeTld(String(input || ''));
         if (!t) throw new ApiError(404, 'host.catalog.not_found', 'Not a domain ending');
-        const data = await safe(async () => {
-            const rows = await db.prepare(`SELECT p.*, ${FIVE_YEAR} AS five_year, v.slug AS provider_slug, v.name AS provider_name, v.homepage_url, v.affiliate_url, v.affiliate_note
-                FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} AND p.tld = ? ORDER BY p.register ASC NULLS LAST, v.name, p.id`).all(t);
-            const history = rows.length ? await db.prepare(`SELECT h.*, v.name AS provider_name FROM catalog_tld_price_changes h JOIN catalog_tld_prices p ON p.id = h.price_id JOIN catalog_providers v ON v.id = p.provider_id
-                WHERE p.tld = ? AND ${ACTIVE} ORDER BY h.observed_at DESC LIMIT 20`).all(t) : [];
-            return { rows, history };
-        }, { rows: [], history: [] });
+        const rows = await db.prepare(`SELECT p.*, ${FIVE_YEAR} AS five_year, v.slug AS provider_slug, v.name AS provider_name, v.homepage_url, v.affiliate_url, v.affiliate_note
+            FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} AND p.tld = ? ORDER BY p.register ASC NULLS LAST, v.name, p.id`).all(t);
+        const history = rows.length ? await db.prepare(`SELECT h.*, v.name AS provider_name FROM catalog_tld_price_changes h JOIN catalog_tld_prices p ON p.id = h.price_id JOIN catalog_providers v ON v.id = p.provider_id
+            WHERE p.tld = ? AND ${ACTIVE} ORDER BY h.observed_at DESC LIMIT 20`).all(t) : [];
+        const data = { rows, history };
         if (!data.rows.length) throw new ApiError(404, 'host.catalog.not_found', 'No registrar price is listed for this ending');
         const prices = data.rows.map((r) => ({
             registrar: r.provider_name, registrar_slug: r.provider_slug, homepage_url: r.homepage_url, affiliate_url: r.affiliate_url, affiliate_note: r.affiliate_note,
@@ -154,8 +135,8 @@ function createDomainStore({ store, announce = () => {} }) {
     async function cheapest(tlds) {
         const list = [...new Set(tlds.map((x) => domains.normalizeTld(x)).filter(Boolean))].slice(0, 30);
         if (!list.length) return [];
-        const rows = await safe(() => db.prepare(`SELECT p.tld, 'USD' AS currency, MIN(p.register) AS register, MIN(p.renew) AS renew, MIN(p.transfer) AS transfer, MIN(${FIVE_YEAR}) AS five_year, COUNT(*) AS registrars, MAX(p.checked_at) AS checked_at
-            FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} AND p.currency = 'USD' AND p.tld IN (${list.map(() => '?').join(', ')}) GROUP BY p.tld`).all(...list), []);
+        const rows = await db.prepare(`SELECT p.tld, 'USD' AS currency, MIN(p.register) AS register, MIN(p.renew) AS renew, MIN(p.transfer) AS transfer, MIN(${FIVE_YEAR}) AS five_year, COUNT(*) AS registrars, MAX(p.checked_at) AS checked_at
+            FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} AND p.currency = 'USD' AND p.tld IN (${list.map(() => '?').join(', ')}) GROUP BY p.tld`).all(...list);
         const by = new Map(rows.map((r) => [r.tld, tldRow(r)]));
         return list.filter((t) => by.has(t)).map((t) => by.get(t));
     }
@@ -163,29 +144,27 @@ function createDomainStore({ store, announce = () => {} }) {
     /** Every TLD with a listed price (for reading what a person typed), refreshed every five minutes. */
     async function knownTlds() {
         if (store.now() - known.at < 5 * 60_000) return known.set;
-        const rows = await safe(() => db.prepare(`SELECT DISTINCT p.tld FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE}`).all(), []);
+        const rows = await db.prepare(`SELECT DISTINCT p.tld FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE}`).all();
         known = { at: store.now(), set: new Set(rows.map((r) => r.tld)) };
         return known.set;
     }
 
     async function stats() {
-        return await safe(async () => {
-            const r = await db.prepare(`SELECT COUNT(DISTINCT p.tld) AS tlds, MAX(p.checked_at) AS last FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE}`).get();
-            const names = await db.prepare(`SELECT DISTINCT v.name FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} ORDER BY v.name`).all();
-            return { tlds: Number(r.tlds) || 0, registrars: names.map((x) => x.name), lastChecked: r.last == null ? null : Number(r.last) };
-        }, { tlds: 0, registrars: [], lastChecked: null });
+        const r = await db.prepare(`SELECT COUNT(DISTINCT p.tld) AS tlds, MAX(p.checked_at) AS last FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE}`).get();
+        const names = await db.prepare(`SELECT DISTINCT v.name FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} ORDER BY v.name`).all();
+        return { tlds: Number(r.tlds) || 0, registrars: names.map((x) => x.name), lastChecked: r.last == null ? null : Number(r.last) };
     }
 
     async function sitemap() {
-        return await safe(() => db.prepare(`SELECT p.tld, MAX(p.checked_at) AS checked_at FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} GROUP BY p.tld ORDER BY p.tld`).all(), []);
+        return db.prepare(`SELECT p.tld, MAX(p.checked_at) AS checked_at FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} GROUP BY p.tld ORDER BY p.tld`).all();
     }
 
     /** How many TLDs each registrar lists (a provider page's domain line). */
     async function countFor(providerId) {
-        return await safe(async () => Number((await db.prepare("SELECT COUNT(*) AS n FROM catalog_tld_prices WHERE provider_id = ? AND status = 'active'").get(providerId)).n) || 0, 0);
+        return Number((await db.prepare("SELECT COUNT(*) AS n FROM catalog_tld_prices WHERE provider_id = ? AND status = 'active'").get(providerId)).n) || 0;
     }
 
-    return { apply, list, tld, cheapest, knownTlds, stats, sitemap, countFor, ready, SORTS: Object.keys(SORTS), KINDS: Object.keys(KINDS) };
+    return { apply, list, tld, cheapest, knownTlds, stats, sitemap, countFor, SORTS: Object.keys(SORTS), KINDS: Object.keys(KINDS) };
 }
 
 module.exports = { createDomainStore };
