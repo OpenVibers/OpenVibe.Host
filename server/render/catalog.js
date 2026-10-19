@@ -182,7 +182,7 @@ ${d.comments.length ? `<ol class="hc-comments">${d.comments.map(one).join('')}</
 <p>${d.thread.visibility === 'locked' ? 'This thread is locked.' : out(threadUrl, 'Join the discussion on OpenVibe.Community', { cls: 'button hc-button-quiet' })}</p></section>`;
 }
 
-function provider(p, discussion = null) {
+function provider(p, discussion = null, extra = '') {
     const cheapest = p.plans.length ? p.plans.reduce((m, x) => (Number(x.price_monthly) < Number(m.price_monthly) ? x : m), p.plans[0]) : null;
     return `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog', 'Catalog')} / ${link('/catalog/providers', 'Providers')}</nav>
 <header class="hc-head hc-head-row">
@@ -191,13 +191,14 @@ function provider(p, discussion = null) {
 ${visit(p)}
 </header>
 ${p.plans.length ? planTable(p.plans, { caption: `${p.name}'s plans, lowest price first`, showProvider: false }) : p.domains ? `<p class="hc-more">${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `See ${esc(p.name)}'s domain prices →`, 'button')}</p>` : '<div class="hc-empty"><p>No plan of this provider is listed right now.</p></div>'}
+${extra}
 ${discussionSection(discussion)}
 <h2>Promotions</h2>
 ${promoCards(p.promos, { showProvider: false })}
 ${p.affiliate_url || p.promos.some((x) => x.affiliate) ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}`;
 }
 
-function plan(p, discussion = null, { baseUrl = '', watchUrl = '' } = {}) {
+function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '' } = {}) {
     const spec = [
         ['vCPU', p.vcpu == null ? null : num(p.vcpu)], ['RAM', bytesMb(p.ram_mb)],
         ['Disk', p.disk_gb == null ? null : `${sizeGb(p.disk_gb)}${p.disk_type ? ` ${p.disk_type.toUpperCase()}` : ''}`],
@@ -224,6 +225,7 @@ ${visit(p)}
 <h2>Price history</h2>
 ${history}
 ${baseUrl && watchUrl ? `<p class="hc-watch">${out(`${watchUrl}/watches/new?${new URLSearchParams({ template: 'json', url: `${baseUrl}/api/v1/catalog/plans/${p.id}`, value_path: 'plan.price_monthly', op: 'changed', name: `${p.provider_name} ${p.name} price` })}`, 'Tell me when this price changes', { cls: 'button hc-button-quiet' })} <span class="hc-dim">with OpenVibe.Watch, free</span></p>` : ''}
+${extra}
 ${discussionSection(discussion)}
 ${p.affiliate_url ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}
 <p class="hc-links">${link('/catalog', '← Compare plans')}</p>`;

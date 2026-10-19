@@ -27,6 +27,7 @@ const { createCatalogIngest } = require('./catalog/ingest');
 const { createCatalogSearch } = require('./catalog/search-index');
 const { createRdap } = require('./catalog/rdap');
 const { createDomainCheck } = require('./catalog/domain-check');
+const { createBenchmarks } = require('./catalog/benchmarks');
 const domainsRender = require('./render/domains');
 const { createCatalogApi, createCatalogPages } = require('./http/catalog');
 const { renderPage, assetVersion, setRelease } = require('./render/layout');
@@ -77,10 +78,11 @@ async function createApp(opts = {}) {
     const catalog = createCatalog({ store, community, log, indexnow, baseUrl: config.baseUrl });
     const catalogIngest = createCatalogIngest({ config, store, catalog, fetchImpl: opts.fetchImpl });
     const domainCheck = createDomainCheck({ catalog, rdap: opts.rdap || createRdap({ log }) });
+    const benchmarks = createBenchmarks({ store, baseUrl: config.baseUrl });
     const catalogSearch = createCatalogSearch({ config, store, outbox, log });
     catalog.onChange(() => { if (config.worker.enabled) catalogSearch.sweepSoon(); });
     const worker = createWorker({ config, outbox, catalogIngest, catalogSearch, log });
-    const ctx = { config, store, outbox, catalog, domainCheck, community, catalogIngest, catalogSearch, auth, viewers, worker, log };
+    const ctx = { config, store, outbox, catalog, domainCheck, benchmarks, community, catalogIngest, catalogSearch, auth, viewers, worker, log };
     const app = express();
     app.disable('x-powered-by');
     app.disable('etag');
@@ -122,13 +124,13 @@ async function createApp(opts = {}) {
     app.get('/api/ready', createHostReadiness({ store, outbox, jwksUrl: `${config.networkInternalUrl}/api/.well-known/jwks`, release: release.release, valkey }).handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));
     const legalPaths = require('openvibe-shared/legal').PATHS;
-    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Allow: /catalog$', 'Allow: /catalog/*', 'Disallow: /catalog/domains/check', 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
+    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Allow: /catalog$', 'Allow: /catalog/*', 'Disallow: /catalog/domains/check', 'Disallow: /catalog/benchmarks/', 'Allow: /catalog/benchmarks$', 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
     app.get('/sitemap.xml', async (_req, res, next) => {
         try {
             const [providers, plans, tlds] = await Promise.all([catalog.providers(), catalog.sitemapPlans(), catalog.domains.sitemap()]);
             const day = (ms) => Number.isFinite(Number(ms)) && ms != null ? new Date(Number(ms)).toISOString().slice(0, 10) : undefined;
             const latest = (rows) => day(rows.reduce((m, p) => Math.max(m, Number(p.checked_at) || 0), 0) || undefined);
-            const urls = [{ path: '/', lastmod: latest(plans) }, ...legalPaths.map((p) => ({ path: p })), { path: '/catalog', lastmod: latest(plans) }, { path: '/catalog/promos' }, { path: '/catalog/providers', lastmod: latest(plans) },
+            const urls = [{ path: '/', lastmod: latest(plans) }, ...legalPaths.map((p) => ({ path: p })), { path: '/catalog', lastmod: latest(plans) }, { path: '/catalog/promos' }, { path: '/catalog/benchmarks' }, { path: '/catalog/providers', lastmod: latest(plans) },
                 ...providers.map((p) => ({ path: `/catalog/providers/${p.slug}`, lastmod: latest(plans.filter((v) => v.provider_slug === p.slug)) })),
                 ...plans.map((p) => ({ path: `/catalog/plans/${p.id}`, lastmod: day(p.checked_at) })),
                 ...(tlds.length ? [{ path: '/catalog/domains', lastmod: latest(tlds) }, ...tlds.map((t) => ({ path: `/catalog/domains/${encodeURIComponent(t.tld)}`, lastmod: day(t.checked_at) }))] : [{ path: '/catalog/domains' }])];
@@ -141,6 +143,7 @@ async function createApp(opts = {}) {
         { title: 'Compare hosting plans', url: '/catalog', text: 'Filter and compare hosting plans by price and resources.' },
         { title: 'Hosting providers', url: '/catalog/providers', text: 'Every provider in the catalog.' },
         { title: 'Hosting promotions', url: '/catalog/promos', text: 'Current provider promotions.' },
+        { title: 'Server benchmarks', url: '/catalog/benchmarks', text: 'CPU, disk and network benchmarks people ran on their own servers with YABS, by provider and plan.' },
         { title: 'Compare domain prices', url: '/catalog/domains', text: 'What registrars charge for each domain ending: first year, renewal, transfer and five years, and a name check at the registry.' },
         { title: 'What shipped on OpenVibe.Host', url: '/updates', text: 'The public update log.' },
         ...legalPaths.map((p) => ({ title: p.slice(1), url: p, text: `The ${p.slice(1)} of OpenVibe.Host.` })),
