@@ -4,8 +4,7 @@
  * price list from Sources becomes one price per TLD (Handshake names left out, "2,060.25" read, a change kept as history,
  * a TLD no longer sold gone); the TLD table sorts popular first, by price or over five years; a TLD's page lists every
  * registrar; a name check reads what was typed, asks the registry over RDAP (cached, refused redirects, unknown when the
- * ending has no RDAP) and prices the same name at the popular endings; without the tables (a held migration) the pages
- * still answer.
+ * ending has no RDAP) and prices the same name at the popular endings; readiness waits for the tables.
  */
 const assert = require('assert');
 const { boot, check, done } = require('./helpers/boot');
@@ -175,23 +174,9 @@ function fakeRegistry() {
             assert.deepStrictEqual([empty.status, empty.headers.location], [303, '/catalog/domains']);
         });
 
-        await check('without the domain tables (a held migration) the pages still answer and a name can be checked', async () => {
-            // The app role cannot drop tables on PostgreSQL: every statement naming them answers as PostgreSQL does when they are missing.
-            const db = t.ctx.store.db;
-            const prepare = db.prepare;
-            const missing = () => Promise.reject(Object.assign(new Error('relation "catalog_tld_prices" does not exist'), { code: '42P01' }));
-            db.prepare = (sql) => (/catalog_tld_/.test(sql) ? { all: missing, get: missing, run: missing } : prepare.call(db, sql));
-            const index = await t.api('GET', '/catalog/domains');
-            assert.strictEqual(index.status, 200);
-            assert.match(index.text, /Is your name free\?/);
-            assert.doesNotMatch(index.text, /<table/, 'no empty price table');
-            assert.deepStrictEqual((await t.api('GET', '/api/v1/catalog/domains')).json(), { tlds: [], next_cursor: null });
-            assert.strictEqual((await t.api('GET', '/catalog/domains/dev')).status, 404);
-            assert.strictEqual((await t.api('GET', '/')).status, 200);
-            assert.strictEqual((await t.api('GET', '/sitemap.xml')).status, 200);
-            assert.strictEqual((await t.api('GET', '/catalog/providers/porkbun')).status, 200);
-            assert.strictEqual((await t.api('GET', '/api/v1/catalog/domains/check?name=taken.com')).json().check.status, 'registered');
-            db.prepare = prepare;
+        await check('readiness waits for the domain tables (a release never answers without them)', async () => {
+            const { CHARTER_TABLES } = require('../server/db');
+            for (const table of ['catalog_tld_prices', 'catalog_tld_price_changes']) assert.ok(CHARTER_TABLES.includes(table), table);
         });
     } finally { await t.close(); }
     done();

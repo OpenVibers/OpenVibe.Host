@@ -5,11 +5,10 @@
  * JSON result to that link; Host keeps the measurements and shows them per provider and plan.
  *
  *   parseYabs(body)                       YABS's JSON → the stored fields, or throws ApiError 400
- *   createBenchmarks({ store, baseUrl })  → { createLink, submit, list, get, summary, remove, ready }
+ *   createBenchmarks({ store, baseUrl })  → { createLink, submit, list, get, summary, remove }
  *
  * A link works once, for 24 hours; a person gets 10 a day. The server's address is never stored: YABS's own lookup gives
- * the city and network, which are kept. Until 0012 has applied (a held contract migration holds it), reads answer empty
- * and `ready()` is false.
+ * the city and network, which are kept.
  */
 const crypto = require('crypto');
 const { newId } = require('../ids');
@@ -22,7 +21,6 @@ const YABS_COMMAND = (url) => `curl -sL https://yabs.sh | bash -s -- -s "${url}"
 
 const bad = (message) => { throw new ApiError(400, 'host.benchmark.invalid', message); };
 const invalid = (message) => { throw new ApiError(422, 'host.catalog.invalid', message); };
-const missingTable = (err) => err && err.code === '42P01';
 const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const text = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, max) : null);
 const numberIn = (v, max) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? v : null);
@@ -77,21 +75,10 @@ const SORTS = {
 
 function createBenchmarks({ store, baseUrl }) {
     const db = store.db;
-    let isReady = null;
-    async function ready() {
-        if (isReady) return true;
-        const r = await db.prepare("SELECT to_regclass('catalog_benchmarks') AS t").get();
-        isReady = Boolean(r && r.t);
-        return isReady;
-    }
-    async function safe(fn, fallback) {
-        try { return await fn(); } catch (err) { if (missingTable(err)) { isReady = false; return fallback; } throw err; }
-    }
 
     /** A one-time submit link for `person`, naming a catalog provider (by slug) or another provider by name, and a plan. */
     async function createLink(person, input = {}) {
         if (!person) throw new ApiError(401, 'host.benchmark.sign_in', 'Sign in to submit a benchmark');
-        if (!(await ready())) throw new ApiError(503, 'host.benchmark.unavailable', 'Benchmarks open after the next maintenance');
         const now = store.now();
         const recent = await db.prepare('SELECT COUNT(*) AS n FROM catalog_bench_links WHERE person = ? AND created_at > ?').get(person, now - 86400_000);
         if (Number(recent.n) >= LINKS_PER_DAY) throw new ApiError(429, 'host.benchmark.too_many', `At most ${LINKS_PER_DAY} benchmark links a day`);
@@ -128,7 +115,7 @@ function createBenchmarks({ store, baseUrl }) {
     /** Before reading a posted body: the link exists, is unused and unexpired. */
     async function checkLink(token) {
         if (!tokenOk(token)) usable(null);
-        const link = await safe(() => db.prepare('SELECT used_at, expires_at FROM catalog_bench_links WHERE token_hash = ?').get(sha(token)), null);
+        const link = await db.prepare('SELECT used_at, expires_at FROM catalog_bench_links WHERE token_hash = ?').get(sha(token));
         usable(link, store.now());
     }
 
@@ -170,14 +157,12 @@ function createBenchmarks({ store, baseUrl }) {
         const args = [];
         if (query.provider) { where += ' AND (v.slug = ? OR lower(b.provider_name) = lower(?))'; args.push(String(query.provider), String(query.provider)); }
         if (query.plan) { where += ' AND b.plan_id = ?'; args.push(String(query.plan)); }
-        return await safe(async () => {
-            const rows = await db.prepare(`${SELECT} WHERE ${where} ORDER BY ${SORTS[sort]} LIMIT ${PAGE + 1} OFFSET ${offset}`).all(...args);
-            return { benchmarks: rows.slice(0, PAGE).map(out), next_cursor: rows.length > PAGE ? String(offset + PAGE) : null };
-        }, { benchmarks: [], next_cursor: null });
+        const rows = await db.prepare(`${SELECT} WHERE ${where} ORDER BY ${SORTS[sort]} LIMIT ${PAGE + 1} OFFSET ${offset}`).all(...args);
+        return { benchmarks: rows.slice(0, PAGE).map(out), next_cursor: rows.length > PAGE ? String(offset + PAGE) : null };
     }
 
     async function get(id, viewer = null) {
-        const row = await safe(() => db.prepare(`${SELECT} WHERE b.id = ? AND b.status = 'active'`).get(String(id)), null);
+        const row = await db.prepare(`${SELECT} WHERE b.id = ? AND b.status = 'active'`).get(String(id));
         if (!row) throw new ApiError(404, 'host.catalog.not_found', 'No such benchmark');
         return { ...out(row), mine: Boolean(viewer && viewer.subject && viewer.subject === row.submitted_by) };
     }
@@ -185,14 +170,12 @@ function createBenchmarks({ store, baseUrl }) {
     /** The medians for a provider or a plan (a provider page's and a plan page's line). */
     async function summary({ providerId, planId }) {
         const [col, val] = planId ? ['b.plan_id', planId] : ['b.provider_id', providerId];
-        return await safe(async () => {
-            const r = await db.prepare(`SELECT COUNT(*) AS n, percentile_cont(0.5) WITHIN GROUP (ORDER BY b.gb_single) AS gb_single, percentile_cont(0.5) WITHIN GROUP (ORDER BY b.gb_multi) AS gb_multi,
-                percentile_cont(0.5) WITHIN GROUP (ORDER BY b.disk_4k_iops) AS disk_4k_iops, MAX(b.gb_version) AS gb_version, MAX(b.created_at) AS latest
-                FROM catalog_benchmarks b WHERE ${col} = ? AND b.status = 'active'`).get(val);
-            const n = Number(r.n) || 0;
-            return n ? { count: n, gb_single: r.gb_single == null ? null : Math.round(Number(r.gb_single)), gb_multi: r.gb_multi == null ? null : Math.round(Number(r.gb_multi)),
-                disk_4k_iops: r.disk_4k_iops == null ? null : Math.round(Number(r.disk_4k_iops)), gb_version: r.gb_version == null ? null : Number(r.gb_version), latest: new Date(Number(r.latest)).toISOString() } : { count: 0 };
-        }, { count: 0 });
+        const r = await db.prepare(`SELECT COUNT(*) AS n, percentile_cont(0.5) WITHIN GROUP (ORDER BY b.gb_single) AS gb_single, percentile_cont(0.5) WITHIN GROUP (ORDER BY b.gb_multi) AS gb_multi,
+            percentile_cont(0.5) WITHIN GROUP (ORDER BY b.disk_4k_iops) AS disk_4k_iops, MAX(b.gb_version) AS gb_version, MAX(b.created_at) AS latest
+            FROM catalog_benchmarks b WHERE ${col} = ? AND b.status = 'active'`).get(val);
+        const n = Number(r.n) || 0;
+        return n ? { count: n, gb_single: r.gb_single == null ? null : Math.round(Number(r.gb_single)), gb_multi: r.gb_multi == null ? null : Math.round(Number(r.gb_multi)),
+            disk_4k_iops: r.disk_4k_iops == null ? null : Math.round(Number(r.disk_4k_iops)), gb_version: r.gb_version == null ? null : Number(r.gb_version), latest: new Date(Number(r.latest)).toISOString() } : { count: 0 };
     }
 
     /** The person who submitted a result, or staff, takes it down. */
@@ -203,7 +186,7 @@ function createBenchmarks({ store, baseUrl }) {
         await db.prepare("UPDATE catalog_benchmarks SET status = 'hidden', updated_at = ? WHERE id = ?").run(store.now(), String(id));
     }
 
-    return { createLink, checkLink, submit, list, get, summary, remove, ready, SORTS: Object.keys(SORTS) };
+    return { createLink, checkLink, submit, list, get, summary, remove, SORTS: Object.keys(SORTS) };
 }
 
 module.exports = { parseYabs, createBenchmarks, YABS_COMMAND, LINK_TTL_MS, LINKS_PER_DAY };
