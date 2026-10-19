@@ -9,6 +9,7 @@ Each proof is a recorded production run: what was deployed, how it was observed,
 | Chat resume (Chat) | passed 2026-09-26, with a limit | [below](#chat-resume-chat-2026-09-26) |
 | Game shard (Games) | passed 2026-09-26 | [below](#game-shard-games-2026-09-26) |
 | Ingest worker (OpenRestream) | after the cutover (WS-H) | |
+| Socket handover (Network, Chat, Tools gateway, Media) | passed 2026-10-17 | [below](#socket-handover-network-chat-tools-gateway-media-2026-10-17) |
 
 The release-lifecycle acceptance suite ([release-acceptance.md](release-acceptance.md)) reads this table. The state of a row and the numbers quoted from its record are gates `6f`, `6g`, `6h` and `7e`: a row that says `passed` must still contain those numbers, and an `open` row stays open there.
 
@@ -40,4 +41,31 @@ The release-lifecycle acceptance suite ([release-acceptance.md](release-acceptan
 - **Graceful stop: passed.** SIGTERM at 12:36:03.0 UTC; Games logged `world saved on shutdown` and `stopped` 34 ms later (1 player session, 0 editors, 0 terminated, 0 requests cut). The client got close code **1012 `server_restart`** at 12:36:03.5. `/api/ready` answered again at 12:36:05.1.
 - **Reconnect during the restart: a probe artefact, one edge left.** The probe's reconnect, started at about 12:36:04 while Games was down, neither opened nor failed for over 40 s, while a fresh connection afterwards opened in 165 ms (Games attaches its upgrade handler before it listens, so the wait is most likely Cloudflare holding the upgrade while the origin restarts). The real game client does not do this: on close it polls `/healthz` every 2 s and reloads the page once Games answers (`apps/client/src/main.ts`), so players come back with a clean resync. The edge left: a page that opens its first connection during the 2 s gap waited without a timeout on "connecting…". Fixed the same day (Games `b207e78`): the first connect gives up after 10 s, and a refused or timed-out connect waits for `/healthz` and reloads like a dropped one.
 - World state survived the restart (saved on shutdown, loaded on boot); a state-level check (a placed tile before and after) needs a game-protocol client.
+
+## Socket handover (Network, Chat, Tools gateway, Media), 2026-10-17
+
+**Why.** Only Live's listener belonged to systemd. Every other service closed its port for the whole boot on each
+restart, and nginx answered 502: on 2026-10-17 alone the nginx error logs held 64 refused connections to Media
+(127.0.0.1:4100), 23 to Network (4000), 11 to the Tools gateway (4001) and 5 to Chat (4400). Network restarted 15
+times that day, and every site's sign-in, navbar session and token checks reach it.
+
+**Change.** Each service got Live's units: `<unit>.socket` on its loopback port (no `PartOf=`) and the
+`<unit>.service.d/socket.conf` drop-in (`Requires=`/`After=`, `NonBlocking=true`), and listens on fd 3 when systemd
+hands it over (Network#267, Chat#114, Tools#76, Media#137; each repo's `test/systemd-units.test.js`). The switch-over on the
+host, once per service: install both units, `systemctl enable` the socket, stop the service, start the socket,
+start the service (Media only with `recordings_in_progress` 0), check `ss -ltnp` lists both `systemd` (pid 1) and the process on fd 3, then name `socketUnit` and
+both `unitSources` in `/etc/openvibe/host.json` (`ovhost status` shows `socket=active`).
+
+**Method.** On the host, while `systemctl restart <unit>` ran: N requests, three at a time, straight to the
+service's port (not through nginx, whose rate limits would answer first), each timed.
+
+**Result.**
+- **Network:** 120 of 120 answered 200; the slowest waited 6.85 s in the socket's queue (the boot then took ~7 s,
+  5.7 s of it seeding; Network#269 made the seed set-based and the boot takes 1.3 s).
+- **Chat:** 90 of 90 answered 200 (`/ready`); the slowest 1.91 s.
+- **Tools gateway:** 90 of 90 answered 200 (`/api/ready`); the slowest 1.02 s.
+- **Media:** 90 of 90 answered 200 (`/api/ready`, no recording in progress); the slowest 5.29 s.
+
+**What this does not cover.** Open WebSockets and streams end with the process and reconnect (the Chat resume
+proof above).
 

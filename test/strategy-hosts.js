@@ -100,7 +100,7 @@ async function releaseLayoutHost({ id, entry, files, initialId, unitFiles = {}, 
     await host.exec.symlink(first, svc.release.current);
     for (const [unit, src] of Object.entries(svc.unitSources)) if (files[src] != null) host.put(path.join('/etc/systemd/system', unit), files[src]);
     for (const [unit, text] of Object.entries(unitFiles)) host.put(path.join('/etc/systemd/system', unit), text);
-    for (const u of svc.units) host.addUnit(u, { runningSha: sha });
+    for (const u of svc.units) host.procCwd.set(host.addUnit(u, { runningSha: sha }).mainPid, first);
     host.firstRelease = path.basename(first);
     host.releaseDir = (rid) => path.join(svc.release.releasesDir, rid);
     host.current = () => path.basename(host.resolve(svc.release.current));
@@ -113,6 +113,7 @@ async function releaseLayoutHost({ id, entry, files, initialId, unitFiles = {}, 
         if (unit.endsWith('.socket')) { if (host.onSocketRestart) host.onSocketRestart(unit); return; }
         const wt = host.repos.get(host.resolve(svc.release.current));
         u.runningSha = wt ? wt.head : null;
+        host.procCwd.set(u.mainPid, host.resolve(svc.release.current));
     };
     host.readyFor = (unit) => () => {
         const u = host.units.get(unit);

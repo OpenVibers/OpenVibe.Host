@@ -6,6 +6,7 @@ const { ApiError, run, privateNoStore, sendError } = require('./errors');
 const { renderPage, esc } = require('../render/layout');
 const render = require('../render/catalog');
 const renderDomains = require('../render/domains');
+const renderBench = require('../render/benchmarks');
 const rateLimit = require('express-rate-limit');
 const { csrfToken, checkCsrf, sameOrigin } = require('../auth/forms');
 const { guard } = require('../auth/viewer');
@@ -14,7 +15,7 @@ const cache = require('openvibe-shared/cache-policy');
 const disclosure = render.DISCLOSURE;
 // A name check asks a registry: 30 a minute per address, below every registry's own RDAP limit.
 const checkLimit = () => rateLimit({ windowMs: 60_000, max: 30, standardHeaders: true, legacyHeaders: false });
-function createCatalogApi({ catalog, domainCheck, viewers, actorLimits }) {
+function createCatalogApi({ catalog, domainCheck, benchmarks, viewers, actorLimits, log = console }) {
     const router = express.Router();
     router.use(viewers.middleware('api'));
     if (actorLimits) router.use(actorLimits);
@@ -30,6 +31,27 @@ function createCatalogApi({ catalog, domainCheck, viewers, actorLimits }) {
     router.get('/domains', run(async (req) => await catalog.domains.list(req.query)));
     router.get('/domains/check', checkLimit(), run(async (req) => ({ check: await domainCheck.check(req.query.name) })));
     router.get('/domains/:tld', run(async (req) => ({ tld: await catalog.domains.tld(req.params.tld) })));
+    router.get('/benchmarks', run(async (req) => await benchmarks.list(req.query)));
+    router.get('/benchmarks/:id', run(async (req) => ({ benchmark: await benchmarks.get(req.params.id, req.viewer) })));
+    router.post('/benchmarks/links', catalogJsonBody, run(async (req) => {
+        if (req.viewer.kind !== 'user') throw new ApiError(401, 'host.benchmark.sign_in', 'Sign in to submit a benchmark');
+        return { link: await benchmarks.createLink(req.viewer.subject, req.body || {}) };
+    }, 201));
+    router.delete('/benchmarks/:id', run(async (req) => { await benchmarks.remove(req.params.id, req.viewer); return { removed: true }; }));
+    // YABS posts its JSON here (`-s <url>`) and prints the answer in the terminal, so the answer is one line of text.
+    router.post('/benchmarks/yabs/:token', rateLimit({ windowMs: 60_000, max: 20, standardHeaders: true, legacyHeaders: false }), express.text({ type: () => true, limit: '128kb' }), async (req, res) => {
+        res.type('text/plain');
+        try {
+            await benchmarks.checkLink(req.params.token);
+            let body;
+            try { body = JSON.parse(typeof req.body === 'string' ? req.body : ''); } catch { throw new ApiError(400, 'host.benchmark.invalid', 'The result was not valid JSON; nothing was saved.'); }
+            const saved = await benchmarks.submit(req.params.token, body);
+            res.status(201).send(`\nOpenVibe.Host saved this result: ${saved.url}\n`);
+        } catch (err) {
+            if (!err.status || err.status >= 500) log.warn(`[Host] benchmark submit failed: ${err.message}`);
+            res.status(err.status && err.status < 500 ? err.status : 500).send(`\nOpenVibe.Host did not save this result: ${err.status && err.status < 500 ? err.message : 'something went wrong on our side'}\n`);
+        }
+    });
     for (const type of ['providers', 'plans', 'promos']) {
         router.post(`/${type}`, guard('host.catalog.manage'), staff, catalogJsonBody, run(async (req) => ({ [type.slice(0, -1)]: await catalog.save(type, req.body, null, req.viewer.subject) }), 201));
         router.patch(`/${type}/:id`, guard('host.catalog.manage'), staff, catalogJsonBody, run(async (req) => ({ [type.slice(0, -1)]: await catalog.save(type, req.body, req.params.id, req.viewer.subject) })));
@@ -37,7 +59,7 @@ function createCatalogApi({ catalog, domainCheck, viewers, actorLimits }) {
     router.use((err, req, res, next) => { if (res.headersSent) return next(err); sendError(res, req, err); });
     return router;
 }
-function createCatalogPages({ catalog, domainCheck, community, config, viewers, actorLimits, log = console }) {
+function createCatalogPages({ catalog, domainCheck, benchmarks, community, config, viewers, actorLimits, log = console }) {
     const router = express.Router();
     router.use(viewers.middleware('dashboard'));
     if (actorLimits) router.use(actorLimits);
@@ -82,13 +104,15 @@ function createCatalogPages({ catalog, domainCheck, community, config, viewers, 
     }));
     router.get('/providers/:slug', view(async (req, res) => {
         const p = await catalog.providers(req.params.slug);
-        const discussion = await discussionFor(req, 'provider', p, p.name);
-        page(req, res, `${p.name} plans and prices`, render.provider(p, discussion), true, `${p.name}'s hosting plans compared: monthly prices, per-resource prices and the day each was checked.`);
+        const [discussion, bench] = await Promise.all([discussionFor(req, 'provider', p, p.name), benchmarks.summary({ providerId: p.id })]);
+        const benchHtml = p.plans.length || bench.count ? renderBench.summaryBlock(bench, { href: `/catalog/benchmarks?provider=${encodeURIComponent(p.slug)}`, label: p.name }) : '';
+        page(req, res, `${p.name} plans and prices`, render.provider(p, discussion, benchHtml), true, `${p.name}'s hosting plans compared: monthly prices, per-resource prices and the day each was checked.`);
     }));
     router.get('/plans/:id', view(async (req, res) => {
         const p = await catalog.plan(req.params.id);
-        const discussion = await discussionFor(req, 'plan', p, `${p.provider_name} ${p.name}`);
-        page(req, res, `${p.provider_name} ${p.name}`, render.plan(p, discussion, { baseUrl: config.baseUrl, watchUrl: config.watch && config.watch.publicUrl }), true, `${p.provider_name} ${p.name}: ${p.currency} ${p.price_monthly} a month, with its specifications, price per resource and price history.`, render.jsonLd.plan(config.baseUrl, p));
+        const [discussion, bench] = await Promise.all([discussionFor(req, 'plan', p, `${p.provider_name} ${p.name}`), benchmarks.summary({ planId: p.id })]);
+        const benchHtml = renderBench.summaryBlock(bench, { href: `/catalog/benchmarks?plan=${encodeURIComponent(p.id)}`, label: `${p.provider_name} ${p.name}` });
+        page(req, res, `${p.provider_name} ${p.name}`, render.plan(p, discussion, { baseUrl: config.baseUrl, watchUrl: config.watch && config.watch.publicUrl, extra: benchHtml }), true, `${p.provider_name} ${p.name}: ${p.currency} ${p.price_monthly} a month, with its specifications, price per resource and price history.`, render.jsonLd.plan(config.baseUrl, p));
     }));
     router.get('/promos', view(async (req, res) => {
         page(req, res, 'Hosting promotions', render.promos(await catalog.promos()), true, 'Hosting promotions running now, with their codes and end dates as the providers state them.');
@@ -99,7 +123,7 @@ function createCatalogPages({ catalog, domainCheck, community, config, viewers, 
         if (query.sort === 'price' && !query.currency) query.currency = 'USD';
         const result = await catalog.offers(query);
         page(req, res, 'Hosting offers', render.offers({ result, query }), !Object.keys(req.query).length,
-            'Hosting offers from LowEndTalk and LowEndBox, newest first or cheapest a month, each with the price its headline states and the day it was posted.');
+            'Hosting offers from LowEndSpirit\'s Offers board, newest first or cheapest a month, each with the price its headline states and the day it was posted.');
     }));
     router.get('/domains', view(async (req, res) => {
         const [result, stats] = await Promise.all([catalog.domains.list(req.query), catalog.domains.stats()]);
@@ -123,6 +147,43 @@ function createCatalogPages({ catalog, domainCheck, community, config, viewers, 
         page(req, res, `${t.display} domain prices`, renderDomains.tld(t, { baseUrl: config.baseUrl, watchUrl: config.watch && config.watch.publicUrl }), true,
             `${t.display} domains from ${render.money(t.cheapest.register, 'USD') || 'an unknown price'} the first year, renewing from ${render.money(t.cheapest.renew, 'USD') || 'an unknown price'}: every registrar's price, dated and sourced.`,
             renderDomains.jsonLd.tld(config.baseUrl, t));
+    }));
+    router.get('/benchmarks', view(async (req, res) => {
+        const result = await benchmarks.list(req.query);
+        page(req, res, 'Server benchmarks', renderBench.list({ result, query: req.query }), !Object.keys(req.query).length,
+            'CPU, disk and network benchmarks people ran on their own VPS and dedicated servers with YABS: Geekbench, fio and iperf3, by provider and plan.');
+    }));
+    const benchForm = async (req, res, { error = null, status = 200 } = {}) => {
+        const [providers, plans] = req.viewer.kind === 'user' ? await Promise.all([catalog.providers(), catalog.planChoices()]) : [[], []];
+        const withPlans = providers.filter((p) => plans.some((x) => x.provider_slug === p.slug));
+        cachePage(req, res, false);
+        res.status(status).type('html').send(renderPage({ title: 'Benchmark your server', body: renderBench.submitForm({ viewer: req.viewer, providers: withPlans, plans, csrf: csrfToken(config, req.viewer), error, query: req.method === 'POST' ? req.body : req.query }), viewer: req.viewer, config, path: req.originalUrl, indexable: false, css: ['css/catalog.css'] }));
+    };
+    router.get('/benchmarks/new', view(async (req, res) => benchForm(req, res)));
+    const benchParser = express.urlencoded({ extended: false, limit: '8kb' });
+    router.post('/benchmarks/new', benchParser, view(async (req, res) => {
+        if (req.viewer.kind !== 'user') return res.redirect(303, '/catalog/benchmarks/new');
+        if (!sameOrigin(config, req) || !checkCsrf(config, req.viewer, req.body.csrf)) throw new ApiError(403, 'host.catalog.forbidden', 'Invalid form token or origin');
+        let l;
+        try {
+            l = await benchmarks.createLink(req.viewer.subject, { provider: req.body.provider || undefined, provider_name: req.body.provider_name, plan_id: req.body.plan_id || undefined, note: req.body.note });
+        } catch (err) {
+            if (![422, 429, 503].includes(err.status)) throw err;
+            return benchForm(req, res, { error: err.message, status: err.status });
+        }
+        res.set('Cache-Control', 'private, no-store');
+        res.status(201).type('html').send(renderPage({ title: 'Your benchmark link', body: renderBench.issued(l), viewer: req.viewer, config, path: req.originalUrl, indexable: false, css: ['css/catalog.css'] }));
+    }));
+    router.get('/benchmarks/:id', view(async (req, res) => {
+        const b = await benchmarks.get(req.params.id, req.viewer);
+        const canRemove = req.viewer.kind === 'user' && (b.mine || req.viewer.staff);
+        page(req, res, `${b.provider_name}${b.plan_name ? ` ${b.plan_name}` : ''} benchmark`, renderBench.detail(b, { csrf: canRemove ? csrfToken(config, req.viewer) : '', canRemove }), false,
+            `A YABS benchmark of a ${b.provider_name} server: Geekbench, disk and network results.`);
+    }));
+    router.post('/benchmarks/:id/remove', benchParser, view(async (req, res) => {
+        if (req.viewer.kind !== 'user' || !sameOrigin(config, req) || !checkCsrf(config, req.viewer, req.body.csrf)) throw new ApiError(403, 'host.catalog.forbidden', 'Invalid form token or origin');
+        await benchmarks.remove(req.params.id, req.viewer);
+        res.redirect(303, '/catalog/benchmarks');
     }));
     router.get('/manage', view(async (req, res) => {
         if (req.viewer.kind !== 'user' || !req.viewer.staff) throw new ApiError(403, 'host.catalog.forbidden', 'Staff access required');

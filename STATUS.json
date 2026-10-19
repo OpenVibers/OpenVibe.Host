@@ -13,13 +13,13 @@
   "runtime": "node 22; Express 4 + PostgreSQL 18 (openvibe-sdk/db, async) + optional Valkey",
   "port": 4910,
   "domain": "openvibe.host",
-  "contracts": "openvibe-contracts v0.199.0",
-  "sdk": "openvibe-sdk v0.46.0",
-  "shared": "openvibe-shared v4.2.2",
+  "contracts": "openvibe-contracts v0.200.0",
+  "sdk": "openvibe-sdk v0.51.1",
+  "shared": "openvibe-shared v4.4.0",
   "packages": [
-    "openvibe-contracts v0.199.0",
-    "openvibe-sdk v0.46.0",
-    "openvibe-shared v4.2.2"
+    "openvibe-contracts v0.200.0",
+    "openvibe-sdk v0.51.1",
+    "openvibe-shared v4.4.0"
   ],
   "capabilities": [
     "host.catalog.manage"
@@ -48,7 +48,8 @@
     "browser check and release-lifecycle acceptance suite",
     "catalog provider and plan discussion threads on OpenVibe.Community (optional HOST_COMMUNITY_URL; server-rendered comments, after-commit visibility sync)",
     "hosting comparison catalog with providers, plans, promotions, price history and discussion",
-    "domain prices compared (first year, renewal, transfer, five years per TLD from registrars' public lists through Sources) and a name check over RDAP at /catalog/domains"
+    "domain prices compared (first year, renewal, transfer, five years per TLD from registrars' public lists through Sources) and a name check over RDAP at /catalog/domains",
+    "user-submitted server benchmarks (YABS posts to a one-time link: Geekbench, fio, iperf3) with medians on plan and provider pages, at /catalog/benchmarks"
   ],
   "retired": {
     "movedTo": "https://openvibe.space",
@@ -67,5 +68,5 @@
       "host.domain.verified"
     ]
   },
-  "updated": "2026-10-16"
+  "updated": "2026-10-17"
 }

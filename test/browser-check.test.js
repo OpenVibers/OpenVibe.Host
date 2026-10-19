@@ -78,7 +78,7 @@ runTests([
             assert.deepStrictEqual(c[1].routes, ['/', { path: '/__ovcheck-404', status: 404 }], 'no sitemap: home and the probe');
             assert.deepStrictEqual(c[2].routes, ['/policy'], 'billing: its policy page only');
             assert.strictEqual(c[0].base, `http://good.localhost:${port}`);
-            assert.deepStrictEqual(c[0].widths, [390, 768, 1280]);
+            assert.deepStrictEqual(c[0].widths, [320, 390, 768, 1280], 'phones down to 320px');
             assert.deepStrictEqual(c[0].checks, { axe: true, navigation: true });
             assert.strictEqual(c[0].laps, 5);
             assert.ok(c[0].ignore.includes('signed-out session probe answered 401'));

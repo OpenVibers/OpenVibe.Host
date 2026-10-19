@@ -8,7 +8,7 @@
  *   provider(p)                                  /catalog/providers/:slug
  *   plan(p)                                      /catalog/plans/:id
  *   promos(list)                                 /catalog/promos
- *   offers({ result, query })                    /catalog/offers: what providers post on LowEndTalk and LowEndBox
+ *   offers({ result, query })                    /catalog/offers: what providers post on LowEndSpirit's Offers board
  *
  * Every price shows when it was checked and links where it came from; an unknown value reads "Unknown", never 0;
  * affiliate links carry rel="sponsored nofollow noopener" with the provider's own disclosure beside them, and the
@@ -182,7 +182,7 @@ ${d.comments.length ? `<ol class="hc-comments">${d.comments.map(one).join('')}</
 <p>${d.thread.visibility === 'locked' ? 'This thread is locked.' : out(threadUrl, 'Join the discussion on OpenVibe.Community', { cls: 'button hc-button-quiet' })}</p></section>`;
 }
 
-function provider(p, discussion = null) {
+function provider(p, discussion = null, extra = '') {
     const cheapest = p.plans.length ? p.plans.reduce((m, x) => (Number(x.price_monthly) < Number(m.price_monthly) ? x : m), p.plans[0]) : null;
     return `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog', 'Catalog')} / ${link('/catalog/providers', 'Providers')}</nav>
 <header class="hc-head hc-head-row">
@@ -191,13 +191,14 @@ function provider(p, discussion = null) {
 ${visit(p)}
 </header>
 ${p.plans.length ? planTable(p.plans, { caption: `${p.name}'s plans, lowest price first`, showProvider: false }) : p.domains ? `<p class="hc-more">${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `See ${esc(p.name)}'s domain prices →`, 'button')}</p>` : '<div class="hc-empty"><p>No plan of this provider is listed right now.</p></div>'}
+${extra}
 ${discussionSection(discussion)}
 <h2>Promotions</h2>
 ${promoCards(p.promos, { showProvider: false })}
 ${p.affiliate_url || p.promos.some((x) => x.affiliate) ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}`;
 }
 
-function plan(p, discussion = null, { baseUrl = '', watchUrl = '' } = {}) {
+function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '' } = {}) {
     const spec = [
         ['vCPU', p.vcpu == null ? null : num(p.vcpu)], ['RAM', bytesMb(p.ram_mb)],
         ['Disk', p.disk_gb == null ? null : `${sizeGb(p.disk_gb)}${p.disk_type ? ` ${p.disk_type.toUpperCase()}` : ''}`],
@@ -224,16 +225,16 @@ ${visit(p)}
 <h2>Price history</h2>
 ${history}
 ${baseUrl && watchUrl ? `<p class="hc-watch">${out(`${watchUrl}/watches/new?${new URLSearchParams({ template: 'json', url: `${baseUrl}/api/v1/catalog/plans/${p.id}`, value_path: 'plan.price_monthly', op: 'changed', name: `${p.provider_name} ${p.name} price` })}`, 'Tell me when this price changes', { cls: 'button hc-button-quiet' })} <span class="hc-dim">with OpenVibe.Watch, free</span></p>` : ''}
+${extra}
 ${discussionSection(discussion)}
 ${p.affiliate_url ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}
 <p class="hc-links">${link('/catalog', '← Compare plans')}</p>`;
 }
 
-// Offers (server/catalog/offers.js): headlines from LowEndTalk's Offers board and LowEndBox, each with the cheapest
+// Offers (server/catalog/offers.js): headlines from LowEndSpirit's Offers board, each with the cheapest
 // price per month or year its headline (or the post's opening) states, and that price a month.
 const OFFER_SORTS = [['new', 'Newest'], ['price', 'Cheapest a month']];
 const OFFER_CURRENCIES = [['', 'Any currency'], ['USD', 'USD ($)'], ['EUR', 'EUR (€)'], ['GBP', 'GBP (£)']];
-const OFFER_SOURCES = [['', 'Both boards'], ['lowendtalk-offers', 'LowEndTalk Offers'], ['lowendbox-posts', 'LowEndBox']];
 const daysAgo = (iso, now) => Math.floor((now - Date.parse(iso)) / 86400000);
 function offerItem(o, now) {
     const age = daysAgo(o.published_at, now);
@@ -252,21 +253,20 @@ function offers({ result, query = {}, now = Date.now() }) {
     const filtered = ['currency', 'max_monthly', 'source', 'priced'].some((k) => q[k]);
     const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog/offers?${new URLSearchParams({ ...q, cursor: result.next_cursor })}`, 'Next 50 offers →', 'button hc-button-quiet')}</p>` : '';
     return `<header class="hc-head"><p class="hc-eyebrow">OpenVibe.Host · hosting compared</p><h1>Hosting offers</h1>
-<p class="hc-lede">What providers post on LowEndTalk's Offers board and LowEndBox, with the price each headline states and that price a month. Sort by the monthly price within one currency; nothing is converted.</p></header>
+<p class="hc-lede">What providers post on LowEndSpirit's Offers board, with the price each headline states and that price a month. Sort by the monthly price within one currency; nothing is converted.</p></header>
 <form class="hc-filters" method="get" action="/catalog/offers" role="search" aria-label="Filter hosting offers">
 ${select('sort', 'Sort by', OFFER_SORTS, q.sort || 'new')}
 ${select('currency', 'Currency', OFFER_CURRENCIES, q.currency)}
 ${input('max_monthly', 'Max a month', q.max_monthly, 'type="number" min="0" step="0.01" inputmode="decimal" placeholder="Any"')}
-${select('source', 'Board', OFFER_SOURCES, q.source)}
 <label class="hc-check"><input type="checkbox" name="priced" value="1"${q.priced === '1' ? ' checked' : ''}> <span>Only with a stated price</span></label>
 <div class="hc-filter-actions"><button type="submit">Show offers</button> <a href="/catalog/offers" class="hc-reset">Reset</a></div>
 </form>
 ${list.length ? `<ol class="hc-offers" aria-label="${list.length}${result.next_cursor ? '+' : ''} offers">${list.map((o) => offerItem(o, now)).join('')}</ol>`
         : filtered ? `<div class="hc-empty"><p><strong>No offer matches these filters.</strong></p><p>${link('/catalog/offers', 'Clear the filters')} or widen one of them.</p></div>`
-            : '<div class="hc-empty"><p><strong>No offer has arrived yet.</strong></p><p>Offers arrive as LowEndTalk\'s and LowEndBox\'s feeds are read, every hour.</p></div>'}
+            : '<div class="hc-empty"><p><strong>No offer in the last 120 days.</strong></p><p>LowEndSpirit\'s Offers board is read every hour.</p></div>'}
 ${next}
 <section class="hc-method" aria-labelledby="hc-offers-method-h"><h2 id="hc-offers-method-h">How offers are read</h2><ul>
-<li><strong>From the boards' own feeds.</strong> LowEndTalk's Offers board, where providers post their offers, and LowEndBox's offer posts, through OpenVibe.Sources. Each headline links to its post, which has the details and the final word.</li>
+<li><strong>From the board's own feed.</strong> LowEndSpirit's Offers board, where providers post their offers, through OpenVibe.Sources. Each headline links to its post, which has the details and the final word.</li>
 <li><strong>The price as stated.</strong> The cheapest "per month" or "per year" price the headline states, or the post's opening when the headline states none. A yearly price is shown a month too (divided by 12). A price without a period is not read.</li>
 <li><strong>Dated.</strong> Every offer shows the day it was posted; one older than 30 days is marked, and offers older than ${MAX_AGE_DAYS} days drop off.</li>
 <li><strong>Not for sale.</strong> The order comes only from the sort you pick. No provider pays to be listed here.</li>

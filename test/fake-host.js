@@ -59,6 +59,7 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
         journalctl: null, // (args, opts) -> { code, stdout, stderr } ; default: no entries
         journalctlCalls: [], // { args, as, privileged }
         onRestart: null, // (unit) -> void
+        procCwd: new Map(), // pid -> the directory /proc/<pid>/cwd names (a process's working directory)
         onSystemdRun: null, // (spec) -> undefined | { code, stderr } ; spec = { unit, uid, cwd, props, argv, pid }
         onKill: null, // (pid, signal) -> false to ignore the signal
         onNode: null, // (args, opts) -> undefined | { code, stdout, stderr } ; `node` otherwise exits 0
@@ -691,7 +692,11 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             if (files.has(lpath(p))) throw Object.assign(new Error(`EEXIST: file already exists, symlink '${target}' -> '${p}'`), { code: 'EEXIST' });
             ensureDir(path.dirname(p)); files.set(lpath(p), { type: 'symlink', target, owner: user, mode: 0o777, mtime: clock });
         },
-        async readlink(p) { const e = files.get(lpath(p)); return e && e.type === 'symlink' ? e.target : null; },
+        async readlink(p) {
+            const proc = /^\/proc\/(\d+)\/cwd$/.exec(p);
+            if (proc) return host.procCwd.get(Number(proc[1])) || null;
+            const e = files.get(lpath(p)); return e && e.type === 'symlink' ? e.target : null;
+        },
         async stat(p) {
             const l = files.get(lpath(p));
             const e = get(p);

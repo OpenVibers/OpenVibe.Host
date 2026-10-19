@@ -2,12 +2,12 @@
 'use strict';
 /**
  * Browser and no-JS check of every public OpenVibe product (roadmap WS-Q task 3; WS-T tasks 3 and 4), with
- * openvibe-shared/browser-harness: per route × width (390, 768, 1280) status, console errors, horizontal
+ * openvibe-shared/browser-harness: per route × width (320, 390, 768, 1280) status, console errors, horizontal
  * overflow and duplicate scripts; per route without JavaScript visible text, canonical and JSON-LD against the
  * visible text; axe-core (serious/critical fail); per site a repeated-navigation growth check and idle activity.
  *
  *   node scripts/browser-check.js [--sites live,https://openvibe.wiki] [--routes-file routes.json] [--max-routes 7]
- *        [--widths 390,768,1280] [--no-axe] [--no-nav] [--laps 5] [--strict-errors]
+ *        [--widths 320,390,768,1280] [--no-axe] [--no-nav] [--laps 5] [--strict-errors]
  *        [--json] [--out docs/browser-check.md] [--remote <ssh-host>] [--harness <browser-harness.js>]
  *
  * Sites: --sites takes registry ids or origins; without it, every service in OpenVibe.Network's registry with a
@@ -293,7 +293,9 @@ async function networkDown(h) {
 (async () => {
     const { h, file: harnessFile } = loadHarness();
     if (has('network-down')) return networkDown(h);
-    const widths = arg('widths') ? arg('widths').split(',').map(Number) : h.WIDTHS;
+    // 320px too (small Android phones, the first iPhone SE): the harness's default starts at 390, and six sites' home
+    // pages scrolled sideways at 320 until 2026-10-17 without this check noticing.
+    const widths = arg('widths') ? arg('widths').split(',').map(Number) : [320, ...h.WIDTHS.filter((w) => w !== 320)];
     const meta = { at: new Date().toISOString(), runner: 'local', widths, axe: has('no-axe') ? 'off' : `axe-core ${h.AXE.version}, WCAG 2.1 A/AA`, nav: has('no-nav') ? 'off' : `${Number(arg('laps') || 5)} laps` };
     let reports, code;
     if (arg('remote')) {

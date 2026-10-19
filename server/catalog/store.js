@@ -253,8 +253,10 @@ function createCatalog({ store, community = null, log = console, indexnow = null
         const r = await db.prepare("SELECT COUNT(*) AS plans, COUNT(DISTINCT p.provider_id) AS providers, MAX(p.checked_at) AS last FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active'").get();
         return { plans: Number(r.plans) || 0, providers: Number(r.providers) || 0, lastChecked: r.last == null ? null : Number(r.last) };
     }
+    /** Every public plan for a form's choice list: provider by name, then cheapest first. */
+    async function planChoices() { return await db.prepare("SELECT p.id, p.name, v.name AS provider_name, v.slug AS provider_slug FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY v.name, p.price_monthly, p.id LIMIT 1000").all(); }
     // Each public plan with the day its price was last checked, and its provider's slug, so the sitemap can date pages.
     async function sitemapPlans() { return await db.prepare("SELECT p.id, p.checked_at, v.slug AS provider_slug FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY p.id").all(); }
-    return { onChange: (fn) => listeners.push(fn), save, get, applyItem, domains, plans, plan, providers, promos, offers, currencies: currenciesInUse, stats, sitemapPlans, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
+    return { onChange: (fn) => listeners.push(fn), save, get, applyItem, domains, plans, plan, providers, promos, offers, currencies: currenciesInUse, stats, sitemapPlans, planChoices, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
 }
 module.exports = { createCatalog };
