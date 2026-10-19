@@ -6,7 +6,7 @@ const { createStore } = require('../server/db');
 const { createCatalog } = require('../server/catalog/store');
 const { createCatalogIngest } = require('../server/catalog/ingest');
 const { mapItem } = require('../server/catalog/mapping');
-const accountData = require('../server/catalog/account-data');
+const accountData = require('../server/account-data');
 const { check, done } = require('./helpers/boot');
 const at = '2026-10-11T12:00:00Z';
 // The shape the Sources `api` adapter stores: the plan id as identity, Linode's label as title, the mapped extras flat in fields.
@@ -100,8 +100,10 @@ const item = (key, id, fields, time = at, title = id) => ({ id: `itm_${'0'.repea
         });
         await check('ADR-033 export and erase keep shared rows but remove attribution', async () => {
             const p = await catalog.save('providers', { slug: 'staff', name: 'Staff', homepage_url: 'https://staff.test' }, null, 'usr_1');
-            assert.strictEqual((await accountData.exportFor(db.db, 'usr_1')).catalog_providers.length, 1);
-            assert.strictEqual((await accountData.eraseFor(db.db, 'usr_1')).catalog_providers, 1);
+            const data = accountData.create({ db: db.db, log: { warn() {}, info() {} } });
+            const part = await data.exportPart('usr_1');
+            assert.strictEqual(part.files.find((f) => f.name === 'catalog-providers.json').content.length, 1);
+            assert.strictEqual((await data.erase(['usr_1'])).retained.tombstones, 1);
             assert.strictEqual((await catalog.get('providers', p.id)).created_by, null);
         });
         await check('unknown source is held and ingest off consumes nothing', async () => {

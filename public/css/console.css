@@ -1,0 +1,65 @@
+/* The console (server/console/pages.js): every server across a person's hosting accounts. Colours come from the shared
+   Frame's theme variables; filled buttons use --accent-strong for contrast. */
+.cs { max-width: 1180px; margin: 0 auto; padding: 32px 16px 56px; }
+.cs-head { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 20px; }
+.cs-eyebrow { margin: 0; color: var(--accent, #60a5fa); font-weight: 700; font-size: 0.8rem; letter-spacing: .06em; text-transform: uppercase; }
+.cs h1 { font-size: clamp(26px, 3.6vw, 38px); line-height: 1.1; letter-spacing: -0.02em; margin: 6px 0 8px; }
+.cs-lede { margin: 0; color: var(--text-secondary, #9fb0c8); max-width: 62ch; }
+.cs-stats { display: flex; gap: 10px; }
+.cs-stats > div { min-width: 96px; padding: 10px 14px; border: 1px solid var(--border, #2c3d5c); border-radius: 14px; background: var(--bg-secondary, #101828); }
+.cs-stats b { display: block; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+.cs-stats span { color: var(--text-secondary, #9fb0c8); font-size: 0.82rem; }
+.cs-muted { color: var(--text-secondary, #9fb0c8); font-size: 0.88rem; }
+.cs-bad { color: #f87171; }
+.cs-empty { padding: 28px; border: 1px dashed var(--border, #2c3d5c); border-radius: 14px; text-align: center; color: var(--text-secondary, #9fb0c8); }
+.cs-table-wrap { overflow-x: auto; border: 1px solid var(--border, #2c3d5c); border-radius: 16px; background: var(--bg-secondary, #101828); }
+.cs-table { width: 100%; border-collapse: collapse; min-width: 760px; }
+.cs-table th, .cs-table td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border, #2c3d5c); vertical-align: top; }
+.cs-table tbody tr:last-child td { border-bottom: 0; }
+.cs-table th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-secondary, #9fb0c8); }
+.cs-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cs-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem; }
+.cs-save { font-size: 0.8rem; margin-top: 4px; }
+.cs-save a { color: #4ade80; }
+.cs-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.84rem; font-weight: 600; }
+.cs-status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.cs-status.is-ok { color: #4ade80; } .cs-status.is-off { color: var(--text-secondary, #9fb0c8); } .cs-status.is-busy { color: #fbbf24; }
+.cs-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.cs-actions form { margin: 0; }
+.cs-refresh { font-size: 0.8rem; text-transform: none; letter-spacing: 0; }
+.cs-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 10px; padding: 9px 16px; font: 600 0.92rem/1.2 inherit; cursor: pointer;
+  background: var(--accent-strong, #2563eb); color: var(--on-accent-strong, #fff); }
+.cs-btn:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent, #60a5fa) 55%, transparent); outline-offset: 2px; }
+.cs-quiet, .cs-small { background: transparent; color: var(--text-primary, #e6edf7); border-color: var(--border, #2c3d5c); }
+.cs-small { padding: 5px 10px; font-size: 0.82rem; }
+.cs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 18px; }
+.cs-card { padding: 18px; border: 1px solid var(--border, #2c3d5c); border-radius: 16px; background: var(--bg-secondary, #101828); margin-top: 14px; }
+.cs-grid .cs-card { margin-top: 0; }
+.cs-card h2 { margin: 0 0 12px; font-size: 1.1rem; }
+.cs-accts, .cs-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cs-acct { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border, #2c3d5c); border-radius: 12px; }
+.cs-acct form { margin: 0; }
+.cs-form { display: grid; gap: 12px; }
+.cs-form label { display: grid; gap: 4px; font-weight: 600; font-size: 0.9rem; }
+.cs-form input, .cs-form select { border: 1px solid var(--border, #2c3d5c); background: var(--bg-primary, #0b1220); color: inherit; border-radius: 10px; padding: 9px 12px; font: inherit; font-weight: 400; }
+.cs-form .cs-btn { justify-self: start; }
+.cs-help summary { cursor: pointer; color: var(--accent, #60a5fa); font-size: 0.9rem; }
+.cs-help ul { margin: 8px 0 0; padding-left: 18px; color: var(--text-secondary, #9fb0c8); font-size: 0.86rem; display: grid; gap: 6px; }
+.cs-log li { font-size: 0.9rem; }
+@media (max-width: 640px) { .cs-stats { width: 100%; } .cs-stats > div { flex: 1; min-width: 0; } }
+/* On a phone each server is a card: its name, then labelled facts, then its power buttons, all in view (no sideways scroll). */
+@media (max-width: 720px) {
+  .cs-table-wrap { overflow: visible; border: 0; background: transparent; }
+  .cs-table { min-width: 0; display: block; }
+  .cs-table thead { display: none; }
+  .cs-table tbody { display: grid; gap: 10px; }
+  .cs-table tr { display: block; border: 1px solid var(--border, #2c3d5c); border-radius: 14px; background: var(--bg-secondary, #101828); padding: 6px 0; }
+  .cs-table td { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border: 0; padding: 6px 14px; text-align: right; }
+  .cs-table td::before { content: attr(data-label); color: var(--text-secondary, #9fb0c8); font-size: 0.82rem; text-align: left; }
+  .cs-table td.cs-name { display: block; text-align: left; padding-bottom: 4px; }
+  .cs-table td.cs-name::before, .cs-table td.cs-act-cell::before { content: none; }
+  .cs-table td.cs-act-cell { padding-top: 8px; }
+  .cs-table td.cs-act-cell .cs-actions { width: 100%; justify-content: stretch; }
+  .cs-table td.cs-act-cell .cs-actions form { flex: 1; }
+  .cs-table td.cs-act-cell .cs-btn { width: 100%; justify-content: center; padding: 10px; font-size: 0.92rem; }
+}

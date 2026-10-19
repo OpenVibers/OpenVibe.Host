@@ -10,7 +10,7 @@ const assert = require('assert');
 const { boot, check, done } = require('./helpers/boot');
 const { parseYabs, LINKS_PER_DAY } = require('../server/catalog/benchmarks');
 const { csrfToken } = require('../server/auth/forms');
-const accountData = require('../server/catalog/account-data');
+const accountData = require('../server/account-data');
 
 const YABS = () => ({
     version: 'v2026-10-07', time: '20261016-120000',
@@ -145,13 +145,16 @@ const linode = (time = '2026-09-22T11:00:00Z') => ({ id: `itm_${'1'.repeat(26)}`
             const own = await t.api('GET', `/catalog/benchmarks/${id}`, { session: ada });
             assert.match(own.text, /Remove this result/);
             assert.strictEqual((await t.api('DELETE', `/api/v1/catalog/benchmarks/${id}`, { as: bo })).status, 403);
-            const exported = await accountData.exportFor(t.ctx.store.db, ada.subject);
-            assert.strictEqual(exported.catalog_benchmarks.length, 1);
-            assert.ok(exported.catalog_bench_links.length >= 2);
+            const data = accountData.create({ db: t.ctx.store.db, log: { warn() {}, info() {} } });
+            const file = (part, name) => (part.files.find((f) => f.name === name) || { content: [] }).content;
+            const exported = await data.exportPart(ada.subject);
+            assert.strictEqual(file(exported, 'benchmarks.json').length, 1);
+            assert.ok(file(exported, 'benchmark-links.json').length >= 2);
+            assert.ok(file(exported, 'benchmark-links.json').every((l) => !('token_hash' in l)), 'never the link token');
             assert.strictEqual((await t.api('DELETE', `/api/v1/catalog/benchmarks/${id}`, { as: ada })).status, 200);
             assert.strictEqual((await t.api('GET', `/catalog/benchmarks/${id}`)).status, 404);
-            const erased = await accountData.eraseFor(t.ctx.store.db, bo.subject);
-            assert.deepStrictEqual([erased.catalog_benchmarks, erased.catalog_bench_links > 0], [1, true]);
+            const erased = await data.erase([bo.subject]);
+            assert.deepStrictEqual([erased.retained.tombstones, erased.erased.catalog_bench_links > 0], [1, true]);
             assert.strictEqual((await t.api('GET', '/api/v1/catalog/benchmarks?provider=racknerd')).json().benchmarks.length, 1, 'the measurement stays, anonymous');
         });
     } finally { await t.close(); }
