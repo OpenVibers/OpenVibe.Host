@@ -25,6 +25,7 @@ const SORTS = [['price', 'Lowest price'], ['price_per_vcpu', 'Price per vCPU'], 
 const RAM = [['', 'Any RAM'], ['1024', '1 GB+'], ['2048', '2 GB+'], ['4096', '4 GB+'], ['8192', '8 GB+'], ['16384', '16 GB+'], ['32768', '32 GB+'], ['65536', '64 GB+']];
 
 const UNKNOWN = '<span class="hc-unknown" title="The source does not state it">Unknown</span>';
+const REVIEWS_URL = 'https://openvibe.reviews';
 const num = (v) => (v == null || v === '' ? null : Number(v));
 function money(v, currency, digits = 2) {
     const n = num(v);
@@ -182,6 +183,17 @@ ${d.comments.length ? `<ol class="hc-comments">${d.comments.map(one).join('')}</
 <p>${d.thread.visibility === 'locked' ? 'This thread is locked.' : out(threadUrl, 'Join the discussion on OpenVibe.Community', { cls: 'button hc-button-quiet' })}</p></section>`;
 }
 
+// Members' reviews live on OpenVibe.Reviews: its /review page finds the provider there (or adds it) and opens the form;
+// /everywhere opens other review sites' own searches for the name. Host fetches nothing from either.
+function reviewsSection(p) {
+    const registrar = !p.plans.length && p.domains;
+    const write = `${REVIEWS_URL}/review?kind=${registrar ? 'service' : 'hosting'}&name=${encodeURIComponent(p.name)}`;
+    const elsewhere = `${REVIEWS_URL}/everywhere?q=${encodeURIComponent(p.name)}&kind=${registrar ? 'company' : 'hosting'}`;
+    return `<section class="hc-reviews" aria-labelledby="hc-reviews-h"><h2 id="hc-reviews-h">Reviews</h2>
+<p>Used ${esc(p.name)}? Review it on OpenVibe.Reviews, where reviews come from signed-in members, or see what other review sites say about it.</p>
+<p class="hc-more">${out(write, `Review ${esc(p.name)}`, { cls: 'button' })} ${out(elsewhere, 'Other review sites →')}</p></section>`;
+}
+
 function provider(p, discussion = null, extra = '') {
     const cheapest = p.plans.length ? p.plans.reduce((m, x) => (Number(x.price_monthly) < Number(m.price_monthly) ? x : m), p.plans[0]) : null;
     return `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog', 'Catalog')} / ${link('/catalog/providers', 'Providers')}</nav>
@@ -192,6 +204,7 @@ ${visit(p)}
 </header>
 ${p.plans.length ? planTable(p.plans, { caption: `${p.name}'s plans, lowest price first`, showProvider: false }) : p.domains ? `<p class="hc-more">${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `See ${esc(p.name)}'s domain prices →`, 'button')}</p>` : '<div class="hc-empty"><p>No plan of this provider is listed right now.</p></div>'}
 ${extra}
+${reviewsSection(p)}
 ${discussionSection(discussion)}
 <h2>Promotions</h2>
 ${promoCards(p.promos, { showProvider: false })}

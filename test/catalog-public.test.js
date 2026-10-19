@@ -35,6 +35,8 @@ const { boot, check, done } = require('./helpers/boot');
         });
         await check('affiliate disclosure and rel render; promos end by time', async () => {
             const page = await t.api('GET', `/catalog/providers/${p.slug}`); assert.strictEqual(page.status, 200); assert.match(page.text, /rel="sponsored nofollow noopener"/); assert.match(page.text, /OpenVibe may earn a commission/);
+            assert.ok(page.text.includes(`href="https://openvibe.reviews/review?kind=hosting&amp;name=${encodeURIComponent(p.name)}"`), 'a link to review the provider');
+            assert.match(page.text, /href="https:\/\/openvibe\.reviews\/everywhere\?q=[^"]+&amp;kind=hosting"/);
             const plans = await t.api('GET', '/catalog'); assert.match(plans.text, /<form class="hc-filters" method="get" action="\/catalog"/); assert.match(plans.text, /<table class="hc-table">/);
             assert.match(plans.text, /How the comparison works/); assert.doesNotMatch(plans.text, /<script[^>]*src="[^"]*catalog/, 'the catalog needs no script of its own');
             const front = await t.api('GET', '/'); assert.strictEqual(front.status, 200);

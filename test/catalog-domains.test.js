@@ -140,6 +140,7 @@ function fakeRegistry() {
             const pb = await t.api('GET', '/catalog/providers/porkbun');
             assert.match(pb.text, /6 domain endings priced/);
             assert.doesNotMatch(pb.text, /No plan of this provider/);
+            assert.match(pb.text, /href="https:\/\/openvibe\.reviews\/review\?kind=service&amp;name=Porkbun"/, 'a registrar is reviewed as a service');
             const front = await t.api('GET', '/');
             assert.match(front.text, /Domain names, compared too/);
             assert.match(front.text, /href="\/catalog\/domains"/);
