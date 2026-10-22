@@ -23,7 +23,23 @@ const SOURCES = Object.freeze({
         // Handshake names are sold beside ICANN TLDs but resolve only in Handshake's own root.
         skip: (x) => x.special_type != null && x.special_type !== '',
     },
+    'ovhcloud-domain-pricing': {
+        slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://www.ovhcloud.com/en/', source_url: 'https://www.ovhcloud.com/en/domains/tld/',
+        // The public catalog's integers are hundred-millionths of a dollar (920000000 is $9.20). A first year of 0 (an
+        // ending sold only under conditions) or the 999999 sentinel is not a price to compare: that ending is left out.
+        prices: (x) => ({ register: hundredMillionths(x.register), renew: hundredMillionths(x.renew), transfer: hundredMillionths(x.transfer, { zero: true }) }),
+        skip: (x) => x.currency !== 'USD' || !(Number(x.register) > 0) || Number(x.register) >= OVH_SENTINEL,
+    },
 });
+
+const OVH_SENTINEL = 99999900000000;
+/** An OVHcloud catalog price → dollars, or null (missing, the sentinel, or 0 where 0 is not a price). */
+function hundredMillionths(v, { zero = false } = {}) {
+    const n = Number(v);
+    if (v == null || v === '' || !Number.isFinite(n) || n < 0 || n >= OVH_SENTINEL) return null;
+    if (n === 0 && !zero) return null;
+    return Math.round(n / 1e6) / 100;
+}
 
 function amount(v) {
     if (v == null || v === '') return null;

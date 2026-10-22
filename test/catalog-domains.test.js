@@ -57,6 +57,15 @@ function fakeRegistry() {
         const v = domains.mapTldPrice(item('security', price('2,060.25')));
         assert.deepStrictEqual([v.tld, v.register, v.renew, v.currency, v.provider.slug], ['security', 2060.25, 2060.25, 'USD', 'porkbun']);
         assert.strictEqual(domains.mapTldPrice({ source_key: 'vultr-plans' }), null, 'a plan source is not a price list');
+        // OVHcloud's public catalog: hundred-millionths of a dollar; a first year of 0 or the sentinel is not sold that way.
+        const ovh = (tld, fields) => ({ ...item(tld, {}), source_key: 'ovhcloud-domain-pricing', fields: { currency: 'USD', ...fields } });
+        const com = domains.mapTldPrice(ovh('com', { register: 920000000, renew: 1649000000, transfer: 920000000 }));
+        assert.deepStrictEqual([com.tld, com.register, com.renew, com.transfer, com.provider.slug, com.source_url], ['com', 9.2, 16.49, 9.2, 'ovhcloud', 'https://www.ovhcloud.com/en/domains/tld/']);
+        assert.strictEqual(domains.mapTldPrice(ovh('co.uk', { register: 849000000, renew: 949000000, transfer: 0 })).transfer, 0, 'a free transfer is a price of 0');
+        assert.strictEqual(domains.mapTldPrice(ovh('br', { register: 0, renew: 100000000, transfer: 0 })), null, 'a first year of 0 is not a price to compare');
+        assert.strictEqual(domains.mapTldPrice(ovh('tn', { register: 99999900000000, renew: 99999900000000 })), null, 'the premium sentinel is never a price');
+        assert.strictEqual(domains.mapTldPrice(ovh('com', { currency: 'EUR', register: 920000000 })), null, 'only US dollars are compared');
+        assert.strictEqual(domains.mapTldPrice(ovh('io', { register: 6299000000, renew: 99999900000000 })).renew, null, 'a sentinel renewal is unknown, not a price');
     });
 
     await check('RDAP: registered, unregistered, rate-limited, no RDAP; https only, no redirects, answers cached', async () => {

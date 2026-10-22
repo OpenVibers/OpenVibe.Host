@@ -11,6 +11,10 @@ const cache = require('openvibe-shared/cache-policy');
 const sharedSeo = require('openvibe-shared/seo');
 const frame = require('openvibe-shared/frame');
 const showcase = require('openvibe-shared/showcase');
+// The home's questions are Host's own FAQ in its service manifest (openvibe-contracts), shown and published as FAQPage.
+const HOST_FAQ = (((contracts.services.manifests.find((m) => m.id === 'host') || {}).site || {}).faq || []);
+const HOME_TIERS_GB = [1, 2, 4, 8, 16, 32];
+const HOME_DESCRIPTION = 'Cloud and VPS plans and domain prices compared side by side, per month, per vCPU and per GB, every price dated and linked to its source.';
 const ovServe = require('openvibe-shared/serve');
 const { createIndexNow } = require('openvibe-shared/indexnow');
 const configLib = require('./config');
@@ -196,8 +200,22 @@ async function createApp(opts = {}) {
     app.get('/updates', (_req, res) => res.type('html').send(renderPage({ title: 'What shipped on OpenVibe.Host', body: frame.updatesBody({ service: 'host', siteName: 'OpenVibe.Host' }) + `<script src="${ovServe.url('shipped.js')}" defer></script>`, config, path: '/updates', indexable: true })));
     app.get('/', viewers.middleware('dashboard'), async (req, res, next) => {
         try {
-            const [result, providers, promos, stats, recent, popular, domainStats] = await Promise.all([catalog.plans({}), catalog.providers(), catalog.promos(), catalog.stats(), catalog.offers({}), catalog.domains.list({}), catalog.domains.stats()]);
-            res.type('html').send(renderPage({ body: catalogRender.front({ plans: result.plans, providers, promos, stats, offers: recent.offers, domains: domainsRender.frontSection({ popular: popular.tlds, stats: domainStats }) }), viewer: req.viewer, config, path: '/', indexable: true, styles: [showcase.STYLESHEET], css: ['css/catalog.css'], jsonLd: catalogRender.jsonLd.front(config.baseUrl, result.plans) }));
+            const [result, providers, promos, stats, recent, popular, domainStats, cheapDomains, providerCards] = await Promise.all([catalog.plans({}), catalog.providers(), catalog.promos(), catalog.stats(), catalog.offers({}), catalog.domains.list({}), catalog.domains.stats(), catalog.domains.list({ sort: 'register' }), catalog.providerSummary()]);
+            // The lowest price for each size, and the most each dollar buys: the same plan query the catalog page runs.
+            const first = async (q) => (await catalog.plans(q)).plans[0] || null;
+            const tiers = (await Promise.all(HOME_TIERS_GB.map(async (gb) => ({ gb, plan: await first({ min_ram_mb: gb * 1024 }) }))))
+                .filter((x, i, all) => x.plan && !(i > 0 && all[i - 1].plan && all[i - 1].plan.id === x.plan.id));   // a size the smaller one already covers adds nothing
+            const [vcpu, ram, disk] = await Promise.all([first({ sort: 'price_per_vcpu' }), first({ sort: 'price_per_gb_ram' }), first({ sort: 'price_per_gb_disk' })]);
+            const more = {
+                counts: [
+                    { value: stats.plans, label: 'hosting plans compared', href: '/catalog' },
+                    { value: stats.providers, label: stats.providers === 1 ? 'provider' : 'providers', href: '/catalog/providers' },
+                    { value: domainStats.tlds, label: 'domain endings priced', href: '/catalog/domains' },
+                    { value: (domainStats.registrars || []).length, label: (domainStats.registrars || []).length === 1 ? 'registrar priced' : 'registrars compared', href: '/catalog/domains' },
+                ],
+                tiers, value: { vcpu, ram, disk }, providerCards, faq: HOST_FAQ,
+            };
+            res.type('html').send(renderPage({ title: 'Hosting plans and domain prices, compared', description: HOME_DESCRIPTION, body: catalogRender.front({ plans: result.plans, providers, promos, stats, offers: recent.offers, more, domains: domainsRender.frontSection({ popular: popular.tlds, cheap: cheapDomains.tlds, stats: domainStats }) }), viewer: req.viewer, config, path: '/', indexable: true, styles: [showcase.STYLESHEET], css: ['css/catalog.css'], jsonLd: [...catalogRender.jsonLd.front(config.baseUrl, result.plans), ...(HOST_FAQ.length ? [sharedSeo.jsonLd.faq(HOST_FAQ.map((f) => ({ q: f.question, a: f.answer })))] : [])] }));
         } catch (err) { next(err); }
     });
     app.use((req, res) => req.path.startsWith('/api/') ? contracts.http.sendProblem(res, 404, 'route.not_found', { detail: 'Not found', ctx: req.ov }) : res.status(404).type('html').send(renderPage({ title: 'Not found', body: '<h1>Not found</h1>', config, path: req.originalUrl })));
