@@ -314,7 +314,30 @@ const jsonLd = {
 };
 
 /** The front page of the hosting comparison. */
-function front({ plans, providers, promos: live, stats, offers: recent = [], domains: domainSection = '', now = Date.now() }) {
+/** A plan as a small card: what it is, its size and its price, opening the plan's page. */
+const planCard = (label, p, note = '') => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span class="hh-label">${esc(label)}</span><b>${esc(p.provider_name)} ${esc(p.name)}</b><span class="hh-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb), sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).map(esc).join(' · ')}</span><span class="hh-price"><strong>${esc(money(p.price_monthly, p.currency))}</strong> a month${note ? ` · ${esc(note)}` : ''}</span>`)}</li>`;
+const perUnit = (p, by) => {
+    const price = Number(p.price_monthly);
+    const n = by === 'vcpu' ? Number(p.vcpu) : by === 'ram' ? Number(p.ram_mb) / 1024 : Number(p.disk_gb);
+    return Number.isFinite(price) && n > 0 ? money(price / n, p.currency) : null;
+};
+
+/** The home's extra blocks, each from real rows and left out when it has none. */
+function frontMore({ counts = [], tiers = [], value = {}, providerCards = [], faq = [] }) {
+    const stat = counts.filter((c) => c && c.value);
+    const best = [['vcpu', 'Lowest price per vCPU', 'per vCPU'], ['ram', 'Lowest price per GB of RAM', 'per GB of RAM'], ['disk', 'Lowest price per GB of disk', 'per GB of disk']]
+        .filter(([k]) => value[k]).map(([k, label, unit]) => { const u = perUnit(value[k], k); return planCard(label, value[k], u ? `${u} ${unit}` : ''); });
+    return {
+        stats: stat.length ? `<div class="sc-sec hh-stats-wrap"><ul class="hh-stats" aria-label="OpenVibe.Host in numbers">${stat.map((c) => `<li>${link(c.href, `<b>${esc(c.value.toLocaleString('en'))}</b><span>${esc(c.label)}</span>`)}</li>`).join('')}</ul></div>` : '',
+        sizes: tiers.length ? `<section class="sc-sec" aria-labelledby="hh-sizes"><h2 id="hh-sizes">The lowest price for each size</h2><p class="sc-lede">The cheapest plan with at least this much memory, from every provider in the catalog.</p><ul class="hh-cards">${tiers.map((x) => planCard(`${x.gb} GB of RAM or more`, x.plan)).join('')}</ul></section>` : '',
+        value: best.length ? `<section class="sc-sec" aria-labelledby="hh-value"><h2 id="hh-value">The most for your money</h2><p class="sc-lede">The same catalog sorted by what each dollar buys. ${link('/catalog?sort=price_per_gb_ram', 'Sort every plan this way')}.</p><ul class="hh-cards">${best.join('')}</ul></section>` : '',
+        providers: providerCards.length ? `<section class="sc-sec" aria-labelledby="hh-providers"><h2 id="hh-providers">Providers compared</h2><p class="sc-lede">Each provider's plans in the catalog, from its lowest monthly price, with the day it was last checked.</p><ul class="hh-cards">${providerCards.map((v) => `<li>${link(`/catalog/providers/${encodeURIComponent(v.slug)}`, `<b>${esc(v.name)}</b><span class="hh-spec">${esc(`${v.plans} plan${v.plans === 1 ? '' : 's'}`)}${v.domains ? esc(` · ${v.domains.toLocaleString('en')} domain endings`) : ''}</span><span class="hh-price">from <strong>${esc(money(v.from_price, v.currency))}</strong> a month</span>${v.last_checked ? `<span class="hh-spec">checked ${esc(day(v.last_checked))}</span>` : ''}`)}</li>`).join('')}</ul></section>` : '',
+        faq: faq.length ? `<section class="sc-sec" aria-labelledby="hh-faq"><h2 id="hh-faq">Questions people ask</h2><div class="hh-faq">${faq.map((f) => `<details><summary>${esc(f.question)}</summary><p>${esc(f.answer)}</p></details>`).join('')}</div></section>` : '',
+    };
+}
+
+function front({ plans, providers, promos: live, stats, offers: recent = [], domains: domainSection = '', more = {}, now = Date.now() }) {
+    const extra = frontMore(more);
     const aside = plans.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
 <p class="hc-aside-h">Lowest monthly prices right now</p>
 <ol>${plans.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
@@ -328,8 +351,9 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
         actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Domain prices', href: '/catalog/domains' }, { label: 'Latest offers', href: '/catalog/offers' }],
         note: stats.plans ? `${stats.plans} plans from ${stats.providers} provider${stats.providers === 1 ? '' : 's'} so far. More providers join as their sources are checked.` : 'The catalog is filling up: providers join as their official sources are checked and enabled.',
         aside: aside ? { html: aside } : undefined,
-    }) + `<section class="sc-sec">${planTable(plans.slice(0, 8), { caption: 'Lowest price first' })}
+    }) + extra.stats + `<section class="sc-sec" aria-labelledby="hh-cheapest"><h2 id="hh-cheapest">The lowest monthly prices</h2>${planTable(plans.slice(0, 8), { caption: 'Lowest price first' })}
 <p class="hc-more">${link('/catalog', 'Filter and sort every plan →', 'button')}</p></section>`
+    + extra.sizes + extra.value + extra.providers
     + domainSection
     + showcase.features({
         id: 'why',
@@ -342,6 +366,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
         ],
     }) + (recent.length ? `<section class="sc-sec"><h2>Latest hosting offers</h2><ol class="hc-offers">${recent.slice(0, 6).map((o) => offerItem(o, now)).join('')}</ol><p class="hc-more">${link('/catalog/offers', 'Every offer, by price or date →')}</p></section>` : '')
     + (live.length ? `<section class="sc-sec"><h2>Promotions running now</h2>${promoCards(live.slice(0, 3))}<p class="hc-more">${link('/catalog/promos', 'All promotions →')}</p></section>` : '')
+    + extra.faq
     + `<p class="hc-own">Want to host a site with OpenVibe? ${link('https://openvibe.space', 'Visit OpenVibe.Space')}.</p>`;
 }
 
