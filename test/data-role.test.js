@@ -32,6 +32,8 @@ runTests([
         assert.match(pb, /^listen_addr = 127\.0\.0\.1/m);
         assert.match(pb, /^pool_mode = transaction/m);
         assert.match(pb, /^auth_type = scram-sha-256/m);
+        assert.match(pb, /^log_connections = 0$/m, 'client logins are not logged (journal noise)');
+        assert.match(pb, /^log_disconnections = 0$/m);
         const vk = read('files/valkey-openvibe.conf');
         assert.match(vk, /^bind 127\.0\.0\.1 -::1/m);
         assert.match(vk, /^maxmemory-policy volatile-lru/m);
