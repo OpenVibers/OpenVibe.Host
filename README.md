@@ -233,6 +233,7 @@ Counts only, never a row about a person. A database that does not answer prints 
 
 1. Take the per-service lock. A `release-layout` service goes to its own engine ([docs/deploy-strategies.md](docs/deploy-strategies.md#release-layout-release-layout)); an in-place strategy refuses a checkout that has a `releases/current` layout.
 2. `git fetch` as the owner, then work out the from/to shas, changed files, per-package install need and whether a restart is needed (`noRestartPaths`).
+   Already at the target: nothing happens, except that `--install-units` still installs unit files that differ from the checkout (result `units-installed`, nothing restarted; in-place strategies).
 3. Refuse a tracked local change or a wrong branch.
 4. **Protected sessions** (only if a restart is needed): refuse, wait (`--wait-idle` or drain policy `wait`), report (drain policy `report`, Events SSE), or `--force`.
 5. `git merge --ff-only` as the owner (rollback uses `git reset --hard <sha>`).
