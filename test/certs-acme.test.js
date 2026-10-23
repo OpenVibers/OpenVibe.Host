@@ -63,6 +63,18 @@ runTests([
         assert.ok(!host.certbotCalls.some((c) => c.args.some((a) => /privkey|\.key$/.test(String(a)))), 'no command touched a key path');
     }),
 
+    test('a database without host_domains (Host 0008) has no custom domains: the renewal still runs and succeeds', async () => {
+        const host = issuer(withHost(scenario(), []));
+        host.psqlHandler = () => { throw new Error('psql ov_host failed: ERROR:  relation "host_domains" does not exist'); };
+        const r = await host.cli('certs', 'renew', 'host', '--install');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.ok(host.certbotCalls.some((c) => c.args[0] === 'renew'), 'the wildcard lineage is renewed');
+        assert.ok(!host.certbotCalls.some((c) => c.args[0] === 'certonly'), 'nothing to issue');
+        // Any other database failure still fails the command.
+        host.psqlHandler = () => { throw new Error('psql ov_host failed: connection refused'); };
+        assert.notStrictEqual((await host.cli('certs', 'renew', 'host', '--install')).code, 0);
+    }),
+
     test('issuance failure keeps the domain HTTP-only and fails the command', async () => {
         const host = withHost(scenario(), [{ hostname: 'docs.tenant-b.net' }]);
         host.certbot = (args) => (args[0] === 'certonly' ? { code: 1, stderr: 'Certbot failed to authenticate some domains: Challenge failed' } : { code: 0, stdout: '' });
