@@ -62,6 +62,10 @@ function report() {
                count(*) FILTER (WHERE duration_seconds >= 60 AND duration_seconds < 600) AS from_1_to_10_min,
                count(*) FILTER (WHERE duration_seconds >= 600) AS over_10_min
           FROM firsts WHERE started_at >= ${since(30)}`);
+    // Why the short ones ended (Live's streams.end_reason since Live#327; n/a before it).
+    r.live.short_first_stream_endings = many('ov_live', `${firsts.replace('protocol, duration_seconds', 'protocol, duration_seconds, end_reason')}
+        SELECT coalesce(end_reason, 'unknown') AS reason, count(*) AS n FROM firsts
+         WHERE started_at >= ${since(30)} AND coalesce(duration_seconds, 0) < 60 GROUP BY 1 ORDER BY 2 DESC`);
     r.live.returned_within_14_days = one('ov_live', `${firsts}
         SELECT count(*) AS cohort,
                count(*) FILTER (WHERE EXISTS (SELECT 1 FROM streams s WHERE s.user_id = f.user_id AND s.id <> f.id AND s.started_at > f.started_at
@@ -110,6 +114,8 @@ function markdown(r) {
         L.push(`**New streamers, last 30 days: ${ns.total}.** First stream from the browser ${ns.browser}, OBS/RTMP ${ns.rtmp}, other ${ns.other}.`);
         L.push(`It ran under a minute for ${ns.under_1_min}, 1 to 10 minutes for ${ns.from_1_to_10_min}, longer for ${ns.over_10_min}.`, '');
     }
+    const ends = r.live.short_first_stream_endings || [];
+    L.push(ends.length && ends[0].error ? `Why short first streams ended: n/a (${ends[0].error})` : `Why first streams under a minute ended: ${ends.map((e) => `${e.reason} ${e.n}`).join(', ') || 'none'}.`, '');
     L.push(rt.error ? `Returned within 14 days: n/a (${rt.error})` : `**Streamed again within 14 days:** ${rt.returned} of the ${rt.cohort} people whose first stream was 14 to 44 days ago (${pct(rt.returned, rt.cohort)}).`, '');
     const t = r.money.tips_30_days || {};
     L.push('**Money.**');
