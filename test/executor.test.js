@@ -7,7 +7,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
-const { createSystemExecutor } = require('../lib/executor');
+const { createSystemExecutor, asUserArgv } = require('../lib/executor');
 const { test, runTests } = require('./helpers');
 
 const exec = createSystemExecutor();
@@ -38,6 +38,15 @@ runTests([
 
         const r = await exec.run(process.execPath, ['-e', 'process.stdout.write(process.argv[1])', 'hi'], { as: await exec.userName() });
         assert.deepStrictEqual([r.code, r.stdout], [0, 'hi']);
+    }),
+
+    test('root runs a command as another user through setpriv (no PAM session), runuser only without a passwd entry', async () => {
+        const pw = { name: 'ubuntu', uid: 1000, gid: 1000, home: '/home/ubuntu' };
+        assert.deepStrictEqual(asUserArgv('ubuntu', pw, 'git', ['-C', '/opt/x', 'fetch'], { path: '/usr/bin:/bin', setpriv: '/usr/bin/setpriv', runuser: '/usr/sbin/runuser' }),
+            ['/usr/bin/setpriv', ['--reuid=1000', '--regid=1000', '--init-groups', '--', 'env', 'HOME=/home/ubuntu', 'USER=ubuntu', 'LOGNAME=ubuntu', 'PATH=/usr/bin:/bin', 'git', '-C', '/opt/x', 'fetch']]);
+        assert.deepStrictEqual(asUserArgv('ghost', null, 'git', ['status'], { path: '/usr/bin', setpriv: '/usr/bin/setpriv', runuser: '/usr/sbin/runuser' }),
+            ['/usr/sbin/runuser', ['-u', 'ghost', '--', 'env', 'HOME=/home/ghost', 'PATH=/usr/bin', 'git', 'status']]);
+        assert.deepStrictEqual(asUserArgv('ubuntu', pw, 'git', [], { path: '/usr/bin', setpriv: null, runuser: '/usr/sbin/runuser' })[0], '/usr/sbin/runuser', 'no setpriv: runuser');
     }),
 
     test('the backup unit can find runuser: /usr/sbin is on its PATH (the 2026-09-24/25 nightly backups failed without it)', async () => {
