@@ -1,5 +1,8 @@
 # Threat review: OpenVibe.Host Stage B (tenant static hosting)
 
+> **History.** Stage B moved to OpenVibe.Space on 2026-10-12 and its vhost renderer left ovhost on 2026-10-23
+> (see [launch.md](launch.md)); this review is kept as the record of what was checked at launch.
+
 Launch-rule item 6 (README, [Launch rule](../README.md#launch-rule)) and roadmap Track S require a
 threat review before a service leaves placeholder status. This review covers Stage B as of this
 commit:

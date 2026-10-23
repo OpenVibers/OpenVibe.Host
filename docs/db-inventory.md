@@ -12,4 +12,4 @@ Every `services.<id>.databases[]` entry names a database in the host PostgreSQL 
 { "trade": { "url": "DATABASE_URL", "directUrl": "DATABASE_DIRECT_URL" } }
 ```
 
-The drill creates a scratch database and role, restores the archive, and points both settings at the scratch database. `nginx.tenants.database` uses `{ "engine": "postgresql", "database": "ov_host" }`. A `postgresql-count` protected-session probe runs a read-only SELECT through the postgres OS user.
+The drill creates a scratch database and role, restores the archive, and points both settings at the scratch database. A `postgresql-count` protected-session probe runs a read-only SELECT through the postgres OS user.
