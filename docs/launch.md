@@ -1,5 +1,10 @@
 # Launching Stage B at openvibe.host
 
+> **History.** Static hosting moved to OpenVibe.Space on 2026-10-12, and on 2026-10-23 ovhost lost what this runbook
+> used: `ovhost nginx tenants`, `ovhost certs renew`, `openvibe-certs.timer` and the inventory's `nginx.tenants` block.
+> openvibe.host is now the repo vhost `deploy/nginx/openvibe.host.conf` (the catalog; `*.openvibe.host` answers 410
+> with a link to OpenVibe.Space), and certbot's own timer renews the wildcard certificate (DNS-01 via Cloudflare).
+
 **Launched on 2026-10-07.** The window ran in this order: pre-flight (every line agreed); optional step 0, an
 nginx catch-all (`/etc/nginx/sites-available/00-default-catchall.conf`, a 444 on :80 and `ssl_reject_handshake` on
 :443 for any host no site names); the `ovhost` CLI updated; `ovhost nginx tenants host --install` (openvibe.host.conf

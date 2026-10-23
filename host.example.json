@@ -876,6 +876,11 @@
         ]
       },
       "port": 4910,
+      "nginx": {
+        "vhost": "openvibe.host.conf",
+        "repoVhost": "deploy/nginx/openvibe.host.conf",
+        "variant": "http"
+      },
       "ready": {
         "url": "http://127.0.0.1:4910/api/ready",
         "timeoutSeconds": 30

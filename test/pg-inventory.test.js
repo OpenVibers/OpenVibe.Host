@@ -2,9 +2,8 @@
 /**
  * The PostgreSQL inventory: a `databases[]` entry is
  * PostgreSQL (a database in the cluster, named — its object carries NO `path`). The same engine
- * choice reaches the drill block ({ url, directUrl }), nginx tenants (read over psql, not a file)
- * and the protected `postgresql-count` probe. These are the normalised shapes the rest of ovhost
- * depends on, and every code path outside the engine's own code is written to assume no `.path`.
+ * choice reaches the drill block ({ url, directUrl }) and the protected `postgresql-count` probe. These are
+ * the normalised shapes the rest of ovhost depends on, and every code path outside the engine's own code is written to assume no `.path`.
  */
 const assert = require('assert');
 const { test, runTests } = require('./helpers');
@@ -86,16 +85,11 @@ runTests([
         assert.throws(() => normalise(pgDrill({ countsTolerance: 1.5 })), /countsTolerance must be a whole number of rows/);
     }),
 
-    test('nginx.tenants.database accepts a PostgreSQL database object', () => {
-        const tenants = (database) => normalise({ services: { host: { ...base, nginx: { tenants: { database } } } } }).services.host.nginx.tenants.database;
-        assert.deepStrictEqual(tenants({ engine: 'postgresql', database: 'ov_host' }), { engine: 'postgresql', database: 'ov_host' });
-    }),
-
-    test('nginx.tenants.database rejects anything else', () => {
-        const tenants = (database) => normalise({ services: { host: { ...base, nginx: { tenants: { database } } } } });
-        for (const database of [{ engine: 'mysql', database: 'ov_host' }, { engine: 'postgresql', database: 'host' }, { database: 'ov_host' }, 42, []]) {
-            assert.throws(() => tenants(database), /nginx\.tenants\.database must be/, JSON.stringify(database));
-        }
+    test('a nginx.tenants block is refused: Stage B moved to OpenVibe.Space, openvibe.host is a repo vhost', () => {
+        const tenants = { database: { engine: 'postgresql', database: 'ov_host' } };
+        assert.throws(() => normalise({ services: { host: { ...base, nginx: { tenants } } } }), /nginx\.tenants is retired/);
+        const nginx = normalise({ services: { host: { ...base, nginx: { vhost: 'openvibe.host.conf', repoVhost: 'deploy/nginx/openvibe.host.conf', variant: 'http' } } } }).services.host.nginx;
+        assert.strictEqual(nginx.repoVhost, 'deploy/nginx/openvibe.host.conf');
     }),
 
     test('the postgresql-count probe validates its database and SQL, alone and inside a sum', () => {

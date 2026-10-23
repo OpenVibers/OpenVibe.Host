@@ -195,7 +195,6 @@ ovhost announce <service> [--release <id>] [--commit <sha>] [--origin <url>] [--
 ovhost releases <service> [--limit <n>]
 ovhost certs [--warn-days <n>]
 ovhost nginx render <service> [--variant http|sse|websocket] [--manifest <file>] [--install]
-ovhost nginx tenants <service> [--wildcard-cert <name|dir>] [--install]    tenant vhosts for a service whose inventory has `nginx.tenants`
 ovhost snapshot <service> [--out <file>]
 ovhost backup <service>
 ovhost backup --all [--offsite] [--logical] [--no-prune] [--keep-daily <n>] [--keep-weekly <n>]

@@ -1,7 +1,7 @@
 [Unit]
-Description=OpenVibe.Host Stage B: tenant static hosting (dashboard, API and *.openvibe.host sites)
+Description=OpenVibe.Host: the hosting comparison catalog (openvibe.host)
 # Network (sign-in, JWKS, service tokens) and Events (the outbox relay) should be up first, but Host
-# degrades gracefully without them: tenant sites keep serving; sign-in, API calls and events wait
+# degrades gracefully without them: the catalog keeps serving; sign-in, API calls and events wait
 # (see /api/ready).
 After=network.target postgresql.service pgbouncer.service valkey-server.service
 Wants=openvibe-network.service postgresql.service pgbouncer.service valkey-server.service
