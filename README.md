@@ -293,6 +293,11 @@ Two things deploy from this repository:
   then `ovhost --version` and `sudo ovhost capabilities` (ovhost does not deploy itself; an update is
   undone by checking out the previous commit there). Its timers (`openvibe-backup`, `openvibe-alerts`, `openvibe-browsercheck`,
   `openvibe-devpath`, `openvibe-toolsjob`) are unit files in [deploy/systemd/](deploy/systemd/).
+- **Boot order.** Three drop-ins in [deploy/systemd/](deploy/systemd/) order every `openvibe-*` and `openre-*`
+  service after PostgreSQL, PgBouncer and Valkey (systemd prefix drop-ins, `openvibe-.service.d/`), and PgBouncer
+  after PostgreSQL. Without them a reboot starts services against a PgBouncer that caches PostgreSQL's refused
+  logins (`server_login_retry`) and they exit once. They are `unitSources` of the host service, so
+  `sudo ovhost validate host` reports drift and `sudo ovhost deploy host --install-units` installs them.
 - **The catalog service** deploys like every other service, with `sudo ovhost deploy host` (strategy
   `git-checkout`: fetch, fast-forward `/opt/openvibe.host`, install on a lockfile change, restart, wait for `/api/ready`).
   The unit is `openvibe-host.service` on `127.0.0.1:4910`, the env file `/etc/openvibe/host.env`. Its state is
