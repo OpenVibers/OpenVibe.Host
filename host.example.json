@@ -863,7 +863,10 @@
         "openvibe-host.service"
       ],
       "unitSources": {
-        "openvibe-host.service": "deploy/systemd/openvibe-host.service"
+        "openvibe-host.service": "deploy/systemd/openvibe-host.service",
+        "openvibe-.service.d/10-database-order.conf": "deploy/systemd/openvibe-.service.d/10-database-order.conf",
+        "openre-.service.d/10-database-order.conf": "deploy/systemd/openre-.service.d/10-database-order.conf",
+        "pgbouncer.service.d/10-after-postgresql.conf": "deploy/systemd/pgbouncer.service.d/10-after-postgresql.conf"
       },
       "envFile": "/etc/openvibe/host.env",
       "env": {
