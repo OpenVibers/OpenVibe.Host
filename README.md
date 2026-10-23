@@ -221,6 +221,15 @@ Every command accepts `--json` and `--inventory <file>`. `drill` exits `0` passe
 
 **Release-lifecycle acceptance** (D46, roadmap WS-P task 16). `node scripts/release-acceptance.js [--base <url>] [--only 9,14] [--json] [--out run.md]` runs the 14 D46 scenarios (home styles during a broadcast, a shared navbar update, an article or paste edit, a feed update while reading, a tool upgrade during a job, an API restart during streams or calls, a media-worker rollout, duplicate or older notifications, an account switch during an update, a partial asset group, repeated navigation leaks, JS-disabled routes, rollback with new writes, resuming an offline tab) as 63 gates over the tests of Shared, Live, Tools, Chat, Media, Blog and this repository, the production proofs and, with `--base`, the running site. Each gate has a numeric budget. The output is a table of measured values against those budgets, with the versions it ran against. Skipped and open gates are never counted as passes. See [docs/release-acceptance.md](docs/release-acceptance.md) for the scenario table, where each number comes from, what is open and the recorded runs.
 
+**Adoption report** (plan 2026-10-22, track C1). `sudo node scripts/adoption-report.js [--days 7] [--json]` reads, on the host and read-only as the postgres OS user, the numbers that say whether people use OpenVibe:
+- streams and streamers, and new accounts;
+- new streamers by how their first stream went live (browser or OBS/RTMP) and how long it ran;
+- the share who streamed again within 14 days;
+- tips, tip pages, VIP and subscriptions;
+- paired Nodes, zones and Inventory owners.
+
+Counts only, never a row about a person. A database that does not answer prints n/a and the rest still prints. Read it weekly.
+
 ### Deploy sequence
 
 1. Take the per-service lock. A `release-layout` service goes to its own engine ([docs/deploy-strategies.md](docs/deploy-strategies.md#release-layout-release-layout)); an in-place strategy refuses a checkout that has a `releases/current` layout.
