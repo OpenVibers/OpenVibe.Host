@@ -508,6 +508,22 @@ runTests([
         assert.strictEqual((await lastRecord(host, 'network')).strategy, 'git-checkout');
     }),
 
+    test('--install-units on a service already at its target installs drifted unit files and restarts nothing', async () => {
+        const host = networkHost();
+        host.put('/etc/systemd/system/openvibe-network.service', '[Service]\nExecStart=node old.js\n');
+        const r = await host.cli('deploy', 'network', '--install-units');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.match(r.out, /installed unit files only, nothing restarted/);
+        assert.strictEqual(host.read('/etc/systemd/system/openvibe-network.service'), '[Service]\nExecStart=node server/index.js\n');
+        assert.deepStrictEqual(host.restarts(), []);
+        const rec = await lastRecord(host, 'network');
+        assert.strictEqual(rec.result, 'units-installed');
+        assert.deepStrictEqual(rec.unitsInstalled, ['openvibe-network.service']);
+        // Without the flag, or with nothing to install, an up-to-date deploy still does nothing.
+        const again = await host.cli('deploy', 'network', '--install-units');
+        assert.match(again.out, /nothing to do/);
+    }),
+
     test('unit bootstrap enables an installed service before its first restart', async () => {
         const host = networkHost();
         const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
