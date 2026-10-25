@@ -36,7 +36,7 @@
 .cs-card { padding: 18px; border: 1px solid var(--border, #2c3d5c); border-radius: 16px; background: var(--bg-secondary, #101828); margin-top: 14px; }
 .cs-grid .cs-card { margin-top: 0; }
 .cs-card h2 { margin: 0 0 12px; font-size: 1.1rem; }
-.cs-accts, .cs-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.cs-accts, .cs-log { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .cs-acct { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border, #2c3d5c); border-radius: 12px; }
 .cs-acct form { margin: 0; }
 .cs-form { display: grid; gap: 12px; }
