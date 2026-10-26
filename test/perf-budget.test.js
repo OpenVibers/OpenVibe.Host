@@ -18,8 +18,8 @@ const BUDGETS = {
     jsRawKB: 268,   // 263.4 with shared 4.11.0's seasonal navbar; 254.1 with openvibe-shared 4.9.0 (status text twins in every theme, 2026-10-23); 239.1 (openvibe-shared 2.6.0 served scripts; was 212.2 on 2.2.0)
     jsBrotliKB: 67,   // 65.3 Shared 4.12.0: the light/dark switch, the seasonal mark and the theme pairs; 61.7 with shared 4.11.0's seasonal navbar; 56.3 (was 49.9)
     cssFiles: 3,   // 3 (host.css, openvibe-shared showcase.css, catalog.css: the front page is the hosting catalog since Host#69)
-    cssRawKB: 38,   // 34.8 on 2026-10-22 (the front page's cards and questions); 31.9 (2026-10-16 the domain comparison's and benchmarks' styles; 27.2 with showcase.css 4.1.5, 14.8 before catalog.css)
-    cssBrotliKB: 7.5,   // 6.9 (5.7 before the domain and benchmark styles, 3.6 before catalog.css)
+    cssRawKB: 45,   // 40.7 with Shared 4.13.0 (2026-10-26: account links); 34.8 on 2026-10-22 (the front page's cards and questions); 31.9 (2026-10-16 the domain comparison's and benchmarks' styles; 27.2 with showcase.css 4.1.5, 14.8 before catalog.css)
+    cssBrotliKB: 10,   // 8.3 with Shared 4.13.0 (2026-10-26: account links); 6.9 (5.7 before the domain and benchmark styles, 3.6 before catalog.css)
     externalFiles: 1,   // 0
 };
 
