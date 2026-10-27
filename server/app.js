@@ -159,7 +159,8 @@ async function createApp(opts = {}) {
         ...(await catalog.sitemapPlans()).map((p) => ({ title: `Hosting plan ${p.id}`, url: `/catalog/plans/${p.id}`, text: 'Sourced plan and price history.' }))];
     app.get('/llms.txt', async (_req, res, next) => { try { res.type('text/plain').send(sharedSeo.llmsTxt({ name: 'OpenVibe.Host', summary, sections: [{ title: 'Public pages', links: (await allPages()).map((p) => ({ title: p.title, url: `${config.baseUrl}${p.url}` })) }] })); } catch (err) { next(err); } });
     app.get('/llms-full.txt', async (_req, res, next) => { try { res.type('text/plain').send(sharedSeo.llmsFull({ site: { name: 'OpenVibe.Host', url: config.baseUrl }, summary, base: config.baseUrl, maxBytes: 512 * 1024, sections: [{ title: 'Public pages', pages: await allPages() }] })); } catch (err) { next(err); } });
-    app.use('/auth/', rateLimit({ windowMs: 15 * 60_000, max: 60, standardHeaders: true, legacyHeaders: false }));
+    // /auth/me is the navbar's who-is-signed-in read on every page, so it is not counted with sign-ins: 60 page views in 15 minutes made a signed-in visitor look signed out.
+    app.use('/auth/', rateLimit({ windowMs: 15 * 60_000, max: 60, skip: (req) => req.path === '/me', standardHeaders: true, legacyHeaders: false }));
     app.use('/auth', createHostSession({ auth, config }).router(express));
     { const legal = require('openvibe-shared/legal'); app.get(legal.PATHS, legal.handler({ id: 'host', service: 'host', host: 'openvibe.host', name: 'OpenVibe.Host', profile: 'ugc' })); }
     app.use('/shared', require('openvibe-shared/serve').handler());
