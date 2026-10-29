@@ -91,6 +91,14 @@ function renderPage(o) {
     // footer.js with the navbar init, the noscript nav and the SSR footer; the rest of the head and the body
     // are the catalog's own pages.
     const canonical = canonicalOf(o);
+    // One JSON-LD script per page, every node in one @graph (the estate's convention): a page that hands over a
+    // list of nodes gets the graph wrapper here, and the nodes keep their own fields with the graph carrying the
+    // one @context. A page that already passes a single object is left as it is.
+    const jsonLd = (() => {
+        if (!o.indexable || !Array.isArray(o.jsonLd)) return undefined;
+        const nodes = o.jsonLd.filter(Boolean).map((n) => { const c = { ...n }; delete c['@context']; return c; });
+        return [{ '@context': 'https://schema.org', '@graph': nodes }];
+    })();
     return shell.page({
         // A page with a Markdown twin (o.agent) advertises it in the head; the twin itself is server/agent-pages.js.
         agentLayer: !!o.agent,
@@ -102,7 +110,7 @@ function renderPage(o) {
         description: o.description || DESCRIPTION,
         canonical,
         robots: o.indexable ? 'index, follow' : 'noindex, nofollow',
-        jsonLd: o.indexable && Array.isArray(o.jsonLd) ? o.jsonLd : undefined,
+        jsonLd,
         navbar: nav, footer, home: '/', navLinks: NAV_LINKS(signedIn),
         head: [
             appIcon.headTags({ site: 'host' }),
