@@ -301,13 +301,17 @@ const jsonLd = {
     },
     plan(base, p) {
         const price = Number(p.price_monthly);
+        const url = planUrl(base, p);
         return [
-            seo.jsonLd.breadcrumbs([{ name: 'Catalog', url: `${base}/catalog` }, { name: p.provider_name, url: `${base}/catalog/providers/${encodeURIComponent(p.provider_slug)}` }, { name: p.name, url: planUrl(base, p) }]),
+            seo.jsonLd.breadcrumbs([{ name: 'Catalog', url: `${base}/catalog` }, { name: p.provider_name, url: `${base}/catalog/providers/${encodeURIComponent(p.provider_slug)}` }, { name: p.name, url }]),
+            // One Product node for the plan's own page: the page's own heading is the plan's name,
+            // the page names the provider (so it is the brand), and the price it shows is the monthly
+            // price as a number. The plan is on sale only while it is active, so that is its availability.
             seo.jsonLd.product({
-                name: `${p.provider_name} ${p.name}`, url: planUrl(base, p), brand: { '@type': 'Brand', name: p.provider_name },
+                name: p.name, url, brand: { '@type': 'Brand', name: p.provider_name },
                 description: [p.vcpu != null ? `${Number(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb) ? `${bytesMb(p.ram_mb)} RAM` : null, sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).join(', ') || undefined,
-                offers: Number.isFinite(price) ? { '@type': 'Offer', price: price.toFixed(2), priceCurrency: p.currency, url: p.source_url, availability: 'https://schema.org/InStock',
-                    priceSpecification: { '@type': 'UnitPriceSpecification', price: price.toFixed(2), priceCurrency: p.currency, unitText: 'MONTH' } } : undefined,
+                offers: Number.isFinite(price) ? { '@type': 'Offer', price, priceCurrency: p.currency, url, availability: 'https://schema.org/InStock',
+                    priceSpecification: { '@type': 'UnitPriceSpecification', price, priceCurrency: p.currency, unitText: 'MONTH' } } : undefined,
             }),
         ];
     },
