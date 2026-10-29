@@ -10,11 +10,6 @@ const sharedMetrics = require('openvibe-shared/metrics');
 const cache = require('openvibe-shared/cache-policy');
 const sharedSeo = require('openvibe-shared/seo');
 const frame = require('openvibe-shared/frame');
-const showcase = require('openvibe-shared/showcase');
-// The home's questions are Host's own FAQ in its service manifest (openvibe-contracts), shown and published as FAQPage.
-const HOST_FAQ = (((contracts.services.manifests.find((m) => m.id === 'host') || {}).site || {}).faq || []);
-const HOME_TIERS_GB = [1, 2, 4, 8, 16, 32];
-const HOME_DESCRIPTION = 'Cloud and VPS plans and domain prices compared side by side, per month, per vCPU and per GB, every price dated and linked to its source.';
 const ovServe = require('openvibe-shared/serve');
 const { createIndexNow } = require('openvibe-shared/indexnow');
 const configLib = require('./config');
@@ -32,10 +27,8 @@ const { createCatalogSearch } = require('./catalog/search-index');
 const { createRdap } = require('./catalog/rdap');
 const { createDomainCheck } = require('./catalog/domain-check');
 const { createBenchmarks } = require('./catalog/benchmarks');
-const domainsRender = require('./render/domains');
 const { createCatalogApi, createCatalogPages } = require('./http/catalog');
-const { renderPage, assetVersion, setRelease } = require('./render/layout');
-const catalogRender = require('./render/catalog');
+const { renderPage, assetVersion, setRelease, twinHeader } = require('./render/layout');
 
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const VERSION = require('../package.json').version;
@@ -84,9 +77,11 @@ async function createApp(opts = {}) {
     const domainCheck = createDomainCheck({ catalog, rdap: opts.rdap || createRdap({ log }) });
     const benchmarks = createBenchmarks({ store, baseUrl: config.baseUrl });
     const catalogSearch = createCatalogSearch({ config, store, outbox, log });
+    // The public pages as data, shared by the routes and the agent-layer twins (server/agent-pages.js).
+    const views = require('./http/catalog-views').createCatalogViews({ catalog, benchmarks, community, config, log });
     catalog.onChange(() => { if (config.worker.enabled) catalogSearch.sweepSoon(); });
     const worker = createWorker({ config, outbox, catalogIngest, catalogSearch, log });
-    const ctx = { config, store, outbox, catalog, domainCheck, benchmarks, community, catalogIngest, catalogSearch, auth, viewers, worker, log };
+    const ctx = { config, store, outbox, catalog, domainCheck, benchmarks, community, catalogIngest, catalogSearch, auth, viewers, worker, log, views };
     ctx.console = require('./console/console').createConsole({ store, config, catalog, fetchImpl: opts.fetchImpl, log });
     const app = express();
     app.disable('x-powered-by');
@@ -129,7 +124,7 @@ async function createApp(opts = {}) {
     app.get('/api/ready', createHostReadiness({ store, outbox, jwksUrl: `${config.networkInternalUrl}/api/.well-known/jwks`, release: release.release, valkey }).handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));
     const legalPaths = require('openvibe-shared/legal').PATHS;
-    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Allow: /catalog$', 'Allow: /catalog/*', 'Disallow: /catalog/domains/check', 'Disallow: /catalog/benchmarks/', 'Allow: /catalog/benchmarks$', 'Disallow: /', '', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
+    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Allow: /catalog$', 'Allow: /catalog/*', 'Disallow: /catalog/domains/check', 'Disallow: /catalog/benchmarks/', 'Allow: /catalog/benchmarks$', 'Allow: /.well-known/agent.json', 'Allow: /*.md', 'Disallow: /', '', '# Agent manifest: https://openvibe.host/.well-known/agent.json; every public page has a .md twin.', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
     app.get('/sitemap.xml', async (_req, res, next) => {
         try {
             const [providers, plans, tlds] = await Promise.all([catalog.providers(), catalog.sitemapPlans(), catalog.domains.sitemap()]);
@@ -186,6 +181,21 @@ async function createApp(opts = {}) {
         app.locals.accountData = accountData;
         app.post('/internal/events', accountData.consumer({ secrets: config.events.secrets, send: accountSend, log }));
     }
+    // The agent layer (openvibe-shared/agent-layer): /.well-known/agent.json, and the Markdown twins of the
+    // public pages. Only the manifest and twin requests reach this mount, so every HTML page keeps the route
+    // it has — a signed-in visitor's own page, with the account bar and the private cache — and the page
+    // advertises its twin in its head and in the Link header. The console, the manage pages, the domain name
+    // check and the API are never rendered as twins.
+    const agentLayer = express();
+    require('openvibe-shared/agent-layer').mount(agentLayer, {
+        descriptor: require('./agent-descriptor'),
+        render: require('./agent-pages').createAgentPages(ctx, views).renderPublicPage,
+    });
+    app.use((req, res, next) => {
+        const twin = req.path.endsWith('.md') || req.query.format === 'markdown' || String(req.headers.accept || '').includes('text/markdown');
+        if (req.path !== '/.well-known/agent.json' && !twin) return next();
+        return agentLayer(req, res, next);
+    });
     app.use('/console', rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }), require('./console/pages').createConsolePages(ctx));
     app.use('/api/v1/catalog', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }), createCatalogApi(ctx));
     const movedApi = (req, res) => res.status(410).type('application/problem+json').json({ code: 'host.moved_to_space', title: 'Static hosting moved', detail: MOVED, url: SPACE_URL });
@@ -198,25 +208,16 @@ async function createApp(opts = {}) {
     app.use('/catalog', rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), createCatalogPages(ctx));
     app.get('/providers', (_req, res) => res.redirect(301, '/catalog/providers'));
     app.get('/promotions', (_req, res) => res.redirect(301, '/catalog/promos'));
-    app.get('/updates', (_req, res) => res.type('html').send(renderPage({ title: 'What shipped on OpenVibe.Host', body: frame.updatesBody({ service: 'host', siteName: 'OpenVibe.Host' }) + `<script src="${ovServe.url('shipped.js')}" defer></script>`, config, path: '/updates', indexable: true })));
+    app.get('/updates', (_req, res) => res.type('html').send(renderPage({ title: 'What shipped on OpenVibe.Host', body: frame.updatesBody({ service: 'host', siteName: 'OpenVibe.Host' }) + `<script src="${ovServe.url('shipped.js')}" defer></script>`, config, path: '/updates', indexable: true, agent: true })));
     app.get('/', viewers.middleware('dashboard'), async (req, res, next) => {
         try {
-            const [result, providers, promos, stats, recent, popular, domainStats, cheapDomains, providerCards] = await Promise.all([catalog.plans({}), catalog.providers(), catalog.promos(), catalog.stats(), catalog.offers({}), catalog.domains.list({}), catalog.domains.stats(), catalog.domains.list({ sort: 'register' }), catalog.providerSummary()]);
-            // The lowest price for each size, and the most each dollar buys: the same plan query the catalog page runs.
-            const first = async (q) => (await catalog.plans(q)).plans[0] || null;
-            const tiers = (await Promise.all(HOME_TIERS_GB.map(async (gb) => ({ gb, plan: await first({ min_ram_mb: gb * 1024 }) }))))
-                .filter((x, i, all) => x.plan && !(i > 0 && all[i - 1].plan && all[i - 1].plan.id === x.plan.id));   // a size the smaller one already covers adds nothing
-            const [vcpu, ram, disk] = await Promise.all([first({ sort: 'price_per_vcpu' }), first({ sort: 'price_per_gb_ram' }), first({ sort: 'price_per_gb_disk' })]);
-            const more = {
-                counts: [
-                    { value: stats.plans, label: 'hosting plans compared', href: '/catalog' },
-                    { value: stats.providers, label: stats.providers === 1 ? 'provider' : 'providers', href: '/catalog/providers' },
-                    { value: domainStats.tlds, label: 'domain endings priced', href: '/catalog/domains' },
-                    { value: (domainStats.registrars || []).length, label: (domainStats.registrars || []).length === 1 ? 'registrar priced' : 'registrars compared', href: '/catalog/domains' },
-                ],
-                tiers, value: { vcpu, ram, disk }, providerCards, faq: HOST_FAQ,
-            };
-            res.type('html').send(renderPage({ title: 'Hosting plans and domain prices, compared', description: HOME_DESCRIPTION, body: catalogRender.front({ plans: result.plans, providers, promos, stats, offers: recent.offers, more, domains: domainsRender.frontSection({ popular: popular.tlds, cheap: cheapDomains.tlds, stats: domainStats }) }), viewer: req.viewer, config, path: '/', indexable: true, styles: [showcase.STYLESHEET], css: ['css/catalog.css'], jsonLd: [...catalogRender.jsonLd.front(config.baseUrl, result.plans), ...(HOST_FAQ.length ? [sharedSeo.jsonLd.faq(HOST_FAQ.map((f) => ({ q: f.question, a: f.answer })))] : [])] }));
+            // The front page is built by the shared view builder (server/http/catalog-views.js), the same one
+            // the agent-layer twin uses, so the two cannot drift.
+            const view = await views.front();
+            const o = { title: view.title, description: view.description, body: view.body, viewer: req.viewer, config, path: '/', indexable: true, styles: view.styles, css: view.css, jsonLd: view.jsonLd, agent: true };
+            const link = twinHeader(o);
+            if (link) res.set('Link', link);
+            res.type('html').send(renderPage(o));
         } catch (err) { next(err); }
     });
     app.use((req, res) => req.path.startsWith('/api/') ? contracts.http.sendProblem(res, 404, 'route.not_found', { detail: 'Not found', ctx: req.ov }) : res.status(404).type('html').send(renderPage({ title: 'Not found', body: '<h1>Not found</h1>', config, path: req.originalUrl })));

@@ -45,6 +45,22 @@ const asset = (rel) => `/${rel}?v=${assetVersion(rel)}`;
 let RELEASE = 'dev';
 function setRelease(id) { if (id) RELEASE = String(id); }
 
+/** The canonical URL of a page, or undefined when the page is not indexable. */
+function canonicalOf(o) {
+    return o.indexable ? o.config.baseUrl + (o.path && o.path.split('?')[0] !== '/' ? o.path.split('?')[0] : '/') : undefined;
+}
+
+/**
+ * The discovery links for a page that has a Markdown twin (openvibe-shared/agent-layer): the twin's own
+ * URL in the Link header. The twin itself is server/agent-pages.js.
+ */
+function twinHeader(o) {
+    const canonical = canonicalOf(o);
+    if (!canonical) return null;
+    const llms = String(o.config.baseUrl).replace(/\/+$/, '') + '/llms.txt';
+    return require('openvibe-shared/agent-layer').linkHeaderTags(canonical, llms).header;
+}
+
 /** o: title, body (HTML), viewer, config, path, notice { kind, text } */
 function renderPage(o) {
     const viewer = o.viewer || { kind: 'anonymous' };
@@ -74,8 +90,11 @@ function renderPage(o) {
     // shell.page (openvibe-shared/shell) writes the document, the SEO head, the theme-loader, navbar.js and
     // footer.js with the navbar init, the noscript nav and the SSR footer; the rest of the head and the body
     // are the catalog's own pages.
-    const canonical = o.indexable ? `${o.config.baseUrl}${o.path && o.path.split('?')[0] !== '/' ? o.path.split('?')[0] : '/'}` : undefined;
+    const canonical = canonicalOf(o);
     return shell.page({
+        // A page with a Markdown twin (o.agent) advertises it in the head; the twin itself is server/agent-pages.js.
+        agentLayer: !!o.agent,
+        llms: `${String(o.config.baseUrl).replace(/\/+$/, '')}/llms.txt`,
         name: SITE_NAME, service: 'host', lang: 'en',
         title: o.title || SITE_NAME,
         titleSuffix: o.title ? ` · ${SITE_NAME}` : undefined,
@@ -112,4 +131,4 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 }
 
-module.exports = { renderPage, esc, asset, assetVersion, setRelease, SITE_NAME, NETWORK_URL };
+module.exports = { renderPage, esc, asset, assetVersion, setRelease, SITE_NAME, NETWORK_URL, canonicalOf, twinHeader };
