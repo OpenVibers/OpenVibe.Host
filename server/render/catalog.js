@@ -360,16 +360,15 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
 <p class="hc-more">${link('/catalog', 'Filter and sort every plan →', 'button')}</p></section>`
     + extra.sizes + extra.value + extra.providers
     + domainSection
+    + '<section class="sc-sec" id="why" aria-labelledby="hh-why"><details class="hh-fold"><summary><h2 id="hh-why">Why this comparison is different</h2><span>sourced, dated, ranked by you</span></summary>'
     + showcase.features({
-        id: 'why',
-        title: 'Why this comparison is different',
         items: [
             { icon: 'ov:check', title: 'Straight from the source', text: 'Every provider in one table, from their own APIs or from staff entries that name the page they came from. Nothing is estimated.' },
             { icon: 'ov:history', title: 'Dated prices', text: 'Every price shows when it was last checked, and price changes are kept as a history per plan.' },
             { icon: 'ov:search', title: 'Compare what matters', text: 'Sort by monthly price, or by price per vCPU, per GB of RAM or per GB of disk. Unknown stays unknown.' },
             { icon: 'ov:account', title: 'Ranked by you', text: 'No paid placement. Affiliate links are marked, disclosed beside the link, and never change the order.' },
         ],
-    }) + (recent.length ? `<section class="sc-sec"><h2>Latest hosting offers</h2><ol class="hc-offers">${recent.slice(0, 6).map((o) => offerItem(o, now)).join('')}</ol><p class="hc-more">${link('/catalog/offers', 'Every offer, by price or date →')}</p></section>` : '')
+    }) + '</details></section>' + (recent.length ? `<section class="sc-sec"><h2>Latest hosting offers</h2><ol class="hc-offers">${recent.slice(0, 6).map((o) => offerItem(o, now)).join('')}</ol><p class="hc-more">${link('/catalog/offers', 'Every offer, by price or date →')}</p></section>` : '')
     + (live.length ? `<section class="sc-sec"><h2>Promotions running now</h2>${promoCards(live.slice(0, 3))}<p class="hc-more">${link('/catalog/promos', 'All promotions →')}</p></section>` : '')
     + extra.faq
     + `<p class="hc-own">Want to host a site with OpenVibe? ${link('https://openvibe.space', 'Visit OpenVibe.Space')}.</p>`;

@@ -236,3 +236,24 @@
 .hh-faq details p { margin: 0; padding: 0 16px 14px; color: var(--text-secondary, #96a7c2); line-height: 1.55; }
 @media (prefers-reduced-motion: reduce) { .hh-cards a { transition: none; } .hh-cards a:hover { transform: none; } }
 .hd-front .hc-table-wrap + .hc-table-wrap { margin-top: 18px; }
+
+/* The home on phones (2026-10-29): a taste and a door. Each table (cards on a phone) and each card list is one row that
+   scrolls sideways, the figures are one strip, and the explainer folds under its heading. Every card stays in the HTML. */
+.hh-fold { border: 1px solid var(--hs-line); border-radius: 14px; background: var(--hs-card); }
+.hh-fold > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 0 18px; cursor: pointer; list-style: none; }
+.hh-fold > summary::-webkit-details-marker { display: none; }
+.hh-fold > summary h2 { margin: 0; }
+.hh-fold > summary span { color: var(--hs-muted); font-weight: 600; font-size: .86rem; text-align: right; }
+.hh-fold > summary:focus-visible { outline: 2px solid var(--hs-accent); outline-offset: -2px; border-radius: 14px; }
+.hh-fold .sc-sec { max-width: none; margin: 0; padding: 0 18px 18px; }
+@media (max-width: 599px) {
+  .hh-stats-wrap .hh-stats { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 8px; margin-left: -16px; margin-right: -16px; padding: 0 16px 2px; }
+  .hh-stats-wrap .hh-stats::-webkit-scrollbar { display: none; }
+  .hh-stats-wrap .hh-stats > li { flex: 0 0 auto; min-width: 132px; }
+  .sc-sec .hh-cards, .hh-short .hc-table tbody { display: flex; flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; scrollbar-width: none; gap: 10px; margin-left: -16px; margin-right: -16px; padding: 0 16px 4px; }
+  .sc-sec .hh-cards::-webkit-scrollbar, .hh-short .hc-table tbody::-webkit-scrollbar { display: none; }
+  .sc-sec .hh-cards > li { flex: 0 0 80%; min-width: 0; scroll-snap-align: start; }
+  .hh-short .hc-table tbody tr { flex: 0 0 84%; min-width: 0; margin-bottom: 0; scroll-snap-align: start; }
+  .hh-short .hc-table-wrap { border: 0; background: none; overflow: visible; }
+  .hh-fold > summary span { display: none; }
+}
