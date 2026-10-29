@@ -352,10 +352,11 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
         title: 'Hosting, compared honestly.',
         accent: 'Every price dated and sourced.',
         lede: 'Cloud, VPS and dedicated plans from providers\' official APIs, side by side: price per month, per vCPU and per GB, the day each price was checked and a link to where it came from. Sorted by what you ask for, never by who pays.',
-        actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Domain prices', href: '/catalog/domains' }, { label: 'Latest offers', href: '/catalog/offers' }],
+        // Two, so they sit side by side on a phone; the latest offers have their own section and link below.
+        actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Domain prices', href: '/catalog/domains' }],
         note: stats.plans ? `${stats.plans} plans from ${stats.providers} provider${stats.providers === 1 ? '' : 's'} so far. More providers join as their sources are checked.` : 'The catalog is filling up: providers join as their official sources are checked and enabled.',
         aside: aside ? { html: aside } : undefined,
-    }) + extra.stats + `<section class="sc-sec" aria-labelledby="hh-cheapest"><h2 id="hh-cheapest">The lowest monthly prices</h2>${planTable(plans.slice(0, 8), { caption: 'Lowest price first' })}
+    }) + extra.stats + `<section class="sc-sec hh-short" aria-labelledby="hh-cheapest"><h2 id="hh-cheapest">The lowest monthly prices</h2>${planTable(plans.slice(0, 8), { caption: 'Lowest price first' })}
 <p class="hc-more">${link('/catalog', 'Filter and sort every plan →', 'button')}</p></section>`
     + extra.sizes + extra.value + extra.providers
     + domainSection
