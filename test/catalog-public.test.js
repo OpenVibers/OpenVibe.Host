@@ -51,12 +51,20 @@ const { boot, check, done } = require('./helpers/boot');
             const bad = await t.api('GET', '/catalog?sort=affiliate'); assert.strictEqual(bad.status, 422);
             // JSON-LD on the indexable catalog pages: WebSite and an ItemList on the front, an ItemList on /catalog,
             // a Product with a monthly Offer on a plan; never on a filtered (noindex) view.
-            const ld = (html) => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1])).flat();
+            // One JSON-LD script per page, every node in one @graph (the estate's convention): the helper flattens
+            // the graph, and the script count is asserted for each page below.
+            const ld = (html) => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+                .map((m) => JSON.parse(m[1]))
+                .flatMap((doc) => (Array.isArray(doc['@graph']) ? doc['@graph'] : [doc]));
+            const scripts = (html) => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].length;
             const types = (html) => ld(html).map((x) => x['@type']);
+            assert.strictEqual(scripts(front.text), 1, 'the front page carries exactly one JSON-LD script');
+            assert.strictEqual(scripts(plans.text), 1, 'the catalog carries exactly one JSON-LD script');
             assert.ok(types(front.text).includes('WebSite') && types(front.text).includes('ItemList') && types(front.text).includes('FAQPage'), JSON.stringify(types(front.text)));
             assert.ok(types(plans.text).includes('ItemList'));
             const planPage = await t.api('GET', `/catalog/plans/${cheap.id}`);
             const product = ld(planPage.text).find((x) => x['@type'] === 'Product');
+            assert.strictEqual(scripts(planPage.text), 1, 'a plan page carries exactly one JSON-LD script');
             assert.match(planPage.text, /class="hc-visit"/, 'a plan page offers a way to the provider');
             assert.match(planPage.text, /href="https:\/\/openvibe\.watch\/watches\/new\?template=json&amp;url=[^"]*%2Fapi%2Fv1%2Fcatalog%2Fplans%2F[^"]*value_path=plan\.price_monthly&amp;op=changed/, 'a plan page offers a prefilled price watch');
             assert.ok(product && product.offers.price === 4 && product.offers.priceCurrency === 'USD' && product.offers.priceSpecification.unitText === 'MONTH');
