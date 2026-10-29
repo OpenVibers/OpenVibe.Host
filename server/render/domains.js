@@ -160,8 +160,8 @@ function frontSection({ popular = [], cheap = [], stats }) {
     return `<section class="sc-sec hd-front" aria-labelledby="hd-front-h"><h2 id="hd-front-h">Domain names, compared too</h2>
 <p class="hc-dim">${stats.tlds ? `${stats.tlds.toLocaleString('en')} endings${registrars > 1 ? ` from ${registrars} registrars (${stats.registrars.map(esc).join(', ')})` : ''}, with the first year, the renewal and five years side by side. ` : ''}Check a name at its registry, then register it where it costs least.</p>
 ${checkForm({})}
-${tldTable(popular.slice(0, 6), { caption: 'Popular endings: the cheapest price at any registrar' })}
-${cheap.length ? tldTable(cheap.slice(0, 6), { caption: 'The cheapest first year right now: check what it renews at' }) : ''}
+<div class="hh-short">${tldTable(popular.slice(0, 6), { caption: 'Popular endings: the cheapest price at any registrar' })}</div>
+${cheap.length ? '<div class="hh-short">' + tldTable(cheap.slice(0, 6), { caption: 'The cheapest first year right now: check what it renews at' }) + '</div>' : ''}
 ${stats.tlds ? `<p class="hc-more">${link('/catalog/domains', 'Every ending, by price →', 'button')}</p>` : ''}</section>`;
 }
 
