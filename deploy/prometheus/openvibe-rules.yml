@@ -95,6 +95,16 @@ groups:
         labels: { severity: ticket }
         annotations:
           summary: "{{ $labels.service }}: no browser check has run to the end for more than 26 hours"
+      # The sign-in canary (deploy/scripts/auth-health.sh, openvibe-authhealth.timer; docs/auth-health.md):
+      # a public site answers GET /auth/health 200 while the Network accepts its OAuth client and 503 when
+      # it refuses it. A site not on the SDK's sign-in yet writes no line, so it never fires this. A ticket,
+      # not a page: sign-in is broken, the site still serves.
+      - alert: OpenVibeSignInBroken
+        expr: openvibe_auth_health == 0
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: "Sign-in is broken on {{ $labels.site }}: the Network refuses its OAuth client (check OV_OAUTH_CLIENT_SECRET in its env)"
       # The relay itself (openvibe-alerts.timer; WS-H task 11). It cannot page while it is broken; it pages
       # this as soon as a run gets through again, so an outage of the pager is never silent afterwards.
       - alert: OpenVibeAlertRelayFailing

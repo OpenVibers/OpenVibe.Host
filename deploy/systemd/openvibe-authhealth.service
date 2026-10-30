@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenVibe sign-in canary: GET /auth/health on every public site (docs/auth-health.md)
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/auth-health.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root writes node_exporter's textfile collector; nothing else is touched.
+User=root
+ExecStart=/usr/local/lib/openvibe-host/deploy/scripts/auth-health.sh
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
+Nice=10
+TimeoutStartSec=10min
+PrivateTmp=true
+ProtectSystem=full

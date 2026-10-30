@@ -15,7 +15,7 @@ jobs:
       test: 'eval "$(node_modules/openvibe-sdk/scripts/test-services.sh up)" && npm test && npm run test:pg'
       contracts-src: lib server
       docs-status: true
-      extra: node --check bin/ovhost && for f in scripts/*.sh; do bash -n "$f"; done
+      extra: node --check bin/ovhost && for f in scripts/*.sh deploy/scripts/*.sh; do bash -n "$f"; done
   # Secret scan (gitleaks) and dependency audit, shared by every OpenVibers repo (Track Q).
   security:
     uses: OpenVibers/OpenVibe.Shared/.github/workflows/security.yml@aa570e4815063dc65624a6a486038d83ff6f6ec0

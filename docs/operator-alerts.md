@@ -3,7 +3,8 @@
 Roadmap WS-H task 11. The host's Prometheus evaluates the rules in
 [deploy/prometheus/openvibe-rules.yml](../deploy/prometheus/openvibe-rules.yml): targets down, error
 rates, disk and memory, backups, deploy drift, the developer path, the Tools job proof, the browser check
-of each release and the relay itself. Until 2026-09-26 nothing delivered them.
+of each release, the sign-in canary of every site ([auth-health.md](auth-health.md)) and the relay itself.
+Until 2026-09-26 nothing delivered them.
 
 ## The path
 
@@ -76,7 +77,8 @@ systemctl list-timers openvibe-alerts.timer
 ```bash
 sudo cp /usr/local/lib/openvibe-host/deploy/systemd/openvibe-alerts.{service,timer} /etc/systemd/system/
 sudo cp /usr/local/lib/openvibe-host/deploy/systemd/openvibe-browsercheck.{service,timer} /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-alerts.timer openvibe-browsercheck.timer
+sudo cp /usr/local/lib/openvibe-host/deploy/systemd/openvibe-authhealth.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-alerts.timer openvibe-browsercheck.timer openvibe-authhealth.timer
 # Chrome and the check account (once):
 curl -fsSL https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
 echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
