@@ -293,7 +293,7 @@ Two things deploy from this repository:
   `cd /usr/local/lib/openvibe-host && sudo git pull --ff-only && sudo npm ci --omit=dev --no-audit --no-fund`,
   then `ovhost --version` and `sudo ovhost capabilities` (ovhost does not deploy itself; an update is
   undone by checking out the previous commit there). Its timers (`openvibe-backup`, `openvibe-alerts`, `openvibe-browsercheck`,
-  `openvibe-devpath`, `openvibe-toolsjob`) are unit files in [deploy/systemd/](deploy/systemd/).
+  `openvibe-authhealth`, `openvibe-devpath`, `openvibe-toolsjob`) are unit files in [deploy/systemd/](deploy/systemd/).
 - **Boot order.** Three drop-ins in [deploy/systemd/](deploy/systemd/) order every `openvibe-*` and `openre-*`
   service after PostgreSQL, PgBouncer and Valkey (systemd prefix drop-ins, `openvibe-.service.d/`), and PgBouncer
   after PostgreSQL. Without them a reboot starts services against a PgBouncer that caches PostgreSQL's refused

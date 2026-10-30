@@ -1,0 +1,10 @@
+[Unit]
+Description=Check that every OpenVibe site's sign-in still works, every 15 minutes (docs/auth-health.md)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
