@@ -6,6 +6,7 @@
 const { newId } = require('../ids');
 const { ApiError } = require('../http/errors');
 const domains = require('./domains');
+const { tldTrend } = require('./trend');
 
 const invalid = (message) => { throw new ApiError(422, 'host.catalog.invalid', message); };
 const PAGE = 100;
@@ -112,7 +113,7 @@ function createDomainStore({ store, announce = () => {} }) {
         const rows = await db.prepare(`SELECT p.*, ${FIVE_YEAR} AS five_year, v.slug AS provider_slug, v.name AS provider_name, v.homepage_url, v.affiliate_url, v.affiliate_note
             FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} AND p.tld = ? ORDER BY p.register ASC NULLS LAST, v.name, p.id`).all(t);
         const history = rows.length ? await db.prepare(`SELECT h.*, v.name AS provider_name FROM catalog_tld_price_changes h JOIN catalog_tld_prices p ON p.id = h.price_id JOIN catalog_providers v ON v.id = p.provider_id
-            WHERE p.tld = ? AND ${ACTIVE} ORDER BY h.observed_at DESC LIMIT 20`).all(t) : [];
+            WHERE p.tld = ? AND ${ACTIVE} ORDER BY h.observed_at DESC`).all(t) : [];
         const data = { rows, history };
         if (!data.rows.length) throw new ApiError(404, 'host.catalog.not_found', 'No registrar price is listed for this ending');
         const prices = data.rows.map((r) => ({
@@ -124,11 +125,22 @@ function createDomainStore({ store, announce = () => {} }) {
         return {
             tld: t, display: domains.displayTld(t), kind: domains.tldKind(t), currency: 'USD', prices,
             cheapest: { register: min('register'), renew: min('renew'), transfer: min('transfer'), five_year: min('five_year') },
-            history: data.history.map((h) => ({
+            price_trend: tldTrend(rows, data.history, store.now()), history_count: data.history.length,
+            history: data.history.slice(0, 20).map((h) => ({
                 registrar: h.provider_name, observed_at: iso(h.observed_at), currency: h.currency,
                 register: [n(h.register_before), n(h.register_after)], renew: [n(h.renew_before), n(h.renew_after)], transfer: [n(h.transfer_before), n(h.transfer_after)],
             })),
         };
+    }
+
+    /** One field of a TLD's price over time: register (default) or renew, the cheapest at any registrar. */
+    async function trend(input, kind = 'register') {
+        if (!['register', 'renew'].includes(kind)) throw new ApiError(422, 'host.catalog.invalid', 'kind must be register or renew');
+        const data = await tld(input);
+        const field = kind === 'renew' ? 'renew' : 'register';
+        const series = data.price_trend && data.price_trend[field];
+        if (!series) throw new ApiError(404, 'host.catalog.not_found', `No ${field === 'renew' ? 'renewal' : 'registration'} price history for this ending`);
+        return { ...series, kind: field };
     }
 
     /** The cheapest prices for a few endings (a name check's alternatives), in the order asked. */
@@ -164,7 +176,7 @@ function createDomainStore({ store, announce = () => {} }) {
         return Number((await db.prepare("SELECT COUNT(*) AS n FROM catalog_tld_prices WHERE provider_id = ? AND status = 'active'").get(providerId)).n) || 0;
     }
 
-    return { apply, list, tld, cheapest, knownTlds, stats, sitemap, countFor, SORTS: Object.keys(SORTS), KINDS: Object.keys(KINDS) };
+    return { apply, list, tld, trend, cheapest, knownTlds, stats, sitemap, countFor, SORTS: Object.keys(SORTS), KINDS: Object.keys(KINDS) };
 }
 
 module.exports = { createDomainStore };

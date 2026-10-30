@@ -42,9 +42,9 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
 
     /** The front page: the same hero, tables, offers, promos, domain section and FAQ the route renders. */
     async function front() {
-        const [result, providers, promos, stats, recent, popular, domainStats, cheapDomains, providerCards] = await Promise.all([
+        const [result, providers, promos, stats, recent, popular, domainStats, cheapDomains, providerCards, changes] = await Promise.all([
             catalog.plans({}), catalog.providers(), catalog.promos(), catalog.stats(), catalog.offers({}),
-            catalog.domains.list({}), catalog.domains.stats(), catalog.domains.list({ sort: 'register' }), catalog.providerSummary(),
+            catalog.domains.list({}), catalog.domains.stats(), catalog.domains.list({ sort: 'register' }), catalog.providerSummary(), catalog.recentChanges(),
         ]);
         // The lowest price for each size, and the most each dollar buys: the same plan query the catalog page runs.
         const first = async (q) => (await catalog.plans(q)).plans[0] || null;
@@ -64,7 +64,7 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
             title: 'Hosting plans and domain prices, compared',
             description: HOME_DESCRIPTION,
             body: render.front({
-                plans: result.plans, providers, promos, stats, offers: recent.offers, more,
+                plans: result.plans, providers, promos, stats, offers: recent.offers, changes, more,
                 domains: renderDomains.frontSection({ popular: popular.tlds, cheap: cheapDomains.tlds, stats: domainStats }),
             }),
             indexable: true,
@@ -114,6 +114,7 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
         return {
             title: p.provider_name + ' ' + p.name,
             body: render.plan(p, discussion, { baseUrl, watchUrl, extra: benchHtml }),
+            styles: ['kit.css', 'kit-data.css'], scripts: ['kit-data-web.js'],
             indexable: true,
             description: p.provider_name + ' ' + p.name + ': ' + p.currency + ' ' + p.price_monthly + ' a month, with its specifications, price per resource and price history.',
             jsonLd: render.jsonLd.plan(baseUrl, p),
@@ -148,6 +149,7 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
         const t = await catalog.domains.tld(tld);
         return {
             title: t.display + ' domain prices', body: renderDomains.tld(t, { baseUrl, watchUrl }), indexable: true,
+            styles: ['kit.css', 'kit-data.css'], scripts: ['kit-data-web.js'],
             description: t.display + ' domains from ' + (render.money(t.cheapest.register, 'USD') || 'an unknown price') + ' the first year, renewing from ' + (render.money(t.cheapest.renew, 'USD') || 'an unknown price') + ": every registrar's price, dated and sourced.",
             jsonLd: renderDomains.jsonLd.tld(baseUrl, t),
         };

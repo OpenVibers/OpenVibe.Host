@@ -117,8 +117,10 @@ function renderPage(o) {
             `<link rel="stylesheet" href="${asset('css/host.css')}">`,
             // Host's own stylesheets a page asks for (the catalog's css/catalog.css)
             ...(o.css || []).map((rel) => `<link rel="stylesheet" href="${asset(rel)}">`),
-            // openvibe-shared stylesheets a page asks for by name (the front page's showcase.css)
+            // openvibe-shared stylesheets a page asks for by name (the front page's showcase.css, the chart's kit.css)
             ...(o.styles || []).map((name) => `<link rel="stylesheet" href="${esc(ovServe.url(name))}">`),
+            // openvibe-shared scripts a page asks for by name (kit-data-web.js for a chart's readout)
+            ...(o.scripts || []).map((name) => `<script src="${esc(ovServe.url(name))}" defer></script>`),
             `<meta name="ov-boost" content="host@${esc(RELEASE)}">`,
             `<script src="${ovServe.url('boost.js')}" data-main="#main" defer></script>`,
         ].join('\n'),

@@ -214,7 +214,7 @@ async function createApp(opts = {}) {
             // The front page is built by the shared view builder (server/http/catalog-views.js), the same one
             // the agent-layer twin uses, so the two cannot drift.
             const view = await views.front();
-            const o = { title: view.title, description: view.description, body: view.body, viewer: req.viewer, config, path: '/', indexable: true, styles: view.styles, css: view.css, jsonLd: view.jsonLd, agent: true };
+            const o = { title: view.title, description: view.description, body: view.body, viewer: req.viewer, config, path: '/', indexable: true, styles: view.styles, scripts: view.scripts, css: view.css, jsonLd: view.jsonLd, agent: true };
             const link = twinHeader(o);
             if (link) res.set('Link', link);
             res.type('html').send(renderPage(o));

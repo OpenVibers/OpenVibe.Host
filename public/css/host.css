@@ -42,3 +42,7 @@ ul.domains { padding-left: 1.2rem; } ul.domains li { margin-bottom: 1rem; }
   .hh-stats::-webkit-scrollbar { display: none; }
   .hh-stats li { flex: 0 0 auto; min-width: 128px; }
 }
+
+/* The shared footer's patch-notes link is nowrap; a long title pushes a 320px page sideways (found on the catalog
+   home, 2026-10-30). It wraps like the rest of the footer. */
+a.ov-shipped-notes { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }

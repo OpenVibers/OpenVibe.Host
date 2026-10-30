@@ -25,6 +25,8 @@ function createCatalogApi({ catalog, domainCheck, benchmarks, viewers, actorLimi
     const staff = (req, _res, next) => req.viewer.kind === 'user' && req.viewer.staff ? next() : next(new ApiError(403, 'host.catalog.forbidden', 'Staff access required'));
     router.get('/plans', run(async (req) => await catalog.plans(req.query)));
     router.get('/plans/:id', run(async (req) => ({ plan: await catalog.plan(req.params.id) })));
+    router.get('/plans/:id/price-trend', run(async (req) => await catalog.planPriceTrend(req.params.id)));
+    router.get('/tlds/:tld/price-trend', run(async (req) => await catalog.domains.trend(req.params.tld, req.query.kind || 'register')));
     router.get('/providers', run(async () => ({ providers: await catalog.providers() })));
     router.get('/providers/:slug', run(async (req) => ({ provider: await catalog.providers(req.params.slug) })));
     router.get('/promos', run(async () => ({ promos: await catalog.promos() })));
@@ -78,7 +80,7 @@ function createCatalogPages({ catalog, domainCheck, benchmarks, community, confi
     const page = (req, res, view) => {
         const indexable = view.indexable !== false;
         cachePage(req, res, indexable);
-        const o = { title: view.title, body: view.body, viewer: req.viewer, config, path: req.originalUrl, indexable, description: view.description, jsonLd: view.jsonLd, css: view.css || ['css/catalog.css'], styles: view.styles, agent: indexable };
+        const o = { title: view.title, body: view.body, viewer: req.viewer, config, path: req.originalUrl, indexable, description: view.description, jsonLd: view.jsonLd, css: view.css || ['css/catalog.css'], styles: view.styles, scripts: view.scripts, agent: indexable };
         const link = twinHeader(o);
         if (link) res.set('Link', link);
         return res.status(200).type('html').send(renderPage(o));

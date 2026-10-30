@@ -15,6 +15,7 @@
  * order never depends on affiliation (the store sorts; nothing here reorders).
  */
 const showcase = require('openvibe-shared/showcase');
+const kit = require('openvibe-shared/kit');
 const seo = require('openvibe-shared/seo');
 const { esc } = require('./layout');
 const { MAX_AGE_DAYS } = require('../catalog/offers');
@@ -62,6 +63,74 @@ function visit(p, label = 'Visit provider') {
 function priceCell(p) {
     const m = money(p.price_monthly, p.currency);
     return `<span class="hc-price">${m ? esc(m) : UNKNOWN}</span><span class="hc-per">/mo</span>`;
+}
+
+const isoAt = (v) => new Date(v).toISOString();
+const MINUS = '−';
+
+/** A trend's step: each price holds until the next point, so a change is a vertical step, never a diagonal. */
+function stepPoints(t) {
+    const points = [];
+    (t.points || []).forEach((p, i) => {
+        if (i) points.push([new Date(Date.parse(p.at) - 1).toISOString(), Number(t.points[i - 1].price)]);
+        points.push([p.at, Number(p.price)]);
+    });
+    return points;
+}
+
+/** The value of a step series at a moment (the last point at or before it). */
+function valueAt(points, time) {
+    let value = null;
+    for (const [at, price] of points) { if (Date.parse(at) > time) break; value = price; }
+    return value;
+}
+
+/** "Was $9 on 2 Sep, now $7 (−22%) · low $7 · high $12"; one observation says when it was first seen instead. */
+function trendSummary(t, label = '') {
+    if (!t || !t.points || !t.points.length) return '';
+    const cur = t.currency;
+    const first = t.points[0];
+    const now = money(t.now, cur) || String(t.now);
+    const was = money(first.price, cur) || String(first.price);
+    let line;
+    if (t.points.length < 2) line = `No changes recorded since ${day(first.at) || first.at} (${now})`;
+    else if (t.change && t.change.amount === 0) line = `Unchanged since ${day(first.at)}: ${now}`;
+    else if (t.change && t.change.percent != null) line = `Was ${was} on ${day(first.at)}, now ${now} (${t.change.amount > 0 ? '+' : MINUS}${Math.abs(t.change.percent)}%)`;
+    else if (t.change) line = `Was ${was} on ${day(first.at)}, now ${now}`;
+    const low = money(t.low, cur) || String(t.low);
+    const high = money(t.high, cur) || String(t.high);
+    const lowAt = (t.points.find((p) => Number(p.price) === Number(t.low)) || first).at;
+    const highAt = (t.points.find((p) => Number(p.price) === Number(t.high)) || first).at;
+    return `<p class="hc-trend-summary">${label ? `<strong>${esc(label)}</strong> ` : ''}${esc(line)} · low ${esc(low)} (${esc(day(lowAt) || '')}), high ${esc(high)} (${esc(day(highAt) || '')}).</p>`;
+}
+
+/** One series' step chart, with its summary line under it. Nothing with one observation. */
+function trendFigure(t, { title = 'Price over time', label = '', seriesName = 'Price', note = 'A price holds until the next change.' } = {}) {
+    if (!t || !t.points || t.points.length < 2) return '';
+    const chart = kit.chart({
+        type: 'line', title, note, height: 220, label: `${title} over time`,
+        x: { time: true, label: 'Date' }, y: { fmt: 'money', zero: false, label: t.currency || 'Price' },
+        series: [{ name: seriesName, points: stepPoints(t) }],
+    });
+    return `<div class="hc-trend">${chart}${trendSummary(t, label)}</div>`;
+}
+
+/** The registration and renewal step series on a shared time axis (kit.chart reads one x list for every series). */
+function tldTrendFigure(trends, { title = 'Domain price over time' } = {}) {
+    const all = [['Registration', trends && trends.register], ['Renewal', trends && trends.renew]].filter(([, t]) => t && t.points && t.points.length);
+    if (!all.length) return '';
+    const steps = all.map(([name, t]) => ({ name, points: stepPoints(t) }));
+    const times = [...new Set(steps.flatMap((s) => s.points.map(([at]) => Date.parse(at))))].sort((a, b) => a - b);
+    const series = steps.map((s) => ({ name: s.name, points: times.map((t) => [isoAt(t), valueAt(s.points, t)]) }));
+    const chart = series.some((s) => s.points.length > 1)
+        ? kit.chart({
+            type: 'line', title, note: 'The cheapest price at any registrar; a price holds until the next change.', height: 240,
+            label: `${title}: registration and renewal`,
+            x: { time: true, label: 'Date' }, y: { fmt: 'money', zero: false, label: 'USD' },
+            series,
+        })
+        : '';
+    return `<div class="hc-trend">${chart}${all.map(([name, t]) => trendSummary(t, name)).join('')}</div>`;
 }
 
 function planTable(plans, { caption = 'Hosting plans', showProvider = true } = {}) {
@@ -219,9 +288,11 @@ function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '' } 
         ['Locations', p.locations && p.locations.length ? p.locations.join(', ') : null], ['Kind', kindName(p.kind)],
     ];
     const value = [['Per vCPU', money(p.price_per_vcpu, p.currency)], ['Per GB of RAM', money(p.price_per_gb_ram, p.currency)], ['Per GB of disk', money(p.price_per_gb_disk, p.currency, 3)]];
+    const trend = p.price_trend;
+    const chart = trendFigure(trend, { title: 'Monthly price over time', seriesName: 'Monthly price' }) || trendSummary(trend);
     const history = p.price_history.length
-        ? `<ol class="hc-history">${p.price_history.map((h) => `<li><time datetime="${esc(day(Number(h.observed_at)))}">${esc(day(Number(h.observed_at)))}</time> ${esc(money(h.price_monthly_before, h.currency) || h.price_monthly_before)} → <strong>${esc(money(h.price_monthly_after, h.currency) || h.price_monthly_after)}</strong></li>`).join('')}</ol>`
-        : '<p class="hc-dim">No price change recorded since the catalog first saw this plan.</p>';
+        ? `<details class="hc-history-fold"><summary>Every change (${p.price_history.length})</summary><ol class="hc-history">${p.price_history.map((h) => `<li><time datetime="${esc(day(Number(h.observed_at)))}">${esc(day(Number(h.observed_at)))}</time> ${esc(money(h.price_monthly_before, h.currency) || h.price_monthly_before)} → <strong>${esc(money(h.price_monthly_after, h.currency) || h.price_monthly_after)}</strong></li>`).join('')}</ol></details>`
+        : '';
     return `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog', 'Catalog')} / ${link(`/catalog/providers/${encodeURIComponent(p.provider_slug)}`, esc(p.provider_name))}</nav>
 <header class="hc-head"><p class="hc-eyebrow">${esc(p.provider_name)} · ${esc(kindName(p.kind))}</p><h1>${esc(p.name)}</h1></header>
 <div class="hc-plan">
@@ -236,6 +307,7 @@ ${visit(p)}
 <section aria-labelledby="hc-value-h"><h2 id="hc-value-h">Value</h2><dl class="hc-spec">${value.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${or(v)}</dd></div>`).join('')}</dl></section>
 </div>
 <h2>Price history</h2>
+${chart}
 ${history}
 ${baseUrl && watchUrl ? `<p class="hc-watch">${out(`${watchUrl}/watches/new?${new URLSearchParams({ template: 'json', url: `${baseUrl}/api/v1/catalog/plans/${p.id}`, value_path: 'plan.price_monthly', op: 'changed', name: `${p.provider_name} ${p.name} price` })}`, 'Tell me when this price changes', { cls: 'button hc-button-quiet' })} <span class="hc-dim">with OpenVibe.Watch, free</span></p>` : ''}
 ${extra}
@@ -340,8 +412,15 @@ function frontMore({ counts = [], tiers = [], value = {}, providerCards = [], fa
     };
 }
 
-function front({ plans, providers, promos: live, stats, offers: recent = [], domains: domainSection = '', more = {}, now = Date.now() }) {
+function front({ plans, providers, promos: live, stats, offers: recent = [], domains: domainSection = '', changes = [], more = {}, now = Date.now() }) {
     const extra = frontMore(more);
+    const changeRail = changes.length ? `<section class="sc-sec hh-changes" aria-labelledby="hh-changes-h"><h2 id="hh-changes-h">Price changes this month</h2>
+<p class="hc-dim">Plans and domain endings whose stated price moved this month, biggest move first. Nothing is converted between currencies.</p>
+<ol class="hc-changes">${changes.map((c) => {
+        const up = c.after > c.before;
+        const move = c.percent == null ? (up ? 'Rose' : 'Dropped') : `${up ? 'Rose' : 'Dropped'} ${Math.abs(c.percent)}%`;
+        return `<li><a href="${esc(c.href)}"><span class="hc-change-what"><b>${esc(c.name)}</b><span class="hc-dim">${esc(c.kind)}</span></span><span class="hc-change-move ${up ? 'is-up' : 'is-down'}"><span class="hc-change-word">${move}</span><span class="hc-change-prices">${esc(money(c.before, c.currency) || String(c.before))} → ${esc(money(c.after, c.currency) || String(c.after))}</span></span></a></li>`;
+    }).join('')}</ol></section>` : '';
     const aside = plans.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
 <p class="hc-aside-h">Lowest monthly prices right now</p>
 <ol>${plans.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
@@ -356,7 +435,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
         actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Domain prices', href: '/catalog/domains' }],
         note: stats.plans ? `${stats.plans} plans from ${stats.providers} provider${stats.providers === 1 ? '' : 's'} so far. More providers join as their sources are checked.` : 'The catalog is filling up: providers join as their official sources are checked and enabled.',
         aside: aside ? { html: aside } : undefined,
-    }) + extra.stats + `<section class="sc-sec hh-short" aria-labelledby="hh-cheapest"><h2 id="hh-cheapest">The lowest monthly prices</h2>${planTable(plans.slice(0, 8), { caption: 'Lowest price first' })}
+    }) + extra.stats + changeRail + `<section class="sc-sec hh-short" aria-labelledby="hh-cheapest"><h2 id="hh-cheapest">The lowest monthly prices</h2>${planTable(plans.slice(0, 8), { caption: 'Lowest price first' })}
 <p class="hc-more">${link('/catalog', 'Filter and sort every plan →', 'button')}</p></section>`
     + extra.sizes + extra.value + extra.providers
     + domainSection
@@ -374,4 +453,4 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
     + `<p class="hc-own">Want to host a site with OpenVibe? ${link('https://openvibe.space', 'Visit OpenVibe.Space')}.</p>`;
 }
 
-module.exports = { front, catalog, providerList, provider, plan, promos, offers, planTable, jsonLd, DISCLOSURE, money, bytesMb, sizeGb };
+module.exports = { front, catalog, providerList, provider, plan, promos, offers, planTable, jsonLd, DISCLOSURE, money, bytesMb, sizeGb, trendFigure, tldTrendFigure, trendSummary, day };
