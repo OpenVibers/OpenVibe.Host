@@ -7,10 +7,11 @@
  *                   tokens are gone from OpenVibe.Host.
  *   benchmarks      the results they submitted (migration 0012) and their one-time links (never the link's token).
  *                   Deletion removes the links and detaches the results, which stay as anonymous measurements.
- *   catalog rows    providers, plans and promotions a staff member entered: shared rows, so deletion keeps them and
- *                   erases only who entered them.
+ *   catalog rows    providers, plans, promotions and the prices of a TLD a staff member entered: shared rows, so
+ *                   deletion keeps them and erases only who entered them.
  *
- * Discussion lives on OpenVibe.Community. A table a held migration has not created yet is skipped.
+ * Discussion lives on OpenVibe.Community. A table a held migration has not created yet is skipped. The hosting tables
+ * (sites, domains, deploys) were dropped in migration 0008: static hosting is OpenVibe.Space's now.
  */
 const { createAccountData, TOPICS } = require('openvibe-sdk/account-data');
 
@@ -22,6 +23,9 @@ const TABLES = [
     { table: 'catalog_providers', subject: 'created_by', file: 'catalog-providers.json', erase: { anonymize: {} } },
     { table: 'catalog_plans', subject: 'created_by', file: 'catalog-plans.json', erase: { anonymize: {} } },
     { table: 'catalog_promos', subject: 'created_by', file: 'catalog-promos.json', erase: { anonymize: {} } },
+    // A price a staff member entered is a public observation of what a registrar charges: the row stays, the person who
+    // entered it is erased from it, as with the other catalog rows.
+    { table: 'catalog_tld_prices', subject: 'created_by', file: 'catalog-tld-prices.json', columns: ['id', 'provider_id', 'tld', 'currency', 'register', 'renew', 'transfer', 'origin', 'source_url', 'checked_at', 'status', 'created_at'], erase: { anonymize: {} } },
 ];
 
 function create({ db, log = console } = {}) {
