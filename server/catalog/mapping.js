@@ -7,6 +7,7 @@ const SOURCES = Object.freeze({
     'linode-types': { slug: 'linode', name: 'Linode', homepage_url: 'https://www.linode.com/', source_url: 'https://www.linode.com/pricing/' },
     'aws-lightsail-bundles': { slug: 'aws-lightsail', name: 'Amazon Lightsail', homepage_url: 'https://aws.amazon.com/lightsail/', source_url: 'https://aws.amazon.com/lightsail/pricing/' },
     'ovhcloud-vps': { slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://us.ovhcloud.com/', source_url: 'https://us.ovhcloud.com/vps/' },
+    'azure-retail-prices': { slug: 'azure', name: 'Microsoft Azure', homepage_url: 'https://azure.microsoft.com/', source_url: 'https://azure.microsoft.com/en-us/pricing/' },
 });
 const number = (v, field) => {
     if (v == null) return null;
@@ -81,6 +82,29 @@ function vultrName(x, id) {
     return `${type}${vendor} · ${vcpu} vCPU, ${memory}`;
 }
 
+// Microsoft Azure's retail price list (Sources `azure-retail-prices`): one row per meter, region and SKU. A virtual
+// machine is priced by the hour (0.922 an hour is the D96s v5 in eastus) and Azure bills by the hour, so a month is
+// 730 hours; a storage row is priced per GB per month and says so in its name. The row's effective date is the
+// observation time, so a price change is dated by the day it took effect (Host #210).
+function azure(x, id, title) {
+    if (x.currency != null && x.currency !== 'USD') throw new TypeError('Azure price is not in USD');
+    const price = number(x.price, 'price');
+    if (price == null) throw new TypeError('missing price');
+    const unit = String(x.unit || '');
+    const region = typeof x.region === 'string' && x.region ? x.region : null;
+    const meter = typeof x.meter_name === 'string' ? x.meter_name : '';
+    const plain = { vcpu: null, ram_mb: null, disk_gb: null, disk_type: null, bandwidth_gb: null, ipv4: null, unmetered: null, port_mbps: null, locations: region ? [region] : null };
+    if (/hour/i.test(unit)) {
+        const monthly = Math.round(price * 730 * 100) / 100;
+        if (monthly <= 0) return null;
+        const variant = /spot/i.test(meter) ? ' (Spot)' : /low priority/i.test(meter) ? ' (Low Priority)' : '';
+        return { ...plain, name: `${(typeof title === 'string' && title.trim()) || id}${variant}`, kind: 'cloud', price_monthly: monthly, price_hourly: price };
+    }
+    if (/gb\/month/i.test(unit)) {
+        return { ...plain, name: `${(typeof title === 'string' && title.trim()) || id} (per GB/month)`, kind: 'storage', price_monthly: price, price_hourly: null };
+    }
+    throw new TypeError('unknown Azure price unit');
+}
 function mapItem(item) {
     const provider = SOURCES[item && item.source_key];
     if (!provider) return null;
@@ -93,6 +117,16 @@ function mapItem(item) {
         source_url: provider.source_url, checked_at: Date.parse(item.provenance.retrieved_at), first_seen_at: Date.parse(item.provenance.first_seen_at),
     };
     if (item.source_key === 'aws-lightsail-bundles') return { ...common, ...lightsail(x, id) };
+    if (item.source_key === 'azure-retail-prices') {
+        const plan = azure(x, id, item.title);
+        if (!plan) return null;
+        // The row's own effective date is when the price took effect: it is the observation time the price trend
+        // (catalog_price_changes, Host #210) is dated by.
+        const effective = Date.parse(x.effective_start || '');
+        const observed = Number.isFinite(effective) ? effective : common.checked_at;
+        const region = typeof x.region === 'string' && x.region ? x.region : null;
+        return { ...common, ...plan, external_id: region ? `${id}@${region}` : id, checked_at: observed };
+    }
     if (item.source_key === 'ovhcloud-vps') {
         const plan = ovhcloud(x, id, item.title);
         return plan && { ...common, ...plan };
