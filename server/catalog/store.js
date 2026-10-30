@@ -6,6 +6,7 @@ const { mapItem } = require('./mapping');
 const offerFeed = require('./offers');
 const domainFeed = require('./domains');
 const { createDomainStore } = require('./domain-store');
+const { planTrend } = require('./trend');
 const invalid = (message) => { throw new ApiError(422, 'host.catalog.invalid', message); };
 const missing = () => { throw new ApiError(404, 'host.catalog.not_found', 'Catalog entry not found'); };
 const fields = {
@@ -221,7 +222,40 @@ function createCatalog({ store, community = null, log = console, indexnow = null
     async function plan(id) {
         const p = await db.prepare("SELECT p.*, v.slug AS provider_slug, v.name AS provider_name, v.homepage_url, v.affiliate_url, v.affiliate_note FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.id = ? AND p.status = 'active' AND v.status = 'active'").get(id);
         if (!p) missing();
-        return { ...planOut(p), price_history: (await db.prepare('SELECT * FROM catalog_price_changes WHERE plan_id = ? ORDER BY observed_at DESC').all(id)).map((h) => ({ ...h, checked_at: new Date(Number(h.observed_at)).toISOString(), source_url: p.source_url })) };
+        const changes = await db.prepare('SELECT * FROM catalog_price_changes WHERE plan_id = ? ORDER BY observed_at DESC').all(id);
+        return { ...planOut(p), price_history: changes.map((h) => ({ ...h, checked_at: new Date(Number(h.observed_at)).toISOString(), source_url: p.source_url })), price_trend: planTrend(p, changes, store.now()) };
+    }
+    /** The plan's price over time (the same shape as the page's chart and GET /plans/:id/price-trend). */
+    async function planPriceTrend(id) { return (await plan(id)).price_trend; }
+    /**
+     * The biggest price changes of the current UTC month, from plans and TLD prices, for the catalog home's rail:
+     * newest first after the size of the move, in the currency each price was stated in (nothing converted).
+     */
+    async function recentChanges(limit = 8) {
+        const now = store.now();
+        const d = new Date(now);
+        const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+        const planRows = await db.prepare(`SELECT h.*, p.id AS plan_id, p.name AS plan_name, p.currency AS plan_currency, v.name AS provider_name
+            FROM catalog_price_changes h JOIN catalog_plans p ON p.id = h.plan_id JOIN catalog_providers v ON v.id = p.provider_id
+            WHERE h.observed_at >= ? AND p.status = 'active' AND v.status = 'active'`).all(start);
+        const tldRows = await db.prepare(`SELECT h.*, p.tld, v.name AS provider_name
+            FROM catalog_tld_price_changes h JOIN catalog_tld_prices p ON p.id = h.price_id JOIN catalog_providers v ON v.id = p.provider_id
+            WHERE h.observed_at >= ? AND p.status = 'active' AND v.status = 'active' AND h.currency = 'USD'`).all(start);
+        const pct = (before, after) => (Number(before) > 0 ? Math.round(((Number(after) - Number(before)) / Number(before)) * 1000) / 10 : null);
+        const items = [];
+        for (const h of planRows) if ((h.currency || null) === (h.plan_currency || null)) items.push({
+            type: 'plan', kind: 'monthly price', name: `${h.provider_name} ${h.plan_name}`, href: `/catalog/plans/${encodeURIComponent(h.plan_id)}`,
+            before: Number(h.price_monthly_before), after: Number(h.price_monthly_after), currency: h.currency, at: new Date(Number(h.observed_at)).toISOString(), percent: pct(h.price_monthly_before, h.price_monthly_after),
+        });
+        for (const h of tldRows) for (const [field, kind] of [['register', 'registration'], ['renew', 'renewal'], ['transfer', 'transfer']]) {
+            const before = h[`${field}_before`], after = h[`${field}_after`];
+            if (before == null || after == null || Number(before) === Number(after)) continue;
+            items.push({
+                type: 'tld', kind, name: domainFeed.displayTld(h.tld), href: `/catalog/domains/${encodeURIComponent(h.tld)}`,
+                before: Number(before), after: Number(after), currency: h.currency, at: new Date(Number(h.observed_at)).toISOString(), percent: pct(before, after),
+            });
+        }
+        return items.sort((a, b) => (Math.abs(b.percent ?? 0) - Math.abs(a.percent ?? 0)) || (Date.parse(b.at) - Date.parse(a.at)) || a.name.localeCompare(b.name, 'en')).slice(0, limit);
     }
     async function providers(slug) {
         if (slug) {
@@ -255,6 +289,6 @@ function createCatalog({ store, community = null, log = console, indexnow = null
     async function planChoices() { return await db.prepare("SELECT p.id, p.name, v.name AS provider_name, v.slug AS provider_slug FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY v.name, p.price_monthly, p.id LIMIT 1000").all(); }
     // Each public plan with the day its price was last checked, and its provider's slug, so the sitemap can date pages.
     async function sitemapPlans() { return await db.prepare("SELECT p.id, p.checked_at, v.slug AS provider_slug FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY p.id").all(); }
-    return { onChange: (fn) => listeners.push(fn), save, get, applyItem, domains, plans, plan, providers, promos, offers, currencies: currenciesInUse, stats, providerSummary, sitemapPlans, planChoices, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
+    return { onChange: (fn) => listeners.push(fn), save, get, applyItem, domains, plans, plan, planPriceTrend, recentChanges, providers, promos, offers, currencies: currenciesInUse, stats, providerSummary, sitemapPlans, planChoices, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
 }
 module.exports = { createCatalog };

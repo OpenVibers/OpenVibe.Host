@@ -13,7 +13,7 @@
  */
 const seo = require('openvibe-shared/seo');
 const { esc } = require('./layout');
-const { money } = require('./catalog');
+const { money, tldTrendFigure } = require('./catalog');
 const domains = require('../catalog/domains');
 
 const UNKNOWN = '<span class="hc-unknown" title="The registrar does not state it">Unknown</span>';
@@ -100,11 +100,12 @@ function tld(t, { baseUrl = '', watchUrl = '' } = {}) {
     const c = t.cheapest;
     const jump = c.register != null && c.renew != null && c.renew > c.register * 1.2;
     const kind = t.kind === 'second-level' ? `Second level under ${domains.displayTld(t.tld.slice(t.tld.indexOf('.') + 1))}` : domains.KIND_LABEL[t.kind];
-    const history = t.history.length ? `<ol class="hc-history">${t.history.map((h) => {
+    const trend = tldTrendFigure(t.price_trend, { title: 'Registration and renewal over time' });
+    const history = t.history.length ? `<details class="hc-history-fold"><summary>Every change (${t.history_count || t.history.length})</summary><ol class="hc-history">${t.history.map((h) => {
         const moved = [['first year', h.register], ['renewal', h.renew], ['transfer', h.transfer]].filter(([, [a, b]]) => a !== b)
             .map(([k, [a, b]]) => `${k} ${a == null ? 'none' : esc(money(a, h.currency))} → <strong>${b == null ? 'none' : esc(money(b, h.currency))}</strong>`).join(', ');
         return `<li><time datetime="${esc(day(h.observed_at))}">${esc(day(h.observed_at))}</time> ${esc(h.registrar)}: ${moved}</li>`;
-    }).join('')}</ol>` : '<p class="hc-dim">No price change recorded since the catalog first saw these prices.</p>';
+    }).join('')}</ol></details>` : '';
     const rows = t.prices.map((p) => `<tr>
 <th scope="row" data-label="Registrar">${link(`/catalog/providers/${encodeURIComponent(p.registrar_slug)}`, esc(p.registrar))}</th>
 <td data-label="First year" class="hc-n hd-first"><span class="hc-price">${usd(p.register)}</span></td>
@@ -122,6 +123,7 @@ ${checkForm({ tld: t.tld, label: `Check a ${t.display} name` })}
 <thead><tr><th scope="col">Registrar</th><th scope="col" class="hc-n">First year</th><th scope="col" class="hc-n">Renewal</th><th scope="col" class="hc-n">Transfer</th><th scope="col" class="hc-n">5 years</th><th scope="col">Checked</th><th scope="col"><span class="hd-sr">Register</span></th></tr></thead>
 <tbody>${rows}</tbody></table></div>
 <h2>Price history</h2>
+${trend}
 ${history}
 ${baseUrl && watchUrl ? `<p class="hc-watch">${out(`${watchUrl}/watches/new?${new URLSearchParams({ template: 'json', url: `${baseUrl}/api/v1/catalog/domains/${t.tld}`, value_path: 'tld.cheapest.renew', op: 'changed', name: `${t.display} renewal price` })}`, `Tell me when ${esc(t.display)} prices change`, 'button hc-button-quiet')} <span class="hc-dim">with OpenVibe.Watch, free</span></p>` : ''}
 <section aria-labelledby="hd-reg-h"><h2 id="hd-reg-h">Search a ${esc(t.display)} name at every registrar</h2>${registrarLinks(`yourname.${t.tld}`)}</section>

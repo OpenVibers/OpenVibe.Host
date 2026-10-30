@@ -265,3 +265,29 @@
   .hc-more > a:only-child { position: relative; }
   .hc-more > a:only-child::after { content: ''; position: absolute; left: 0; right: 0; top: -13px; bottom: -13px; }
 }
+
+/* Price over time (server/render/catalog.js trendFigure, render/domains.js tldTrendFigure): the shared kit draws the
+   chart; these rules only place it and its one-line summary. Theme tokens only. */
+.hc-trend { margin: 0 0 1.25rem; }
+.hc-trend .ovk-chart { margin: 0 0 .5rem; }
+.hc-trend-summary { margin: .25rem 0 1rem; color: var(--hs-muted); font-size: 14px; }
+.hc-trend-summary strong { color: var(--hs-fg); }
+.hc-history-fold { margin: 1rem 0; border: 1px solid var(--hs-line); border-radius: 10px; background: var(--hs-card); }
+.hc-history-fold > summary { display: flex; align-items: center; min-height: 44px; padding: 0 .9rem; cursor: pointer; font-weight: 600; }
+.hc-history-fold > summary:focus-visible { outline: 2px solid var(--hs-accent); outline-offset: -2px; border-radius: 10px; }
+.hc-history-fold .hc-history { margin: 0; padding: .25rem 1.2rem 1rem 2.2rem; }
+
+/* The catalog home's "Price changes this month" rail: words say rose or dropped; colour only repeats them. */
+.hh-changes .hc-changes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr)); }
+.hc-changes li { border: 1px solid var(--hs-line); border-radius: 12px; background: var(--hs-card); }
+.hc-changes a { display: flex; flex-wrap: wrap; gap: 8px 14px; justify-content: space-between; align-items: baseline; min-height: 44px; box-sizing: border-box; padding: 12px 14px; color: inherit; text-decoration: none; }
+.hc-changes a:hover, .hc-changes a:focus-visible { outline: 2px solid var(--hs-accent); outline-offset: -2px; border-radius: 12px; }
+.hc-change-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hc-change-what b { color: var(--hs-fg); overflow-wrap: anywhere; }
+.hc-change-what .hc-dim { font-size: .82rem; }
+.hc-change-move { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; font-size: .85rem; margin-left: auto; }
+.hc-change-word { font-weight: 700; }
+.hc-change-move.is-up .hc-change-word { color: var(--hs-warn); }
+.hc-change-move.is-down .hc-change-word { color: var(--hs-ok); }
+.hc-change-prices { color: var(--hs-muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 400px) { .hc-change-move { align-items: flex-start; margin-left: 0; } }
