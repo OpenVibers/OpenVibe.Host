@@ -260,7 +260,7 @@
 
 /* Touch targets on phones (fleet audit, 2026-10-29): touch pointers only. */
 @media (pointer: coarse) {
-  .hc-table a { display: inline-block; min-height: 44px; }
+  .hc-table a { display: inline-block; min-width: 44px; min-height: 44px; }
   .hc-more .button { display: inline-flex; align-items: center; box-sizing: border-box; min-height: 44px; }
   .hc-more > a:only-child { position: relative; }
   .hc-more > a:only-child::after { content: ''; position: absolute; left: 0; right: 0; top: -13px; bottom: -13px; }
