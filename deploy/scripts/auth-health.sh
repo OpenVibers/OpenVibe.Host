@@ -10,9 +10,11 @@
 # handlers.health). One textfile line per site, written to <TEXTFILE_DIR>/openvibe_auth_health.prom:
 #
 #   openvibe_auth_health{site="<id>"} 1   200: the Network accepts the site's OAuth client
-#   openvibe_auth_health{site="<id>"} 0   503 (the Network refuses it) or no answer at all, and any
-#                                         other answer than 200 or 404 (a 502, a redirect, a 500)
-#   (no line)                            404: the site is not on the SDK's sign-in yet, nothing to judge
+#   openvibe_auth_health{site="<id>"} 0   503 (the Network refuses it), any other answer (a 500, a 502,
+#                                         a redirect) or no answer at all
+#   (no line)                            404: the site is not on the SDK's sign-in yet; 401: its own
+#                                         sign-in gate answered (openvibe.ai's console is staff-only).
+#                                         Neither is the SDK's health handler, so neither is judged.
 #
 # The file is written atomically (a temp file beside it, then rename), so Prometheus never reads half of
 # it. Exit: 0 when every probed site is 1 or 404 · 1 when one is 0 · 2 when the registry could not be
@@ -108,7 +110,7 @@ while IFS=$'\t' read -r id origin; do
     code=$(curl -sS -o /dev/null --max-time 10 -w '%{http_code}' "$origin/auth/health" 2>/dev/null) || code=000
     case "$code" in
         200) value=1 ;;
-        404) value= ;;
+        401|404) value= ;;   # not the SDK's health handler: a staff gate, or a site not on the sign-in yet
         *)   value=0 ;;
     esac
     [ -n "${value-}" ] || continue

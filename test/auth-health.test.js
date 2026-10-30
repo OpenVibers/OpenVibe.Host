@@ -69,6 +69,7 @@ runTests([
         const refused = await site(503);
         const missing = await site(404);
         const broken = await site(500);
+        const gate = await site(401);
         const dead = await closedPort();
         const textfile = dir();
         const registry = registryFile(textfile, {
@@ -78,6 +79,7 @@ runTests([
                 { id: 'blog', publicOrigin: originOf(missing) },
                 { id: 'chat', publicOrigin: originOf(broken) },
                 { id: 'tools', publicOrigin: `http://127.0.0.1:${dead}` },
+                { id: 'ai', publicOrigin: originOf(gate) },
                 { id: 'contracts' },
                 { id: 'Bad Id', publicOrigin: 'https://openvibe.example' },
                 { id: 'noscheme', publicOrigin: 'openvibe.example' },
@@ -85,7 +87,7 @@ runTests([
             ],
         });
         const r = await run(textfile, registry);
-        for (const s of [ok, refused, missing, broken]) s.close();
+        for (const s of [ok, refused, missing, broken, gate]) s.close();
         assert.strictEqual(r.status, 1, r.stderr);
         assert.deepStrictEqual(ok.hits, ['/auth/health'], 'exactly one probe per site');
         const file = prom(textfile);
@@ -93,6 +95,7 @@ runTests([
         assert.match(file, /^openvibe_auth_health\{site="live"\} 1$/m);
         assert.match(file, /^openvibe_auth_health\{site="cam"\} 0$/m, '503: the Network refuses its client');
         assert.ok(!/site="blog"/.test(file), '404: not on the SDK sign-in, no line');
+        assert.ok(!/site="ai"/.test(file), '401: the site\'s own sign-in gate answered, no line');
         assert.match(file, /^openvibe_auth_health\{site="chat"\} 0$/m, 'another status is not a pass');
         assert.match(file, /^openvibe_auth_health\{site="tools"\} 0$/m, 'no answer is 0');
         assert.ok(!/site="Bad Id"/.test(file) && !/site="noscheme"/.test(file) && !/site="contracts"/.test(file));

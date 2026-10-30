@@ -13,8 +13,9 @@ cached for ten minutes in the site's process.
 |---|---|---|
 | 200 | the Network accepts the site's OAuth client | `openvibe_auth_health{site="<id>"} 1` |
 | 503 | the Network refuses it (a wrong `OV_OAUTH_CLIENT_SECRET` or `OV_OAUTH_CLIENT_ID`) | `openvibe_auth_health{site="<id>"} 0` |
-| any other status, or no answer at all | a broken site or a broken path, not a healthy one | `openvibe_auth_health{site="<id>"} 0` |
+| any other status (a 500, a 502, a redirect), or no answer at all | a broken site or a broken path, not a healthy one | `openvibe_auth_health{site="<id>"} 0` |
 | 404 | the site is not on the SDK's sign-in yet: nothing to judge | no line |
+| 401 | the site's own sign-in gate answered: openvibe.ai's operator console is staff-only, so `/auth/health` is never the SDK's handler there | no line |
 
 ## The run
 
@@ -64,6 +65,7 @@ The script lives in the `ovhost` CLI's own checkout (`/usr/local/lib/openvibe-ho
 ## What it cannot see
 
 - A site on openvibe-sdk before 0.73.0 answers 404, and is silently outside the canary until its pin moves.
+  So is a site whose own sign-in gate answers first, as openvibe.ai's staff console does (401).
 - `/auth/health` tells a broken client secret from a working one. It does not finish a sign-in, so a
   broken callback URL, a Network that is down, or a site whose sessions cannot be verified still look fine.
 - The check is one request per site per 15 minutes, from the host. It never signs anybody in.
