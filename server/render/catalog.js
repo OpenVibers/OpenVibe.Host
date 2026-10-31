@@ -439,7 +439,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
 <p class="hc-more">${link('/catalog', 'Filter and sort every plan →', 'button')}</p></section>`
     + extra.sizes + extra.value + extra.providers
     + domainSection
-    + '<section class="sc-sec" id="why" aria-labelledby="hh-why"><details class="hh-fold"><summary><h2 id="hh-why">Why this comparison is different</h2><span>sourced, dated, ranked by you</span></summary>'
+    + '<section class="sc-sec" id="why" aria-labelledby="hh-why"><details class="hh-fold" open><summary><h2 id="hh-why">Why this comparison is different</h2><span>sourced, dated, ranked by you</span></summary>'
     + showcase.features({
         items: [
             { icon: 'ov:check', title: 'Straight from the source', text: 'Every provider in one table, from their own APIs or from staff entries that name the page they came from. Nothing is estimated.' },
