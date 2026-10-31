@@ -20,8 +20,12 @@ console.log([s.units[0], s.port, s.repo, (s.ready && s.ready.url) || ""].join(" 
 [ -n "$port" ] && [ "$port" != "undefined" ] || { echo "$svc: no port in host.json"; exit 2; }
 base=${unit%.service}
 sock=$base.socket
-code="$repo/server/index.js"; [ -L "$repo/current" ] && code="$repo/current/server/index.js"
-grep -q 'socketActivated' "$code" || { echo "$svc: $code does not listen on fd 3 yet (deploy the socket-activation PR first)"; exit 3; }
+# The server's entry: a release layout's current/, a plain checkout, or Games' TypeScript server.
+code=""
+for f in "$repo/current/server/index.js" "$repo/server/index.js" "$repo/apps/server/src/main.ts"; do
+    [ -f "$f" ] && { code=$f; break; }
+done
+[ -n "$code" ] && grep -q 'socketActivated' "$code" || { echo "$svc: ${code:-its server entry} does not listen on fd 3 yet (deploy the socket-activation PR first)"; exit 3; }
 if [ "$(node -e 'const s=require(process.argv[1]).services[process.argv[2]];console.log(s.socketUnit||"")' "$HJ" "$svc")" = "$sock" ] && \
    ss -ltnp "sport = :$port" | grep -q 'systemd'; then echo "$svc: already socket-activated ($sock holds :$port)"; exit 0; fi
 
