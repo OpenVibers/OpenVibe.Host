@@ -94,6 +94,33 @@ runTests([
         noSecrets(r.out);
     }),
 
+    test('a service with a port and no socket unit is pointed out: its restarts answer 502 (2026-10-31)', async () => {
+        const host = scenario();
+        const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
+        assert.ok(raw.services.live.port && raw.services.live.socketUnit, 'the fixture has a socket-activated service');
+        const r1 = JSON.parse((await host.cli('validate', 'live', '--json')).out);
+        assert.ok(!r1.findings.some((f) => /has no socket unit/.test(f.message)), 'a socket-activated service is not flagged');
+        delete raw.services.live.socketUnit;
+        host.put('/etc/openvibe/host.json', JSON.stringify(raw), { mode: 0o640 });
+        const r2 = JSON.parse((await host.cli('validate', 'live', '--json')).out);
+        const w = r2.findings.find((f) => /has no socket unit/.test(f.message));
+        assert.ok(w && w.level === 'warn' && /ov-socketize\.sh live/.test(w.message), 'without one it is a warning naming the fix');
+    }),
+
+    test('the restart page: nginx turns its own 502 and 504 into a 503 page with no outside assets', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const conf = fs.readFileSync(path.join(__dirname, '../deploy/nginx/snippets/ov-down.conf'), 'utf8');
+        assert.match(conf, /^error_page 502 504 =503 @ov_down;$/m, 'Cloudflare shows an origin 503 as it is, but swaps a 502 or 504 for its own page');
+        assert.match(conf, /add_header Retry-After 5 always;/);
+        assert.ok(!/proxy_intercept_errors\s+on/.test(conf), 'the apps\' own error answers pass through');
+        const page = fs.readFileSync(path.join(__dirname, '../deploy/www/openvibe-down/down.html'), 'utf8');
+        const outside = [...page.matchAll(/(?:src|href)="(https?:[^"]+)"/g)].map((m) => m[1]);
+        assert.deepStrictEqual(outside, ['https://openvibe.network/'], 'one plain link out, no assets from anywhere: the site it stands in for is down');
+        assert.match(page, /location\.reload\(\)/, 'it reloads itself once the site answers');
+        assert.match(page, /<meta name="robots" content="noindex">/);
+    }),
+
     test('required: "from-example" takes every name the checkout .env.example declares', async () => {
         const host = scenario();
         host.put('/etc/openvibe/media.env', `PORT=4100\nMEDIA_B2_APP_KEY=${SECRET}\n`, { mode: 0o600 });
