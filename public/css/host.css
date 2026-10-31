@@ -37,7 +37,6 @@ ul.domains { padding-left: 1.2rem; } ul.domains li { margin-bottom: 1rem; }
 /* Phones (2026-10-29): a taste and a door. The front page's plan and domain lists show four rows each (every plan
    and every ending are a link away), and the numbers are one strip that scrolls sideways. */
 @media (max-width: 599px) {
-  .hh-short .hc-table tbody tr:nth-child(n+5) { display: none; }
   .hh-stats { display: flex; overflow-x: auto; scrollbar-width: none; gap: 8px; margin-left: -16px; margin-right: -16px; padding: 0 16px 2px; }
   .hh-stats::-webkit-scrollbar { display: none; }
   .hh-stats li { flex: 0 0 auto; min-width: 128px; }
