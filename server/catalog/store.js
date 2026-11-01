@@ -7,6 +7,15 @@ const offerFeed = require('./offers');
 const domainFeed = require('./domains');
 const { createDomainStore } = require('./domain-store');
 const { planTrend } = require('./trend');
+const { isStorageRate, isStale, freshCutoff } = require('./pricing');
+
+// A plan's stored price is a monthly price, a per-GB storage rate (Azure's per-GB tiers, server/catalog/mapping.js)
+// or nothing: only a monthly price is a server price. A price last checked over a year ago is stale and is never
+// counted as the cheapest. Both rules are in SQL here so the order and the "from" price are the same rule.
+const STORAGE_RATE_SQL = "(p.kind = 'storage' AND p.name ILIKE '%(per gb/month)%')";
+const UNPRICED_SQL = `(p.price_monthly IS NULL OR p.price_monthly = 0 OR ${STORAGE_RATE_SQL})`;
+const SERVER_PRICE_SQL = `(p.price_monthly > 0 AND NOT ${STORAGE_RATE_SQL})`;
+const STALE_SQL = '(p.checked_at < ?)';
 const invalid = (message) => { throw new ApiError(422, 'host.catalog.invalid', message); };
 const missing = () => { throw new ApiError(404, 'host.catalog.not_found', 'Catalog entry not found'); };
 const fields = {
@@ -197,15 +206,17 @@ function createCatalog({ store, community = null, log = console, indexnow = null
         const rows = await db.prepare(`SELECT * FROM catalog_offers WHERE ${where} ORDER BY ${OFFER_SORTS[sort]} LIMIT 51 OFFSET ${offset}`).all(...args);
         return { offers: rows.slice(0, 50).map(offerOut), next_cursor: rows.length > 50 ? String(offset + 50) : null };
     }
-    const planOut = (p) => ({ ...p, affiliate_rel: p.affiliate_url ? 'sponsored nofollow noopener' : null, affiliate_disclosure: p.affiliate_url ? 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.' : null, price_per_vcpu: p.vcpu > 0 ? Number(p.price_monthly) / Number(p.vcpu) : null, price_per_gb_ram: p.ram_mb > 0 ? Number(p.price_monthly) * 1024 / Number(p.ram_mb) : null, price_per_gb_disk: p.disk_gb > 0 ? Number(p.price_monthly) / Number(p.disk_gb) : null, checked_at: new Date(Number(p.checked_at)).toISOString() });
+    const planOut = (p) => ({ ...p, affiliate_rel: p.affiliate_url ? 'sponsored nofollow noopener' : null, affiliate_disclosure: p.affiliate_url ? 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.' : null, price_per_vcpu: p.vcpu > 0 ? Number(p.price_monthly) / Number(p.vcpu) : null, price_per_gb_ram: p.ram_mb > 0 ? Number(p.price_monthly) * 1024 / Number(p.ram_mb) : null, price_per_gb_disk: p.disk_gb > 0 ? Number(p.price_monthly) / Number(p.disk_gb) : null, checked_at: new Date(Number(p.checked_at)).toISOString(), stale: isStale(p.checked_at, store.now()), price_unit: isStorageRate(p) ? 'per_gb_month' : 'month' });
     async function plans(query = {}) {
         const allowed = new Set(['kind', 'min_vcpu', 'min_ram_mb', 'min_disk_gb', 'max_price', 'currency', 'location', 'provider', 'sort', 'cursor']);
         for (const k of Object.keys(query)) if (!allowed.has(k) || Array.isArray(query[k])) invalid(`Invalid filter: ${k}`);
         const sort = query.sort || 'price';
-        const sorts = { price: 'CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN 1 ELSE 0 END, p.price_monthly',
-            price_per_vcpu: 'CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN NULL ELSE p.price_monthly / NULLIF(p.vcpu, 0) END',
-            price_per_gb_ram: 'CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN NULL ELSE p.price_monthly * 1024 / NULLIF(p.ram_mb, 0) END',
-            price_per_gb_disk: 'CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN NULL ELSE p.price_monthly / NULLIF(p.disk_gb, 0) END',
+        // A plan with no monthly price (none stated, or a per-GB storage rate) and a stale price sort after every plan
+        // a comparison may count, so the head of a price order is always a fresh monthly price.
+        const sorts = { price: `${UNPRICED_SQL}, ${STALE_SQL}, p.price_monthly`,
+            price_per_vcpu: `${UNPRICED_SQL}, ${STALE_SQL}, CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN NULL ELSE p.price_monthly / NULLIF(p.vcpu, 0) END`,
+            price_per_gb_ram: `${UNPRICED_SQL}, ${STALE_SQL}, CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN NULL ELSE p.price_monthly * 1024 / NULLIF(p.ram_mb, 0) END`,
+            price_per_gb_disk: `${UNPRICED_SQL}, ${STALE_SQL}, CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN NULL ELSE p.price_monthly / NULLIF(p.disk_gb, 0) END`,
             checked_at: 'p.checked_at' };
         if (!sorts[sort]) invalid('Invalid sort');
         const args = [query.currency || 'USD'];
@@ -217,6 +228,8 @@ function createCatalog({ store, community = null, log = console, indexnow = null
             const n = Number(query[key]); if (!Number.isFinite(n) || n < 0 || query[key] === '') invalid(`Invalid ${key}`);
             where += ` AND ${col} ${key === 'max_price' ? '<=' : '>='} ?`; args.push(n);
         }
+        // The stale cutoff is the last of the ORDER BY placeholders, so it goes after the filters.
+        if (sorts[sort].includes('?')) args.push(freshCutoff(store.now()));
         const offset = query.cursor == null ? 0 : Number(query.cursor);
         if (!Number.isSafeInteger(offset) || offset < 0) invalid('Invalid cursor');
         // Affiliation is deliberately absent from the ORDER BY expression.
@@ -265,7 +278,10 @@ function createCatalog({ store, community = null, log = console, indexnow = null
         if (slug) {
             const p = await db.prepare("SELECT * FROM catalog_providers WHERE slug = ? AND status = 'active'").get(slug);
             if (!p) missing();
-            return { ...providerOut(p), plans: (await db.prepare("SELECT * FROM catalog_plans WHERE provider_id = ? AND status = 'active' ORDER BY CASE WHEN price_monthly IS NULL OR price_monthly = 0 THEN 1 ELSE 0 END, price_monthly, id").all(p.id)).map((row) => planOut({ ...row, provider_name: p.name, provider_slug: p.slug, affiliate_url: p.affiliate_url, affiliate_note: p.affiliate_note })), promos: await promos(p.id), domains: await domains.countFor(p.id) };
+            // The provider's own list: fresh monthly prices first, then stale ones, then the plans with no monthly
+            // price (a per-GB storage rate), so a rate per GB never reads as the cheapest plan.
+            const rows = await db.prepare(`SELECT p.* FROM catalog_plans p WHERE p.provider_id = ? AND p.status = 'active' ORDER BY ${UNPRICED_SQL}, ${STALE_SQL}, p.price_monthly, p.id`).all(p.id, freshCutoff(store.now()));
+            return { ...providerOut(p), plans: rows.map((row) => planOut({ ...row, provider_name: p.name, provider_slug: p.slug, affiliate_url: p.affiliate_url, affiliate_note: p.affiliate_note })), promos: await promos(p.id), domains: await domains.countFor(p.id) };
         }
         return (await db.prepare("SELECT * FROM catalog_providers WHERE status = 'active' ORDER BY name, id").all()).map(providerOut);
     }
@@ -286,7 +302,11 @@ function createCatalog({ store, community = null, log = console, indexnow = null
     }
     /** Each provider with active plans: how many, the lowest monthly price and the newest check (the front page's cards). */
     async function providerSummary(currency = 'USD') {
-        const rows = await db.prepare("SELECT v.slug, v.name, COUNT(*) AS plans, MIN(CASE WHEN p.price_monthly > 0 THEN p.price_monthly END) AS from_price, MAX(p.checked_at) AS last FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' AND p.currency = ? GROUP BY v.slug, v.name ORDER BY MIN(CASE WHEN p.price_monthly > 0 THEN p.price_monthly END) ASC, v.name").all(currency);
+        // "From $X" is the cheapest fresh monthly price a reader can compare: a per-GB storage rate and a price last
+        // checked over a year ago are not one.
+        const cutoff = freshCutoff(store.now());
+        const priced = `CASE WHEN ${SERVER_PRICE_SQL} AND p.checked_at >= ? THEN p.price_monthly END`;
+        const rows = await db.prepare(`SELECT v.slug, v.name, COUNT(*) AS plans, MIN(${priced}) AS from_price, MAX(p.checked_at) AS last FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' AND p.currency = ? GROUP BY v.slug, v.name ORDER BY MIN(${priced}) ASC NULLS LAST, v.name`).all(cutoff, currency, cutoff);
         return rows.map((r) => ({ slug: r.slug, name: r.name, plans: Number(r.plans) || 0, from_price: r.from_price == null ? null : Number(r.from_price), currency, last_checked: r.last == null ? null : Number(r.last) }));
     }
     /** Every public plan for a form's choice list: provider by name, then cheapest first. */
