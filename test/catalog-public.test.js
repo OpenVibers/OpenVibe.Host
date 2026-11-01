@@ -40,7 +40,7 @@ const { boot, check, done } = require('./helpers/boot');
             const plans = await t.api('GET', '/catalog'); assert.match(plans.text, /<form class="hc-filters" method="get" action="\/catalog"/); assert.match(plans.text, /<table class="hc-table">/);
             assert.match(plans.text, /How the comparison works/); assert.doesNotMatch(plans.text, /<script[^>]*src="[^"]*catalog/, 'the catalog needs no script of its own');
             const front = await t.api('GET', '/'); assert.strictEqual(front.status, 200);
-            assert.match(front.text, /Lowest monthly prices right now/); assert.match(front.text, /\$4\.00/, 'the cheapest plan is on the front page');
+            assert.match(front.text, /Cheapest servers right now/); assert.match(front.text, /\$4\.00/, 'the cheapest plan is on the front page');
             assert.match(front.text, /css\/catalog\.css\?v=/);
             for (const h of ['The lowest monthly prices', 'The lowest price for each size', 'The most for your money', 'Providers compared', 'Questions people ask']) assert.ok(front.text.includes(h), `the front page has "${h}"`);
             assert.match(front.text, /<title>Hosting plans and domain prices, compared · OpenVibe\.Host<\/title>/);
