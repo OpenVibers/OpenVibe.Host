@@ -16,9 +16,9 @@ const FIVE_YEAR = '(COALESCE(p.register, p.renew) + 4 * COALESCE(p.renew, p.regi
 const SORTS = {
     popular: `MIN(${POPULAR_RANK}) ASC, p.tld ASC`,
     tld: 'p.tld ASC',
-    register: 'MIN(p.register) ASC NULLS LAST, p.tld ASC',
-    renew: 'MIN(p.renew) ASC NULLS LAST, p.tld ASC',
-    five_year: `MIN(${FIVE_YEAR}) ASC NULLS LAST, p.tld ASC`,
+    register: 'CASE WHEN MIN(p.register) IS NULL OR MIN(p.register) = 0 THEN 1 ELSE 0 END ASC, MIN(p.register) ASC NULLS LAST, p.tld ASC',
+    renew: 'CASE WHEN MIN(p.renew) IS NULL OR MIN(p.renew) = 0 THEN 1 ELSE 0 END ASC, MIN(p.renew) ASC NULLS LAST, p.tld ASC',
+    five_year: `CASE WHEN MIN(${FIVE_YEAR}) IS NULL OR MIN(${FIVE_YEAR}) = 0 THEN 1 ELSE 0 END ASC, MIN(${FIVE_YEAR}) ASC NULLS LAST, p.tld ASC`,
 };
 const KINDS = {
     country: "p.tld ~ '^[a-z]{2}$'",
@@ -111,7 +111,7 @@ function createDomainStore({ store, announce = () => {} }) {
         const t = domains.normalizeTld(String(input || ''));
         if (!t) throw new ApiError(404, 'host.catalog.not_found', 'Not a domain ending');
         const rows = await db.prepare(`SELECT p.*, ${FIVE_YEAR} AS five_year, v.slug AS provider_slug, v.name AS provider_name, v.homepage_url, v.affiliate_url, v.affiliate_note
-            FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} AND p.tld = ? ORDER BY p.register ASC NULLS LAST, v.name, p.id`).all(t);
+            FROM catalog_tld_prices p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${ACTIVE} AND p.tld = ? ORDER BY CASE WHEN p.register IS NULL OR p.register = 0 THEN 1 ELSE 0 END ASC, p.register ASC NULLS LAST, v.name, p.id`).all(t);
         const history = rows.length ? await db.prepare(`SELECT h.*, v.name AS provider_name FROM catalog_tld_price_changes h JOIN catalog_tld_prices p ON p.id = h.price_id JOIN catalog_providers v ON v.id = p.provider_id
             WHERE p.tld = ? AND ${ACTIVE} ORDER BY h.observed_at DESC`).all(t) : [];
         const data = { rows, history };
