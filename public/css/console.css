@@ -10,7 +10,7 @@
 .cs-stats b { display: block; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
 .cs-stats span { color: var(--text-secondary, #9fb0c8); font-size: 0.82rem; }
 .cs-muted { color: var(--text-secondary, #9fb0c8); font-size: 0.88rem; }
-.cs-bad { color: #f87171; }
+.cs-bad { color: var(--danger-text, #f87171); }
 .cs-empty { padding: 28px; border: 1px dashed var(--border, #2c3d5c); border-radius: 14px; text-align: center; color: var(--text-secondary, #9fb0c8); }
 .cs-table-wrap { overflow-x: auto; border: 1px solid var(--border, #2c3d5c); border-radius: 16px; background: var(--bg-secondary, #101828); }
 .cs-table { width: 100%; border-collapse: collapse; min-width: 760px; }
@@ -20,10 +20,10 @@
 .cs-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cs-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88rem; }
 .cs-save { font-size: 0.8rem; margin-top: 4px; }
-.cs-save a { color: #4ade80; }
+.cs-save a { color: var(--success-text, #4ade80); }
 .cs-status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.84rem; font-weight: 600; }
 .cs-status::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.cs-status.is-ok { color: #4ade80; } .cs-status.is-off { color: var(--text-secondary, #9fb0c8); } .cs-status.is-busy { color: #fbbf24; }
+.cs-status.is-ok { color: var(--success-text, #4ade80); } .cs-status.is-off { color: var(--text-secondary, #9fb0c8); } .cs-status.is-busy { color: var(--warning-text, #fbbf24); }
 .cs-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .cs-actions form { margin: 0; }
 .cs-refresh { font-size: 0.8rem; text-transform: none; letter-spacing: 0; }

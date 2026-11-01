@@ -23,7 +23,7 @@
 .hc-table-wrap { border: 1px solid var(--hs-line); border-radius: 12px; overflow: hidden; background: var(--hs-card); }
 .hc-table { margin: 0; font-size: 14px; }
 .hc-table caption { caption-side: top; text-align: left; padding: .75rem 1rem; color: var(--hs-muted); font-size: 13px; border-bottom: 1px solid var(--hs-line); }
-.hc-table thead th { font-size: 12px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--hs-muted); background: rgba(255,255,255,.02); white-space: nowrap; }
+.hc-table thead th { font-size: 12px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: var(--hs-muted); background: color-mix(in srgb, var(--text-primary, #fff) 2%, transparent); white-space: nowrap; }
 .hc-table th, .hc-table td { padding: .65rem 1rem; border-bottom: 1px solid var(--hs-line); vertical-align: middle; }
 .hc-table tbody tr:last-child > * { border-bottom: 0; }
 .hc-table tbody tr:hover > * { background: rgba(96,165,250,.05); }
