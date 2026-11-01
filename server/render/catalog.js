@@ -61,8 +61,9 @@ function visit(p, label = 'Visit provider') {
 }
 
 function priceCell(p) {
-    const m = money(p.price_monthly, p.currency);
-    return `<span class="hc-price">${m ? esc(m) : UNKNOWN}</span><span class="hc-per">/mo</span>`;
+    const price = Number(p.price_monthly);
+    const m = Number.isFinite(price) && price > 0 ? money(price, p.currency) : null;
+    return `<span class="hc-price">${m ? esc(m) : 'price not stated'}</span><span class="hc-per">/mo</span>`;
 }
 
 const isoAt = (v) => new Date(v).toISOString();
@@ -297,7 +298,7 @@ function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '' } 
 <header class="hc-head"><p class="hc-eyebrow">${esc(p.provider_name)} · ${esc(kindName(p.kind))}</p><h1>${esc(p.name)}</h1></header>
 <div class="hc-plan">
 <section class="hc-price-card" aria-label="Price">
-<p class="hc-big">${esc(money(p.price_monthly, p.currency) || '')}<span>/month</span></p>
+<p class="hc-big">${esc((() => { const price = Number(p.price_monthly); return (Number.isFinite(price) && price > 0) ? money(price, p.currency) : 'price not stated'; })())}<span>/month</span></p>
 ${p.price_hourly != null ? `<p class="hc-dim">${esc(money(p.price_hourly, p.currency, 4))} an hour</p>` : ''}
 ${p.setup_fee != null && Number(p.setup_fee) > 0 ? `<p class="hc-dim">Setup fee ${esc(money(p.setup_fee, p.currency))}</p>` : ''}
 <p class="hc-checked-line">Checked <strong>${esc(day(p.checked_at) || 'unknown')}</strong> · ${out(p.source_url, 'source')}</p>
@@ -382,7 +383,7 @@ const jsonLd = {
             seo.jsonLd.product({
                 name: p.name, url, brand: { '@type': 'Brand', name: p.provider_name },
                 description: [p.vcpu != null ? `${Number(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb) ? `${bytesMb(p.ram_mb)} RAM` : null, sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).join(', ') || undefined,
-                offers: Number.isFinite(price) ? { '@type': 'Offer', price, priceCurrency: p.currency, url, availability: 'https://schema.org/InStock',
+                offers: (Number.isFinite(price) && price > 0) ? { '@type': 'Offer', price, priceCurrency: p.currency, url, availability: 'https://schema.org/InStock',
                     priceSpecification: { '@type': 'UnitPriceSpecification', price, priceCurrency: p.currency, unitText: 'MONTH' } } : undefined,
             }),
         ];
@@ -391,7 +392,11 @@ const jsonLd = {
 
 /** The front page of the hosting comparison. */
 /** A plan as a small card: what it is, its size and its price, opening the plan's page. */
-const planCard = (label, p, note = '') => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span class="hh-label">${esc(label)}</span><b>${esc(p.provider_name)} ${esc(p.name)}</b><span class="hh-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb), sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).map(esc).join(' · ')}</span><span class="hh-price"><strong>${esc(money(p.price_monthly, p.currency))}</strong> a month${note ? ` · ${esc(note)}` : ''}</span>`)}</li>`;
+const planCard = (label, p, note = '') => {
+    const price = Number(p.price_monthly);
+    const priceLabel = Number.isFinite(price) && price > 0 ? money(price, p.currency) : 'price not stated';
+    return `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span class="hh-label">${esc(label)}</span><b>${esc(p.provider_name)} ${esc(p.name)}</b><span class="hh-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb), sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).map(esc).join(' · ')}</span><span class="hh-price"><strong>${esc(priceLabel)}</strong>${priceLabel === 'price not stated' ? '' : ' a month'}${note ? ` · ${esc(note)}` : ''}</span>`)}</li>`;
+};
 const perUnit = (p, by) => {
     const price = Number(p.price_monthly);
     const n = by === 'vcpu' ? Number(p.vcpu) : by === 'ram' ? Number(p.ram_mb) / 1024 : Number(p.disk_gb);
@@ -423,7 +428,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
     }).join('')}</ol></section>` : '';
     const aside = plans.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
 <p class="hc-aside-h">Lowest monthly prices right now</p>
-<ol>${plans.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
+<ol>${plans.slice(0, 5).map((p) => { const price = Number(p.price_monthly); const label = Number.isFinite(price) && price > 0 ? money(price, p.currency) : 'price not stated'; return `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(label)}</strong>`)}</li>`; }).join('')}</ol>
 <p class="hc-aside-foot">Checked ${esc(day(stats.lastChecked) || '')} · ${link('/catalog', 'compare all')}</p>
 </div>` : '';
     return showcase.hero({

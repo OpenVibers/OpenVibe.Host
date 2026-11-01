@@ -167,7 +167,7 @@ function createCatalog({ store, community = null, log = console, indexnow = null
         return 'applied';
     }
     // Offers posted in the last MAX_AGE_DAYS: newest first, or by the stated monthly price within one currency.
-    const OFFER_SORTS = { new: 'published_at DESC, id DESC', price: 'price_monthly ASC, published_at DESC, id DESC' };
+    const OFFER_SORTS = { new: 'published_at DESC, id DESC', price: 'CASE WHEN price_monthly IS NULL OR price_monthly = 0 THEN 1 ELSE 0 END ASC, price_monthly ASC, published_at DESC, id DESC' };
     const offerOut = (o) => ({ ...o, source: offerFeed.SOURCES[o.source_key] ? offerFeed.SOURCES[o.source_key].label : o.source_key, published_at: new Date(Number(o.published_at)).toISOString(), checked_at: new Date(Number(o.checked_at)).toISOString(),
         price_amount: o.price_amount == null ? null : Number(o.price_amount), price_monthly: o.price_monthly == null ? null : Number(o.price_monthly) });
     async function offers(query = {}) {
@@ -202,7 +202,11 @@ function createCatalog({ store, community = null, log = console, indexnow = null
         const allowed = new Set(['kind', 'min_vcpu', 'min_ram_mb', 'min_disk_gb', 'max_price', 'currency', 'location', 'provider', 'sort', 'cursor']);
         for (const k of Object.keys(query)) if (!allowed.has(k) || Array.isArray(query[k])) invalid(`Invalid filter: ${k}`);
         const sort = query.sort || 'price';
-        const sorts = { price: 'p.price_monthly', price_per_vcpu: 'p.price_monthly / NULLIF(p.vcpu, 0)', price_per_gb_ram: 'p.price_monthly * 1024 / NULLIF(p.ram_mb, 0)', price_per_gb_disk: 'p.price_monthly / NULLIF(p.disk_gb, 0)', checked_at: 'p.checked_at' };
+        const sorts = { price: 'CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN 1 ELSE 0 END, p.price_monthly',
+            price_per_vcpu: 'CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN NULL ELSE p.price_monthly / NULLIF(p.vcpu, 0) END',
+            price_per_gb_ram: 'CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN NULL ELSE p.price_monthly * 1024 / NULLIF(p.ram_mb, 0) END',
+            price_per_gb_disk: 'CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN NULL ELSE p.price_monthly / NULLIF(p.disk_gb, 0) END',
+            checked_at: 'p.checked_at' };
         if (!sorts[sort]) invalid('Invalid sort');
         const args = [query.currency || 'USD'];
         if (!currencies.has(args[0])) invalid('Invalid currency');
@@ -261,7 +265,7 @@ function createCatalog({ store, community = null, log = console, indexnow = null
         if (slug) {
             const p = await db.prepare("SELECT * FROM catalog_providers WHERE slug = ? AND status = 'active'").get(slug);
             if (!p) missing();
-            return { ...providerOut(p), plans: (await db.prepare("SELECT * FROM catalog_plans WHERE provider_id = ? AND status = 'active' ORDER BY price_monthly, id").all(p.id)).map((row) => planOut({ ...row, provider_name: p.name, provider_slug: p.slug, affiliate_url: p.affiliate_url, affiliate_note: p.affiliate_note })), promos: await promos(p.id), domains: await domains.countFor(p.id) };
+            return { ...providerOut(p), plans: (await db.prepare("SELECT * FROM catalog_plans WHERE provider_id = ? AND status = 'active' ORDER BY CASE WHEN price_monthly IS NULL OR price_monthly = 0 THEN 1 ELSE 0 END, price_monthly, id").all(p.id)).map((row) => planOut({ ...row, provider_name: p.name, provider_slug: p.slug, affiliate_url: p.affiliate_url, affiliate_note: p.affiliate_note })), promos: await promos(p.id), domains: await domains.countFor(p.id) };
         }
         return (await db.prepare("SELECT * FROM catalog_providers WHERE status = 'active' ORDER BY name, id").all()).map(providerOut);
     }
@@ -282,11 +286,11 @@ function createCatalog({ store, community = null, log = console, indexnow = null
     }
     /** Each provider with active plans: how many, the lowest monthly price and the newest check (the front page's cards). */
     async function providerSummary(currency = 'USD') {
-        const rows = await db.prepare("SELECT v.slug, v.name, COUNT(*) AS plans, MIN(p.price_monthly) AS from_price, MAX(p.checked_at) AS last FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' AND p.currency = ? GROUP BY v.slug, v.name ORDER BY MIN(p.price_monthly) ASC, v.name").all(currency);
+        const rows = await db.prepare("SELECT v.slug, v.name, COUNT(*) AS plans, MIN(CASE WHEN p.price_monthly > 0 THEN p.price_monthly END) AS from_price, MAX(p.checked_at) AS last FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' AND p.currency = ? GROUP BY v.slug, v.name ORDER BY MIN(CASE WHEN p.price_monthly > 0 THEN p.price_monthly END) ASC, v.name").all(currency);
         return rows.map((r) => ({ slug: r.slug, name: r.name, plans: Number(r.plans) || 0, from_price: r.from_price == null ? null : Number(r.from_price), currency, last_checked: r.last == null ? null : Number(r.last) }));
     }
     /** Every public plan for a form's choice list: provider by name, then cheapest first. */
-    async function planChoices() { return await db.prepare("SELECT p.id, p.name, v.name AS provider_name, v.slug AS provider_slug FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY v.name, p.price_monthly, p.id LIMIT 1000").all(); }
+    async function planChoices() { return await db.prepare("SELECT p.id, p.name, v.name AS provider_name, v.slug AS provider_slug FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY v.name, CASE WHEN p.price_monthly IS NULL OR p.price_monthly = 0 THEN 1 ELSE 0 END, p.price_monthly, p.id LIMIT 1000").all(); }
     // Each public plan with the day its price was last checked, and its provider's slug, so the sitemap can date pages.
     async function sitemapPlans() { return await db.prepare("SELECT p.id, p.checked_at, v.slug AS provider_slug FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.status = 'active' AND v.status = 'active' ORDER BY p.id").all(); }
     return { onChange: (fn) => listeners.push(fn), save, get, applyItem, domains, plans, plan, planPriceTrend, recentChanges, providers, promos, offers, currencies: currenciesInUse, stats, providerSummary, sitemapPlans, planChoices, discussionIdle: idle, all: async (type) => { const rows = await db.prepare(`SELECT * FROM catalog_${type} ORDER BY created_at DESC, id DESC LIMIT 200`).all(); return type === 'promos' ? rows.map(promoOut) : rows; } };
