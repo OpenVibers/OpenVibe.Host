@@ -60,7 +60,7 @@ const { boot, check, done } = require('./helpers/boot');
             const types = (html) => ld(html).map((x) => x['@type']);
             assert.strictEqual(scripts(front.text), 1, 'the front page carries exactly one JSON-LD script');
             assert.strictEqual(scripts(plans.text), 1, 'the catalog carries exactly one JSON-LD script');
-            assert.ok(types(front.text).includes('WebSite') && types(front.text).includes('ItemList') && types(front.text).includes('FAQPage'), JSON.stringify(types(front.text)));
+            assert.ok(types(front.text).includes('WebSite') && types(front.text).includes('ItemList') && types(front.text).includes('FAQPage') && types(front.text).includes('Organization'), JSON.stringify(types(front.text)));
             assert.ok(types(plans.text).includes('ItemList'));
             const planPage = await t.api('GET', `/catalog/plans/${cheap.id}`);
             const product = ld(planPage.text).find((x) => x['@type'] === 'Product');
