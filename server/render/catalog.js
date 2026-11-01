@@ -366,6 +366,7 @@ const jsonLd = {
     front(base, plans) {
         return [
             seo.jsonLd.website({ name: 'OpenVibe.Host', url: `${base}/`, description: 'Hosting plans compared: price per month, per vCPU and per GB, every price dated and sourced.' }),
+            seo.jsonLd.organization(),
             seo.jsonLd.itemList('Lowest monthly hosting prices', plans.slice(0, 8).map((p) => ({ name: `${p.provider_name} ${p.name}`, url: planUrl(base, p) })), { url: `${base}/catalog` }),
         ];
     },
