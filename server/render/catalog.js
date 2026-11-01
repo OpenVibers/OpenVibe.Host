@@ -421,9 +421,12 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
         const move = c.percent == null ? (up ? 'Rose' : 'Dropped') : `${up ? 'Rose' : 'Dropped'} ${Math.abs(c.percent)}%`;
         return `<li><a href="${esc(c.href)}"><span class="hc-change-what"><b>${esc(c.name)}</b><span class="hc-dim">${esc(c.kind)}</span></span><span class="hc-change-move ${up ? 'is-up' : 'is-down'}"><span class="hc-change-word">${move}</span><span class="hc-change-prices">${esc(money(c.before, c.currency) || String(c.before))} → ${esc(money(c.after, c.currency) || String(c.after))}</span></span></a></li>`;
     }).join('')}</ol></section>` : '';
-    const aside = plans.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
-<p class="hc-aside-h">Lowest monthly prices right now</p>
-<ol>${plans.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
+    // The aside is servers: a plan with vCPU and a price above zero. Per-GB storage (archive tiers at $0.00 a GB once
+    // rounded) read as four free "plans" at the top of the home (2026-11-01).
+    const servers = plans.filter((p) => p.vcpu != null && Number(p.price_monthly) > 0);
+    const aside = servers.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
+<p class="hc-aside-h">Cheapest servers right now</p>
+<ol>${servers.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
 <p class="hc-aside-foot">Checked ${esc(day(stats.lastChecked) || '')} · ${link('/catalog', 'compare all')}</p>
 </div>` : '';
     return showcase.hero({
