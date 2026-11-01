@@ -1,7 +1,9 @@
 /* OpenVibe.Host dashboard. Colours follow the shared theme tokens when theme-loader.js has run. */
 :root { --hs-bg: var(--bg-primary, #0a0f1c); --hs-fg: var(--text-primary, #e6edf7); --hs-muted: var(--text-secondary, #9aa7bd);
-        --hs-card: var(--bg-secondary, #111a2c); --hs-line: rgba(255,255,255,.12); --hs-accent: var(--accent, #60a5fa);
-        --hs-ok: #34d399; --hs-warn: #fbbf24; --hs-bad: #f87171; }
+        --hs-card: var(--bg-secondary, #111a2c); --hs-line: var(--border, rgba(255,255,255,.12)); --hs-accent: var(--accent, #60a5fa);
+        --hs-ok: var(--success-text, #34d399); --hs-warn: var(--warning-text, #fbbf24); --hs-bad: var(--danger-text, #f87171); }
+/* Status words and lines use the theme's readable status colours; the fixed light green, amber and red were for dark
+   themes only (axe on Daylight: 1.8:1, 2026-11-01). Buttons wear the theme's strong accent and its own text colour. */
 body { margin: 0; background: var(--hs-bg); color: var(--hs-fg); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
 a { color: var(--hs-accent); }
 .skip { position: absolute; left: -9999px; } .skip:focus { left: 1rem; top: 1rem; }
@@ -22,9 +24,9 @@ fieldset.choice { display: flex; flex-direction: column; gap: .35rem; }
 textarea { width: min(100%, 44rem); min-height: 6.5rem; font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.5; }
 strong.preview { color: var(--hs-warn); }
 input, select, textarea { font: inherit; padding: .4rem .5rem; border-radius: 6px; border: 1px solid var(--hs-line); background: var(--hs-card); color: var(--hs-fg); }
-button, .button { font: inherit; padding: .45rem .9rem; border-radius: 6px; border: 0; background: var(--hs-accent); color: #0a0f1c; cursor: pointer; text-decoration: none; display: inline-block; }
+button, .button { font: inherit; padding: .45rem .9rem; border-radius: 6px; border: 0; background: var(--accent-strong, var(--hs-accent)); color: var(--on-accent-strong, #0a0f1c); cursor: pointer; text-decoration: none; display: inline-block; }
 button.link { background: none; color: var(--hs-accent); padding: 0; text-decoration: underline; }
-button.danger, .danger { background: var(--hs-bad); color: #0a0f1c; } button.link.danger { background: none; color: var(--hs-bad); }
+button.danger, .danger { background: var(--danger, #f87171); color: #0a0f1c; } button.link.danger { background: none; color: var(--hs-bad); }
 .notice { padding: .6rem .8rem; border-radius: 6px; background: var(--hs-card); border-left: 4px solid var(--hs-accent); }
 .notice-error { border-left-color: var(--hs-bad); }
 .ok { color: var(--hs-ok); } .warn { color: var(--hs-warn); }
