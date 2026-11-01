@@ -19,23 +19,28 @@
 const { createSearchFeed } = require('openvibe-publishing/search-feed');
 const { money, bytesMb, sizeGb } = require('../render/catalog');
 const { displayTld, tldKind, KIND_LABEL } = require('./domains');
+const { isStorageRate, isStale, freshCutoff } = require('./pricing');
 
 const KINDS = { cloud: 'Cloud', vps: 'VPS', dedicated: 'Dedicated server', storage: 'Storage', domain: 'Domain' };
 const day = (ms) => (Number.isFinite(Number(ms)) ? new Date(Number(ms)).toISOString().slice(0, 10) : null);
 const iso = (ms) => (Number.isFinite(Number(ms)) && ms != null ? new Date(Number(ms)).toISOString() : null);
 
 function planDocument(row) {
-    const price = money(row.price_monthly, row.currency);
+    // A per-GB storage rate is not a monthly price: the document names it as the rate per GB it is.
+    const storage = isStorageRate(row);
+    const price = money(row.price_monthly, row.currency, storage ? 4 : 2);
+    const priceText = price ? (storage ? `${price} a GB a month` : `${price} a month`) : null;
     const transfer = row.unmetered ? 'unmetered transfer' : (sizeGb(row.bandwidth_gb) ? `${sizeGb(row.bandwidth_gb)} transfer` : null);
     const specs = [row.vcpu != null ? `${Number(row.vcpu)} vCPU` : null, bytesMb(row.ram_mb) ? `${bytesMb(row.ram_mb)} RAM` : null,
         sizeGb(row.disk_gb) ? `${sizeGb(row.disk_gb)}${row.disk_type ? ` ${row.disk_type.toUpperCase()}` : ''} disk` : null, transfer].filter(Boolean);
     const checked = day(row.checked_at);
+    const stale = isStale(row.checked_at, Date.now()) ? ', stale' : '';
     return {
         listed: row.status === 'active' && row.provider_status === 'active',
-        title: `${row.provider_name} ${row.name}${price ? `: ${price} a month` : ''}`,
-        summary: [...specs, checked ? `checked ${checked}` : null].filter(Boolean).join(' · ') || null,
+        title: `${row.provider_name} ${row.name}${priceText ? `: ${priceText}` : ''}`,
+        summary: [...specs, checked ? `checked ${checked}${stale}` : null].filter(Boolean).join(' · ') || null,
         body: [`${row.provider_name} ${row.name}`, KINDS[row.kind] || row.kind, specs.join(', '),
-            price ? `${price} a month (${row.currency})${checked ? `, checked ${checked}` : ''}` : null,
+            priceText ? `${priceText} (${row.currency})${checked ? `, checked ${checked}${stale}` : ''}` : null,
             Array.isArray(row.locations) && row.locations.length ? `Locations: ${row.locations.join(', ')}` : null].filter(Boolean).join('\n'),
         facets: { provider: row.provider_slug, kind: row.kind, currency: row.currency },
         authorship: { mode: row.origin === 'sources' ? 'imported' : 'human' },
@@ -107,9 +112,9 @@ function createCatalogSearch({ config, store, outbox, log = console }) {
                 // The cheapest active plan is named in its own currency (the first currency by price, USD first when tied).
                 rows: (after, limit) => db.many(`SELECT v.*,
                         (SELECT COUNT(*) FROM catalog_plans p WHERE p.provider_id = v.id AND p.status = 'active') AS plan_count,
-                        (SELECT p.price_monthly FROM catalog_plans p WHERE p.provider_id = v.id AND p.status = 'active' ORDER BY (p.currency <> 'USD'), p.price_monthly, p.id LIMIT 1) AS from_price,
-                        (SELECT p.currency FROM catalog_plans p WHERE p.provider_id = v.id AND p.status = 'active' ORDER BY (p.currency <> 'USD'), p.price_monthly, p.id LIMIT 1) AS from_currency
-                    FROM catalog_providers v WHERE v.id > $1 ORDER BY v.id LIMIT $2`, [after, limit]),
+                        (SELECT p.price_monthly FROM catalog_plans p WHERE p.provider_id = v.id AND p.status = 'active' AND p.price_monthly > 0 AND NOT (p.kind = 'storage' AND p.name ILIKE '%(per gb/month)%') AND p.checked_at >= $3 ORDER BY (p.currency <> 'USD'), p.price_monthly, p.id LIMIT 1) AS from_price,
+                        (SELECT p.currency FROM catalog_plans p WHERE p.provider_id = v.id AND p.status = 'active' AND p.price_monthly > 0 AND NOT (p.kind = 'storage' AND p.name ILIKE '%(per gb/month)%') AND p.checked_at >= $3 ORDER BY (p.currency <> 'USD'), p.price_monthly, p.id LIMIT 1) AS from_currency
+                    FROM catalog_providers v WHERE v.id > $1 ORDER BY v.id LIMIT $2`, [after, limit, freshCutoff(store.now())]),
                 exists: async (ids) => (await db.many('SELECT id FROM catalog_providers WHERE id = ANY($1)', [ids])).map((r) => r.id),
             },
             tld: {

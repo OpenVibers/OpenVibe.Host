@@ -19,6 +19,7 @@ const kit = require('openvibe-shared/kit');
 const seo = require('openvibe-shared/seo');
 const { esc } = require('./layout');
 const { MAX_AGE_DAYS } = require('../catalog/offers');
+const { isStorageRate, isStale } = require('../catalog/pricing');
 
 const DISCLOSURE = 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.';
 const KINDS = [['', 'Any kind'], ['cloud', 'Cloud'], ['vps', 'VPS'], ['dedicated', 'Dedicated'], ['storage', 'Storage'], ['domain', 'Domains']];
@@ -47,6 +48,9 @@ function sizeGb(gb) {
 }
 const transfer = (p) => (p.unmetered ? 'Unmetered' : sizeGb(p.bandwidth_gb));
 const day = (v) => { const t = typeof v === 'number' ? v : Date.parse(v); return Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : null; };
+/** A price last checked more than a year ago is stale: it is shown, marked, and never counted as the cheapest. */
+const staleMark = (p, now) => (isStale(p.checked_at, now) ? ', <span class="hc-stale" title="This price was last checked more than a year ago">stale</span>' : '');
+const checkedText = (p, now) => `${esc(day(p.checked_at) || 'unknown')}${staleMark(p, now)}`;
 const or = (v) => (v == null ? UNKNOWN : esc(v));
 const kindName = (k) => (KINDS.find(([v]) => v === k) || [k, k])[1];
 const link = (href, label, cls = '') => `<a href="${esc(href)}"${cls ? ` class="${cls}"` : ''}>${label}</a>`;
@@ -62,6 +66,8 @@ function visit(p, label = 'Visit provider') {
 
 function priceCell(p) {
     const price = Number(p.price_monthly);
+    // A per-GB rate is not a monthly price: it is shown as the rate per GB it is (server/catalog/pricing.js).
+    if (isStorageRate(p)) return `<span class="hc-price">${Number.isFinite(price) ? esc(money(price, p.currency, 4)) : 'price not stated'}</span><span class="hc-per">/GB/month</span>`;
     const m = Number.isFinite(price) && price > 0 ? money(price, p.currency) : null;
     return `<span class="hc-price">${m ? esc(m) : 'price not stated'}</span><span class="hc-per">/mo</span>`;
 }
@@ -134,7 +140,7 @@ function tldTrendFigure(trends, { title = 'Domain price over time' } = {}) {
     return `<div class="hc-trend">${chart}${all.map(([name, t]) => trendSummary(t, name)).join('')}</div>`;
 }
 
-function planTable(plans, { caption = 'Hosting plans', showProvider = true } = {}) {
+function planTable(plans, { caption = 'Hosting plans', showProvider = true, now = Date.now() } = {}) {
     if (!plans.length) return '';
     const rows = plans.map((p) => {
         const provider = showProvider ? `<td data-label="Provider">${link(`/catalog/providers/${encodeURIComponent(p.provider_slug)}`, esc(p.provider_name || p.provider_slug))}${p.affiliate_url ? ' <span class="hc-chip" title="This provider has an affiliate link">Affiliate</span>' : ''}</td>` : '';
@@ -147,7 +153,7 @@ ${provider}<th scope="row" data-label="Plan">${link(`/catalog/plans/${encodeURIC
 <td data-label="Price" class="hc-n">${priceCell(p)}</td>
 <td data-label="Per vCPU" class="hc-n hc-dim">${or(money(p.price_per_vcpu, p.currency, 2))}</td>
 <td data-label="Per GB RAM" class="hc-n hc-dim">${or(money(p.price_per_gb_ram, p.currency, 2))}</td>
-<td data-label="Checked" class="hc-checked">${or(day(p.checked_at))} ${out(p.source_url, 'source', { cls: 'hc-src' })}</td>
+<td data-label="Checked" class="hc-checked">${checkedText(p, now)} ${out(p.source_url, 'source', { cls: 'hc-src' })}</td>
 </tr>`;
     }).join('');
     return `<div class="hc-table-wrap"><table class="hc-table">
@@ -264,15 +270,19 @@ function reviewsSection(p) {
 <p class="hc-more">${out(write, `Review ${esc(p.name)}`, { cls: 'button' })} ${out(elsewhere, 'Other review sites →')}</p></section>`;
 }
 
-function provider(p, discussion = null, extra = '') {
-    const cheapest = p.plans.length ? p.plans.reduce((m, x) => (Number(x.price_monthly) < Number(m.price_monthly) ? x : m), p.plans[0]) : null;
+function provider(p, discussion = null, extra = '', now = Date.now()) {
+    // "From $X" counts the plans a reader can compare today: a stated monthly price that is not a per-GB storage rate
+    // and was not last checked over a year ago.
+    const comparable = p.plans.filter((x) => Number(x.price_monthly) > 0 && !isStorageRate(x) && !isStale(x.checked_at, now));
+    const cheapest = comparable.length ? comparable.reduce((m, x) => (Number(x.price_monthly) < Number(m.price_monthly) ? x : m), comparable[0]) : null;
+    const skipped = p.plans.length - comparable.length;
     return `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog', 'Catalog')} / ${link('/catalog/providers', 'Providers')}</nav>
 <header class="hc-head hc-head-row">
 <div><h1>${esc(p.name)}</h1>${p.description ? `<p class="hc-lede">${esc(p.description)}</p>` : ''}
 <p class="hc-facts">${p.plans.length || !p.domains ? `${p.plans.length} plan${p.plans.length === 1 ? '' : 's'} listed` : ''}${cheapest ? ` · from <strong>${esc(money(cheapest.price_monthly, cheapest.currency))}</strong>/mo` : ''}${p.domains ? `${p.plans.length ? ' · ' : ''}${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `${p.domains.toLocaleString('en')} domain endings priced`)}` : ''}${p.homepage_url ? ` · ${out(p.homepage_url, esc(new URL(p.homepage_url).hostname))}` : ''}</p></div>
 ${visit(p)}
 </header>
-${p.plans.length ? planTable(p.plans, { caption: `${p.name}'s plans, lowest price first`, showProvider: false }) : p.domains ? `<p class="hc-more">${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `See ${esc(p.name)}'s domain prices →`, 'button')}</p>` : '<div class="hc-empty"><p>No plan of this provider is listed right now.</p></div>'}
+${p.plans.length ? planTable(p.plans, { caption: `${p.name}'s plans, lowest price first`, showProvider: false, now }) + (skipped ? `<p class="hc-dim">${skipped} of these plans carry no monthly price (a rate per GB) or one last checked over a year ago: they are listed, but not counted in the price above.</p>` : '') : p.domains ? `<p class="hc-more">${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `See ${esc(p.name)}'s domain prices →`, 'button')}</p>` : '<div class="hc-empty"><p>No plan of this provider is listed right now.</p></div>'}
 ${extra}
 ${reviewsSection(p)}
 ${discussionSection(discussion)}
@@ -281,7 +291,7 @@ ${promoCards(p.promos, { showProvider: false })}
 ${p.affiliate_url || p.promos.some((x) => x.affiliate) ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}`;
 }
 
-function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '' } = {}) {
+function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '', now = Date.now() } = {}) {
     const spec = [
         ['vCPU', p.vcpu == null ? null : num(p.vcpu)], ['RAM', bytesMb(p.ram_mb)],
         ['Disk', p.disk_gb == null ? null : `${sizeGb(p.disk_gb)}${p.disk_type ? ` ${p.disk_type.toUpperCase()}` : ''}`],
@@ -298,10 +308,12 @@ function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '' } 
 <header class="hc-head"><p class="hc-eyebrow">${esc(p.provider_name)} · ${esc(kindName(p.kind))}</p><h1>${esc(p.name)}</h1></header>
 <div class="hc-plan">
 <section class="hc-price-card" aria-label="Price">
-<p class="hc-big">${esc((() => { const price = Number(p.price_monthly); return (Number.isFinite(price) && price > 0) ? money(price, p.currency) : 'price not stated'; })())}<span>/month</span></p>
+<p class="hc-big">${esc((() => { const price = Number(p.price_monthly); if (isStorageRate(p)) return Number.isFinite(price) ? money(price, p.currency, 4) : 'price not stated'; return (Number.isFinite(price) && price > 0) ? money(price, p.currency) : 'price not stated'; })())}<span>${isStorageRate(p) ? '/GB/month' : '/month'}</span></p>
+${isStorageRate(p) ? '<p class="hc-dim">A storage rate: the price per GB a month, not a monthly server price.</p>' : ''}
 ${p.price_hourly != null ? `<p class="hc-dim">${esc(money(p.price_hourly, p.currency, 4))} an hour</p>` : ''}
 ${p.setup_fee != null && Number(p.setup_fee) > 0 ? `<p class="hc-dim">Setup fee ${esc(money(p.setup_fee, p.currency))}</p>` : ''}
-<p class="hc-checked-line">Checked <strong>${esc(day(p.checked_at) || 'unknown')}</strong> · ${out(p.source_url, 'source')}</p>
+<p class="hc-checked-line">Checked <strong>${esc(day(p.checked_at) || 'unknown')}</strong>${staleMark(p, now)} · ${out(p.source_url, 'source')}</p>
+${isStale(p.checked_at, now) ? '<p class="hc-dim">This price was last checked over a year ago, so it is not counted as a cheapest plan.</p>' : ''}
 ${visit(p)}
 </section>
 <section aria-labelledby="hc-spec-h"><h2 id="hc-spec-h">What you get</h2><dl class="hc-spec">${spec.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${or(v)}</dd></div>`).join('')}</dl></section>
@@ -393,10 +405,12 @@ const jsonLd = {
 
 /** The front page of the hosting comparison. */
 /** A plan as a small card: what it is, its size and its price, opening the plan's page. */
-const planCard = (label, p, note = '') => {
+const planCard = (label, p, note = '', now = Date.now()) => {
     const price = Number(p.price_monthly);
-    const priceLabel = Number.isFinite(price) && price > 0 ? money(price, p.currency) : 'price not stated';
-    return `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span class="hh-label">${esc(label)}</span><b>${esc(p.provider_name)} ${esc(p.name)}</b><span class="hh-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb), sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).map(esc).join(' · ')}</span><span class="hh-price"><strong>${esc(priceLabel)}</strong>${priceLabel === 'price not stated' ? '' : ' a month'}${note ? ` · ${esc(note)}` : ''}</span>`)}</li>`;
+    const storage = isStorageRate(p);
+    const priceLabel = storage ? (Number.isFinite(price) ? money(price, p.currency, 4) : 'price not stated') : (Number.isFinite(price) && price > 0 ? money(price, p.currency) : 'price not stated');
+    const unit = storage ? ' a GB a month' : ' a month';
+    return `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span class="hh-label">${esc(label)}</span><b>${esc(p.provider_name)} ${esc(p.name)}</b><span class="hh-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb), sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).map(esc).join(' · ')}</span><span class="hh-price"><strong>${esc(priceLabel)}</strong>${priceLabel === 'price not stated' ? '' : unit}${note ? ` · ${esc(note)}` : ''}</span>${day(p.checked_at) ? `<span class="hh-spec">checked ${esc(day(p.checked_at))}${isStale(p.checked_at, now) ? ', stale' : ''}</span>` : ''}`)}</li>`;
 };
 const perUnit = (p, by) => {
     const price = Number(p.price_monthly);
@@ -405,7 +419,7 @@ const perUnit = (p, by) => {
 };
 
 /** The home's extra blocks, each from real rows and left out when it has none. */
-function frontMore({ counts = [], tiers = [], value = {}, providerCards = [], faq = [] }) {
+function frontMore({ counts = [], tiers = [], value = {}, providerCards = [], faq = [] }, now = Date.now()) {
     const stat = counts.filter((c) => c && c.value);
     const best = [['vcpu', 'Lowest price per vCPU', 'per vCPU'], ['ram', 'Lowest price per GB of RAM', 'per GB of RAM'], ['disk', 'Lowest price per GB of disk', 'per GB of disk']]
         .filter(([k]) => value[k]).map(([k, label, unit]) => { const u = perUnit(value[k], k); return planCard(label, value[k], u ? `${u} ${unit}` : ''); });
@@ -413,13 +427,13 @@ function frontMore({ counts = [], tiers = [], value = {}, providerCards = [], fa
         stats: stat.length ? `<div class="sc-sec hh-stats-wrap"><ul class="hh-stats" aria-label="OpenVibe.Host in numbers">${stat.map((c) => `<li>${link(c.href, `<b>${esc(c.value.toLocaleString('en'))}</b><span>${esc(c.label)}</span>`)}</li>`).join('')}</ul></div>` : '',
         sizes: tiers.length ? `<section class="sc-sec" aria-labelledby="hh-sizes"><h2 id="hh-sizes">The lowest price for each size</h2><p class="sc-lede">The cheapest plan with at least this much memory, from every provider in the catalog.</p><ul class="hh-cards">${tiers.map((x) => planCard(`${x.gb} GB of RAM or more`, x.plan)).join('')}</ul></section>` : '',
         value: best.length ? `<section class="sc-sec" aria-labelledby="hh-value"><h2 id="hh-value">The most for your money</h2><p class="sc-lede">The same catalog sorted by what each dollar buys. ${link('/catalog?sort=price_per_gb_ram', 'Sort every plan this way')}.</p><ul class="hh-cards">${best.join('')}</ul></section>` : '',
-        providers: providerCards.length ? `<section class="sc-sec" aria-labelledby="hh-providers"><h2 id="hh-providers">Providers compared</h2><p class="sc-lede">Each provider's plans in the catalog, from its lowest monthly price, with the day it was last checked.</p><ul class="hh-cards">${providerCards.map((v) => `<li>${link(`/catalog/providers/${encodeURIComponent(v.slug)}`, `<b>${esc(v.name)}</b><span class="hh-spec">${esc(`${v.plans} plan${v.plans === 1 ? '' : 's'}`)}${v.domains ? esc(` · ${v.domains.toLocaleString('en')} domain endings`) : ''}</span><span class="hh-price">from <strong>${esc(money(v.from_price, v.currency))}</strong> a month</span>${v.last_checked ? `<span class="hh-spec">checked ${esc(day(v.last_checked))}</span>` : ''}`)}</li>`).join('')}</ul></section>` : '',
+        providers: providerCards.length ? `<section class="sc-sec" aria-labelledby="hh-providers"><h2 id="hh-providers">Providers compared</h2><p class="sc-lede">Each provider's plans in the catalog, from its lowest monthly price, with the day it was last checked.</p><ul class="hh-cards">${providerCards.map((v) => `<li>${link(`/catalog/providers/${encodeURIComponent(v.slug)}`, `<b>${esc(v.name)}</b><span class="hh-spec">${esc(`${v.plans} plan${v.plans === 1 ? '' : 's'}`)}${v.domains ? esc(` · ${v.domains.toLocaleString('en')} domain endings`) : ''}</span><span class="hh-price">${v.from_price != null ? `from <strong>${esc(money(v.from_price, v.currency))}</strong> a month` : 'no fresh monthly price yet'}</span>${v.last_checked ? `<span class="hh-spec">checked ${esc(day(v.last_checked))}${isStale(v.last_checked, now) ? ', stale' : ''}</span>` : ''}`)}</li>`).join('')}</ul></section>` : '',
         faq: faq.length ? `<section class="sc-sec" aria-labelledby="hh-faq"><h2 id="hh-faq">Questions people ask</h2><div class="hh-faq">${faq.map((f) => `<details><summary>${esc(f.question)}</summary><p>${esc(f.answer)}</p></details>`).join('')}</div></section>` : '',
     };
 }
 
 function front({ plans, providers, promos: live, stats, offers: recent = [], domains: domainSection = '', changes = [], more = {}, now = Date.now() }) {
-    const extra = frontMore(more);
+    const extra = frontMore(more, now);
     const changeRail = changes.length ? `<section class="sc-sec hh-changes" aria-labelledby="hh-changes-h"><h2 id="hh-changes-h">Price changes this month</h2>
 <p class="hc-dim">Plans and domain endings whose stated price moved this month, biggest move first. Nothing is converted between currencies.</p>
 <ol class="hc-changes">${changes.map((c) => {
@@ -429,7 +443,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
     }).join('')}</ol></section>` : '';
     // The aside is servers: a plan with vCPU and a price above zero. Per-GB storage (archive tiers at $0.00 a GB once
     // rounded) read as four free "plans" at the top of the home (2026-11-01).
-    const servers = plans.filter((p) => p.vcpu != null && Number(p.price_monthly) > 0);
+    const servers = plans.filter((p) => p.vcpu != null && Number(p.price_monthly) > 0 && !isStale(p.checked_at, now));
     const aside = servers.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
 <p class="hc-aside-h">Cheapest servers right now</p>
 <ol>${servers.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
@@ -444,7 +458,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
         actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Domain prices', href: '/catalog/domains' }],
         note: stats.plans ? `${stats.plans} plans from ${stats.providers} provider${stats.providers === 1 ? '' : 's'} so far. More providers join as their sources are checked.` : 'The catalog is filling up: providers join as their official sources are checked and enabled.',
         aside: aside ? { html: aside } : undefined,
-    }) + extra.stats + changeRail + `<section class="sc-sec hh-short" aria-labelledby="hh-cheapest"><h2 id="hh-cheapest">The lowest monthly prices</h2>${planTable(plans.slice(0, 8), { caption: 'Lowest price first' })}
+    }) + extra.stats + changeRail + `<section class="sc-sec hh-short" aria-labelledby="hh-cheapest"><h2 id="hh-cheapest">The lowest monthly prices</h2>${planTable(plans.slice(0, 8), { caption: 'Lowest price first', now })}
 <p class="hc-more">${link('/catalog', 'Filter and sort every plan →', 'button')}</p></section>`
     + extra.sizes + extra.value + extra.providers
     + domainSection
