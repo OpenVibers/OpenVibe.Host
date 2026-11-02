@@ -155,7 +155,7 @@ cat > "$TMP/redis-exporter" <<EOF
 REDIS_ADDR='redis://127.0.0.1:6379'
 REDIS_USER='ov_monitor'
 REDIS_PASSWORD='$VALKEY_MON_PW'
-ARGS='-web.listen-address 127.0.0.1:9121'
+ARGS='-web.listen-address 127.0.0.1:9121 -set-client-name=false'
 EOF
 cat > "$TMP/bouncer-exporter" <<EOF
 ARGS='--web.listen-address=127.0.0.1:9127 --pgBouncer.connectionString=postgres://ov_monitor:$PGMON_PW@127.0.0.1:6432/pgbouncer?sslmode=disable'
