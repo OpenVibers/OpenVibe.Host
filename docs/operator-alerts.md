@@ -34,9 +34,10 @@ Prometheus (127.0.0.1:9090)  ──GET /api/v1/alerts──▶  ovhost alerts re
 
 ## The release UX check
 
-`ovhost browser-watch --sites live,network,…` (openvibe-browsercheck.timer, every 5 minutes; the unit lists all 37
-public sites: since 2026-10-15 the twelve products built after the first list, and not the parked openvibe.tips and
-openvibe.vip, which redirect to openvibe.network) reads each watched site's
+`ovhost browser-watch --sites live,network,…` (openvibe-browsercheck.timer, every 5 minutes; the unit lists all 52
+public sites: since 2026-10-15 the twelve products built after the first list, Tips and VIP since they were unparked,
+and since 2026-11-02 the thirteen sites launched after that, from Design to Tours; `test/browsercheck-unit.test.js`
+fails when a public service on the host is not watched) reads each watched site's
 `/release.json`. For a release it has not checked yet, or once a day, it runs
 [scripts/browser-check.js](../scripts/browser-check.js) in Chrome as the unprivileged `ovcheck` account (never
 root): routes × widths, console errors, overflow, duplicate scripts, no-JS content, axe, navigation growth.
