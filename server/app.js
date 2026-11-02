@@ -39,7 +39,7 @@ const DASHBOARD_CSP_HEADER = Object.entries({
     // Cloudflare Web Analytics: the edge injects its beacon into every page (as on Wiki and Live).
     'script-src': ["'self'", "'unsafe-inline'", 'https://openvibe.network', 'https://static.cloudflareinsights.com'],
     'style-src': ["'self'", "'unsafe-inline'", 'https://openvibe.network', 'https://fonts.googleapis.com', 'https://cdnjs.cloudflare.com'],
-    'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com'],
+    'font-src': ["'self'", 'data:', 'https://fonts.gstatic.com', 'https://cdnjs.cloudflare.com', 'https://openvibe.network'],
     'img-src': ["'self'", 'data:', 'https:'],
     'connect-src': ["'self'", 'https://openvibe.network', 'https://openvibe.events', 'https://cloudflareinsights.com'],
     'frame-src': ["'self'", 'https://openvibe.network'],
