@@ -20,7 +20,7 @@ const invalid = (message) => { throw new ApiError(422, 'host.catalog.invalid', m
 const missing = () => { throw new ApiError(404, 'host.catalog.not_found', 'Catalog entry not found'); };
 const fields = {
     providers: ['slug', 'name', 'homepage_url', 'description', 'affiliate_url', 'affiliate_note', 'status'],
-    plans: ['provider_id', 'external_id', 'name', 'kind', 'vcpu', 'ram_mb', 'disk_gb', 'disk_type', 'bandwidth_gb', 'unmetered', 'port_mbps', 'ipv4', 'locations', 'currency', 'price_monthly', 'price_hourly', 'setup_fee', 'source_url', 'checked_at', 'status'],
+    plans: ['provider_id', 'external_id', 'name', 'kind', 'vcpu', 'ram_mb', 'disk_gb', 'disk_type', 'bandwidth_gb', 'unmetered', 'port_mbps', 'ipv4', 'locations', 'currency', 'price_monthly', 'price_hourly', 'price_term', 'renewal_price', 'setup_fee', 'source_url', 'checked_at', 'status'],
     promos: ['provider_id', 'title', 'details', 'code', 'url', 'affiliate', 'starts_at', 'ends_at', 'status'],
 };
 const kinds = new Set(['cloud', 'vps', 'dedicated', 'storage', 'domain']);
@@ -30,7 +30,7 @@ const clean = (type, input, current, now) => {
     if (!input || typeof input !== 'object' || Array.isArray(input)) invalid('Body must be an object');
     for (const k of Object.keys(input)) if (!fields[type].includes(k)) invalid(`Unknown field: ${k}`);
     const v = { ...(current || {}), ...input };
-    const strings = type === 'providers' ? ['slug', 'name', 'homepage_url', 'description', 'affiliate_url', 'affiliate_note', 'status'] : type === 'plans' ? ['provider_id', 'external_id', 'name', 'kind', 'disk_type', 'currency', 'source_url', 'status'] : ['provider_id', 'title', 'details', 'code', 'url', 'status'];
+    const strings = type === 'providers' ? ['slug', 'name', 'homepage_url', 'description', 'affiliate_url', 'affiliate_note', 'status'] : type === 'plans' ? ['provider_id', 'external_id', 'name', 'kind', 'disk_type', 'currency', 'price_term', 'source_url', 'status'] : ['provider_id', 'title', 'details', 'code', 'url', 'status'];
     for (const k of strings) if (v[k] != null && (typeof v[k] !== 'string' || v[k].length > 2048 || (v[k] === '' && !['description', 'affiliate_note', 'details', 'code'].includes(k)))) invalid(`Invalid ${k}`);
     const required = type === 'providers' ? ['slug', 'name', 'homepage_url'] : type === 'plans' ? ['provider_id', 'external_id', 'name', 'kind', 'currency', 'price_monthly', 'source_url'] : ['provider_id', 'title', 'url'];
     for (const k of required) if (v[k] == null || v[k] === '') invalid(`${k} is required`);
@@ -38,15 +38,16 @@ const clean = (type, input, current, now) => {
     if (type === 'providers' && !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(v.slug)) invalid('Invalid slug');
     if (type === 'plans') {
         if (!kinds.has(v.kind) || !currencies.has(v.currency)) invalid('Invalid kind or currency');
-        for (const k of ['vcpu', 'ram_mb', 'disk_gb', 'bandwidth_gb', 'port_mbps', 'ipv4', 'price_monthly', 'price_hourly', 'setup_fee']) {
+        for (const k of ['vcpu', 'ram_mb', 'disk_gb', 'bandwidth_gb', 'port_mbps', 'ipv4', 'price_monthly', 'price_hourly', 'renewal_price', 'setup_fee']) {
             if (input[k] != null && (typeof input[k] !== 'number' || !Number.isFinite(input[k]) || input[k] < 0)) invalid(`${k} must be a non-negative number`);
         }
+        if (v.price_term != null && !['monthly', '1-year', '3-year'].includes(v.price_term)) invalid('Invalid price term');
         if (v.ipv4 != null && !Number.isInteger(v.ipv4)) invalid('ipv4 must be an integer');
         if (v.disk_type != null && !['ssd', 'nvme', 'hdd'].includes(v.disk_type)) invalid('Invalid disk type');
         if (v.unmetered != null && typeof v.unmetered !== 'boolean') invalid('unmetered must be boolean');
         if (v.locations != null && (!Array.isArray(v.locations) || v.locations.some((x) => typeof x !== 'string' || !x))) invalid('Invalid locations');
         if (v.checked_at == null || (current && input.price_monthly !== undefined && input.checked_at === undefined)) v.checked_at = now;
-        if (v.price_monthly >= 100000000 || (v.price_hourly != null && v.price_hourly >= 1000000) || (v.setup_fee != null && v.setup_fee >= 100000000)) invalid('Price is outside catalog range');
+        if (v.price_monthly >= 100000000 || (v.price_hourly != null && v.price_hourly >= 1000000) || (v.renewal_price != null && v.renewal_price >= 100000000) || (v.setup_fee != null && v.setup_fee >= 100000000)) invalid('Price is outside catalog range');
         if (!Number.isSafeInteger(v.checked_at) || v.checked_at < 0) invalid('Invalid checked_at');
         if (v.status != null && !['active', 'gone', 'hidden'].includes(v.status)) invalid('Invalid status');
     }
@@ -137,7 +138,7 @@ function createCatalog({ store, community = null, log = console, indexnow = null
             fresh.push(`/catalog/providers/${encodeURIComponent(v.provider.slug)}`);
         }
         const old = await t.prepare('SELECT * FROM catalog_plans WHERE provider_id = ? AND external_id = ?').get(p.id, v.external_id);
-        const cols = ['name', 'kind', 'vcpu', 'ram_mb', 'disk_gb', 'disk_type', 'bandwidth_gb', 'unmetered', 'port_mbps', 'ipv4', 'locations', 'currency', 'price_monthly', 'price_hourly', 'source_key', 'source_item_id', 'source_url', 'checked_at'];
+        const cols = ['name', 'kind', 'vcpu', 'ram_mb', 'disk_gb', 'disk_type', 'bandwidth_gb', 'unmetered', 'port_mbps', 'ipv4', 'locations', 'currency', 'price_monthly', 'price_hourly', 'price_term', 'renewal_price', 'source_key', 'source_item_id', 'source_url', 'checked_at'];
         if (old) {
             if (old.origin !== 'sources' || v.checked_at < Number(old.checked_at)) return 'hold';
             if (Number(old.price_monthly) !== v.price_monthly || old.currency !== v.currency) {

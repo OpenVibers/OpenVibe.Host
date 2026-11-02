@@ -159,7 +159,7 @@ function createCatalogPages({ catalog, domainCheck, benchmarks, community, confi
         const csrf = csrfToken(config, req.viewer);
         const blocks = await Promise.all(['providers', 'plans', 'promos'].map(async (type) => {
             const rows = await catalog.all(type);
-            const keys = { providers: ['slug', 'name', 'homepage_url', 'description', 'affiliate_url', 'affiliate_note', 'status'], plans: ['provider_id', 'external_id', 'name', 'kind', 'vcpu', 'ram_mb', 'disk_gb', 'disk_type', 'bandwidth_gb', 'unmetered', 'port_mbps', 'ipv4', 'locations', 'currency', 'price_monthly', 'price_hourly', 'setup_fee', 'source_url', 'checked_at', 'status'], promos: ['provider_id', 'title', 'details', 'code', 'url', 'affiliate', 'starts_at', 'ends_at', 'status'] }[type];
+            const keys = { providers: ['slug', 'name', 'homepage_url', 'description', 'affiliate_url', 'affiliate_note', 'status'], plans: ['provider_id', 'external_id', 'name', 'kind', 'vcpu', 'ram_mb', 'disk_gb', 'disk_type', 'bandwidth_gb', 'unmetered', 'port_mbps', 'ipv4', 'locations', 'currency', 'price_monthly', 'price_hourly', 'price_term', 'renewal_price', 'setup_fee', 'source_url', 'checked_at', 'status'], promos: ['provider_id', 'title', 'details', 'code', 'url', 'affiliate', 'starts_at', 'ends_at', 'status'] }[type];
             const form = (row) => '<form method="post" action="/catalog/manage/' + type + (row ? '/' + esc(row.id) : '') + '"><input type="hidden" name="csrf" value="' + csrf + '">' + keys.map((k) => '<label>' + esc(k) + ' <input name="' + k + '" value="' + esc(row && row[k] != null ? Array.isArray(row[k]) ? row[k].join(',') : row[k] : '') + '"></label>').join('') + '<button>Save</button></form>';
             return '<section><h2>' + type + '</h2>' + form(null) + rows.map((r) => '<h3>' + esc(r.name || r.title || r.id) + '</h3>' + form(r)).join('') + '</section>';
         }));
@@ -174,7 +174,7 @@ function createCatalogPages({ catalog, domainCheck, benchmarks, community, confi
         const body = { ...req.body }; delete body.csrf;
         for (const k of Object.keys(body)) {
             if (body[k] === '') { delete body[k]; continue; }
-            if (['provider_id', 'vcpu', 'ram_mb', 'disk_gb', 'bandwidth_gb', 'port_mbps', 'ipv4', 'price_monthly', 'price_hourly', 'setup_fee', 'checked_at', 'starts_at', 'ends_at'].includes(k)) body[k] = Number(body[k]);
+            if (['provider_id', 'vcpu', 'ram_mb', 'disk_gb', 'bandwidth_gb', 'port_mbps', 'ipv4', 'price_monthly', 'price_hourly', 'renewal_price', 'setup_fee', 'checked_at', 'starts_at', 'ends_at'].includes(k)) body[k] = Number(body[k]);
             if (['unmetered', 'affiliate'].includes(k)) body[k] = body[k] === 'true';
             if (k === 'locations') body[k] = body[k].split(',').map((x) => x.trim()).filter(Boolean);
         }

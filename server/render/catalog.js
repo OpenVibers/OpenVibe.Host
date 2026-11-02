@@ -61,7 +61,24 @@ function visit(p, label = 'Visit provider') {
     if (p.affiliate_url) {
         return `<span class="hc-visit">${out(p.affiliate_url, `${esc(label)} <span class="hc-chip">Affiliate</span>`, { affiliate: true, cls: 'button' })}${p.affiliate_note ? `<small class="hc-note">${esc(p.affiliate_note)}</small>` : ''}</span>`;
     }
-    return p.homepage_url ? `<span class="hc-visit">${out(p.homepage_url, esc(label), { cls: 'button hc-button-quiet' })}</span>` : '';
+    // What a link earns us, said on every link (market outcome 7): an affiliate link is marked above; this one earns nothing.
+    return p.homepage_url ? `<span class="hc-visit">${out(p.homepage_url, esc(label), { cls: 'button hc-button-quiet' })}<small class="hc-note">No commission: we earn nothing from this link.</small></span>` : '';
+}
+
+/**
+ * The term a price is quoted for, and what it renews at (market outcomes 1 and 2, migration 0014). A sourced plan's
+ * price is the provider's own monthly list price; a staff entry states its term or leaves it unknown, and an unknown
+ * renewal price is said to be unknown, never assumed.
+ */
+const TERMS = { monthly: 'Month to month', '1-year': '1-year term', '3-year': '3-year term' };
+function termLines(p) {
+    if (isStorageRate(p)) return '';
+    const term = TERMS[p.price_term];
+    if (!term) return '<p class="hc-dim">Term not published.</p>';
+    const renews = p.renewal_price != null && Number.isFinite(Number(p.renewal_price))
+        ? `Renews at ${esc(money(Number(p.renewal_price), p.currency))} a month.`
+        : p.price_term === 'monthly' ? 'At the provider\'s list price.' : 'Renewal price not published.';
+    return `<p class="hc-dim">${esc(term)}. ${renews}</p>`;
 }
 
 function priceCell(p) {
@@ -69,7 +86,8 @@ function priceCell(p) {
     // A per-GB rate is not a monthly price: it is shown as the rate per GB it is (server/catalog/pricing.js).
     if (isStorageRate(p)) return `<span class="hc-price">${Number.isFinite(price) ? esc(money(price, p.currency, 4)) : 'price not stated'}</span><span class="hc-per">/GB/month</span>`;
     const m = Number.isFinite(price) && price > 0 ? money(price, p.currency) : null;
-    return `<span class="hc-price">${m ? esc(m) : 'price not stated'}</span><span class="hc-per">/mo</span>`;
+    const term = p.price_term === 'monthly' ? '' : TERMS[p.price_term] ? `<span class="hc-term">${esc(TERMS[p.price_term])}</span>` : '<span class="hc-term">term not published</span>';
+    return `<span class="hc-price">${m ? esc(m) : 'price not stated'}</span><span class="hc-per">/mo</span>${term}`;
 }
 
 const isoAt = (v) => new Date(v).toISOString();
@@ -312,6 +330,7 @@ function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '', n
 ${isStorageRate(p) ? '<p class="hc-dim">A storage rate: the price per GB a month, not a monthly server price.</p>' : ''}
 ${p.price_hourly != null ? `<p class="hc-dim">${esc(money(p.price_hourly, p.currency, 4))} an hour</p>` : ''}
 ${p.setup_fee != null && Number(p.setup_fee) > 0 ? `<p class="hc-dim">Setup fee ${esc(money(p.setup_fee, p.currency))}</p>` : ''}
+${termLines(p)}
 <p class="hc-checked-line">Checked <strong>${esc(day(p.checked_at) || 'unknown')}</strong>${staleMark(p, now)} · ${out(p.source_url, 'source')}</p>
 ${isStale(p.checked_at, now) ? '<p class="hc-dim">This price was last checked over a year ago, so it is not counted as a cheapest plan.</p>' : ''}
 ${visit(p)}
