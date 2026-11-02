@@ -477,8 +477,8 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
         actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Domain prices', href: '/catalog/domains' }],
         note: stats.plans ? `${stats.plans} plans from ${stats.providers} provider${stats.providers === 1 ? '' : 's'} so far. More providers join as their sources are checked.` : 'The catalog is filling up: providers join as their official sources are checked and enabled.',
         aside: aside ? { html: aside } : undefined,
-    }) + extra.stats + changeRail + `<section class="sc-sec hh-short" aria-labelledby="hh-cheapest"><h2 id="hh-cheapest">The lowest monthly prices</h2>${planTable(plans.slice(0, 8), { caption: 'Lowest price first', now })}
-<p class="hc-more">${link('/catalog', 'Filter and sort every plan →', 'button')}</p></section>`
+    }) + extra.stats + changeRail + `<section class="sc-sec hh-short" aria-labelledby="hh-cheapest"><h2 id="hh-cheapest">The lowest monthly prices</h2>${planTable(plans.slice(0, 5), { caption: 'Lowest price first', now })}
+<p class="hc-more">${link('/catalog', stats.plans > 5 ? `Filter and sort all ${Number(stats.plans).toLocaleString('en')} plans →` : 'Filter and sort every plan →', 'button')}</p></section>`
     + extra.sizes + extra.value + extra.providers
     + domainSection
     + '<section class="sc-sec" id="why" aria-labelledby="hh-why"><details class="hh-fold"><summary><h2 id="hh-why">Why this comparison is different</h2><span>sourced, dated, ranked by you</span></summary>'
