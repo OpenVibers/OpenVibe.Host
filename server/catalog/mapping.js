@@ -115,6 +115,10 @@ function mapItem(item) {
     const common = {
         provider, external_id: id, currency: 'USD', source_key: item.source_key, source_item_id: item.id,
         source_url: provider.source_url, checked_at: Date.parse(item.provenance.retrieved_at), first_seen_at: Date.parse(item.provenance.first_seen_at),
+        // Every price the mappers below read is the source's monthly price (Lightsail's and Azure's hourly rates
+        // become a month's worth, OVHcloud is its commitment=0 one-month price), so the row's term is monthly. No
+        // source states a renewal price for a server plan, so it stays unknown rather than guessed.
+        price_term: 'monthly', renewal_price: null,
     };
     if (item.source_key === 'aws-lightsail-bundles') return { ...common, ...lightsail(x, id) };
     if (item.source_key === 'azure-retail-prices') {
