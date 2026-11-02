@@ -189,8 +189,7 @@
   .hd-table td.hd-go { grid-column: 1 / -1; text-align: left; }
   .hd-table td.hd-go::before { display: none; }
   .hd-table td[data-label="Checked"] { grid-column: 1 / -1; }
-  /* The list of endings stays short on a phone: the first year, the renewal and five years; the rest is on each ending's page. */
-  .hd-list td[data-label="Transfer"], .hd-list td[data-label="Registrars"], .hd-list td[data-label="Checked"] { display: none; }
+  /* Every column shows on a phone too (2026-11-02: nothing is hidden to shorten a page); the list is five rows. */
 }
 
 /* Benchmarks (server/render/benchmarks.js). */
