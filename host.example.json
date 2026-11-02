@@ -3182,6 +3182,822 @@
         "repoVhost": "deploy/nginx/openvibe.space.conf",
         "variant": "http"
       }
+    },
+    "design": {
+      "_note": "OpenVibe.Design: the theme studio (plan 2026-10-28 section 5.2); stateless front over Network's theme API, OAuth client design; database ov_design",
+      "repo": "/opt/openvibe.design",
+      "units": [
+        "openvibe-design.service"
+      ],
+      "unitSources": {
+        "openvibe-design.service": "deploy/systemd/openvibe-design.service"
+      },
+      "envFile": "/etc/openvibe/design.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5090,
+      "ready": {
+        "url": "http://127.0.0.1:5090/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "design",
+          "engine": "postgresql",
+          "database": "ov_design"
+        }
+      ],
+      "drill": {
+        "port": 15090,
+        "databases": {
+          "design": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "DESIGN_DRILL": "1",
+          "DESIGN_EVENTS_URL": "",
+          "DESIGN_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "design",
+            "table": "arena_rounds"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      },
+      "socketUnit": "openvibe-design.socket"
+    },
+    "exchange": {
+      "_note": "OpenVibe.Exchange: the Exchange room (plan 2026-10-28 section 5.11); listings with permission passports, sandbox, install/revoke, free and swap; database ov_exchange",
+      "repo": "/opt/openvibe.exchange",
+      "units": [
+        "openvibe-exchange.service"
+      ],
+      "unitSources": {
+        "openvibe-exchange.service": "deploy/systemd/openvibe-exchange.service"
+      },
+      "envFile": "/etc/openvibe/exchange.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5150,
+      "ready": {
+        "url": "http://127.0.0.1:5150/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "exchange",
+          "engine": "postgresql",
+          "database": "ov_exchange"
+        }
+      ],
+      "drill": {
+        "port": 15150,
+        "databases": {
+          "exchange": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "EXCHANGE_DRILL": "1",
+          "EXCHANGE_EVENTS_URL": "",
+          "EXCHANGE_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "exchange",
+            "table": "exchange_listings"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      },
+      "socketUnit": "openvibe-exchange.socket"
+    },
+    "report": {
+      "_note": "Added 2026-10-28 (plan 2026-10-28 §5.4): OpenVibe.Report v1, the Report room at openvibe.report on loopback :5080. Stateless: open stats from Network, The Rundown and after-show reports from Live.; database ov_report",
+      "repo": "/opt/openvibe.report",
+      "units": [
+        "openvibe-report.service"
+      ],
+      "unitSources": {
+        "openvibe-report.service": "deploy/systemd/openvibe-report.service"
+      },
+      "envFile": "/etc/openvibe/report.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5080,
+      "ready": {
+        "url": "http://127.0.0.1:5080/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "report",
+          "engine": "postgresql",
+          "database": "ov_report"
+        }
+      ],
+      "drill": {
+        "port": 15180,
+        "databases": {
+          "report": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "REPORT_DRILL": "1",
+          "REPORT_EVENTS_URL": "",
+          "REPORT_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "report",
+            "table": "report_inbox"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      },
+      "socketUnit": "openvibe-report.socket"
+    },
+    "vision": {
+      "_note": "OpenVibe.Vision: the Vision room (plan 2026-10-28 section 5.8); ask a picture, local OCR, compare, UI check; database ov_vision",
+      "repo": "/opt/openvibe.vision",
+      "units": [
+        "openvibe-vision.service"
+      ],
+      "unitSources": {
+        "openvibe-vision.service": "deploy/systemd/openvibe-vision.service"
+      },
+      "envFile": "/etc/openvibe/vision.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5130,
+      "ready": {
+        "url": "http://127.0.0.1:5130/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "vision",
+          "engine": "postgresql",
+          "database": "ov_vision"
+        }
+      ],
+      "drill": {
+        "port": 15130,
+        "databases": {
+          "vision": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "VISION_DRILL": "1",
+          "VISION_EVENTS_URL": "",
+          "VISION_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "vision",
+            "table": "vision_answers"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      },
+      "socketUnit": "openvibe-vision.socket"
+    },
+    "fun": {
+      "_note": "OpenVibe.Fun: the Fun room (plan 2026-10-28 section 5.10); IRL quests on Live, a local guide from OpenStreetMap, group plans; database ov_fun",
+      "repo": "/opt/openvibe.fun",
+      "units": [
+        "openvibe-fun.service"
+      ],
+      "unitSources": {
+        "openvibe-fun.service": "deploy/systemd/openvibe-fun.service"
+      },
+      "envFile": "/etc/openvibe/fun.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5140,
+      "ready": {
+        "url": "http://127.0.0.1:5140/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "fun",
+          "engine": "postgresql",
+          "database": "ov_fun"
+        }
+      ],
+      "drill": {
+        "port": 15140,
+        "databases": {
+          "fun": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "FUN_DRILL": "1",
+          "FUN_EVENTS_URL": "",
+          "FUN_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "fun",
+            "table": "fun_quest_boards"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      },
+      "socketUnit": "openvibe-fun.socket"
+    },
+    "shoes": {
+      "_note": "OpenVibe.Shoes: the Shoes room (plan 2026-10-28 section 5.6) at open.shoes; offers from Deals with price history, a cited drops calendar, watches; database ov_shoes",
+      "repo": "/opt/openvibe.shoes",
+      "units": [
+        "openvibe-shoes.service"
+      ],
+      "unitSources": {
+        "openvibe-shoes.service": "deploy/systemd/openvibe-shoes.service"
+      },
+      "envFile": "/etc/openvibe/shoes.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5180,
+      "ready": {
+        "url": "http://127.0.0.1:5180/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "shoes",
+          "engine": "postgresql",
+          "database": "ov_shoes"
+        }
+      ],
+      "drill": {
+        "port": 15190,
+        "databases": {
+          "shoes": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "SHOES_DRILL": "1",
+          "SHOES_EVENTS_URL": "",
+          "SHOES_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "shoes",
+            "table": "shoe_models"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      }
+    },
+    "bench": {
+      "_note": "OpenVibe.Bench: one AI benchmark and comparison engine for every room (plan 2026-10-28 section 4.12); database ov_bench",
+      "repo": "/opt/openvibe.bench",
+      "units": [
+        "openvibe-bench.service"
+      ],
+      "unitSources": {
+        "openvibe-bench.service": "deploy/systemd/openvibe-bench.service"
+      },
+      "envFile": "/etc/openvibe/bench.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5230,
+      "ready": {
+        "url": "http://127.0.0.1:5230/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "bench",
+          "engine": "postgresql",
+          "database": "ov_bench"
+        }
+      ],
+      "drill": {
+        "port": 15230,
+        "databases": {
+          "bench": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "BENCH_DRILL": "1",
+          "BENCH_EVENTS_URL": "",
+          "BENCH_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "bench",
+            "table": "bench_kinds"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      },
+      "socketUnit": "openvibe-bench.socket"
+    },
+    "cam": {
+      "_note": "OpenVibe.Cam: the camera app, my cameras with viewer grants, and stills for the Live cam button (plan 2026-10-28 section 5.13); database ov_cam",
+      "repo": "/opt/openvibe.cam",
+      "units": [
+        "openvibe-cam.service"
+      ],
+      "unitSources": {
+        "openvibe-cam.service": "deploy/systemd/openvibe-cam.service"
+      },
+      "envFile": "/etc/openvibe/cam.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5160,
+      "ready": {
+        "url": "http://127.0.0.1:5160/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "cam",
+          "engine": "postgresql",
+          "database": "ov_cam"
+        }
+      ],
+      "drill": {
+        "port": 15160,
+        "databases": {
+          "cam": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "CAM_DRILL": "1",
+          "CAM_EVENTS_URL": "",
+          "CAM_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "cam",
+            "table": "cam_cameras"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      },
+      "socketUnit": "openvibe-cam.socket"
+    },
+    "domains": {
+      "_note": "Added 2026-10-28 (plan 2026-10-28 §5.1): OpenVibe.Domains v1, the Domains room at openvibe.domains on loopback :5070. Stateless: prices from Host, history from Tools.; v2 control panel: database ov_domains (proposals, connections), OAuth client domains",
+      "repo": "/opt/openvibe.domains",
+      "units": [
+        "openvibe-domains.service"
+      ],
+      "unitSources": {
+        "openvibe-domains.service": "deploy/systemd/openvibe-domains.service"
+      },
+      "envFile": "/etc/openvibe/domains.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5070,
+      "ready": {
+        "url": "http://127.0.0.1:5070/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "domains",
+          "engine": "postgresql",
+          "database": "ov_domains"
+        }
+      ],
+      "drill": {
+        "port": 15070,
+        "databases": {
+          "domains": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "DOMAINS_DRILL": "1",
+          "DOMAINS_EVENTS_URL": "",
+          "DOMAINS_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "domains",
+            "table": "domains_proposals"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      },
+      "socketUnit": "openvibe-domains.socket"
+    },
+    "meme": {
+      "_note": "OpenVibe.Meme: the Meme room (plan 2026-10-28 section 5.7); entries cited to the moment, meme of the week, captions; database ov_meme",
+      "repo": "/opt/openvibe.meme",
+      "units": [
+        "openvibe-meme.service"
+      ],
+      "unitSources": {
+        "openvibe-meme.service": "deploy/systemd/openvibe-meme.service"
+      },
+      "envFile": "/etc/openvibe/meme.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5120,
+      "ready": {
+        "url": "http://127.0.0.1:5120/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "meme",
+          "engine": "postgresql",
+          "database": "ov_meme"
+        }
+      ],
+      "drill": {
+        "port": 15120,
+        "databases": {
+          "meme": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "MEME_DRILL": "1",
+          "MEME_EVENTS_URL": "",
+          "MEME_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "meme",
+            "table": "meme_entries"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      },
+      "socketUnit": "openvibe-meme.socket"
+    },
+    "surf": {
+      "_note": "OpenVibe.Surf: the Surf room (plan 2026-10-28 section 5.6); Ride, Web and Watch; stateless front, OAuth client surf",
+      "repo": "/opt/openvibe.surf",
+      "units": [
+        "openvibe-surf.service"
+      ],
+      "unitSources": {
+        "openvibe-surf.service": "deploy/systemd/openvibe-surf.service"
+      },
+      "envFile": "/etc/openvibe/surf.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5110,
+      "ready": {
+        "url": "http://127.0.0.1:5110/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [],
+      "socketUnit": "openvibe-surf.socket"
+    },
+    "today": {
+      "_note": "OpenVibe.Today: the Today room (plan 2026-10-28 section 5.3); schedules, reminders, calendar feeds, the brief; database ov_today",
+      "repo": "/opt/openvibe.today",
+      "units": [
+        "openvibe-today.service"
+      ],
+      "unitSources": {
+        "openvibe-today.service": "deploy/systemd/openvibe-today.service"
+      },
+      "envFile": "/etc/openvibe/today.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5100,
+      "ready": {
+        "url": "http://127.0.0.1:5100/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "today",
+          "engine": "postgresql",
+          "database": "ov_today"
+        }
+      ],
+      "drill": {
+        "port": 15050,
+        "databases": {
+          "today": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "TODAY_DRILL": "1",
+          "TODAY_EVENTS_URL": "",
+          "TODAY_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "today",
+            "table": "today_events"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      },
+      "socketUnit": "openvibe-today.socket"
+    },
+    "tours": {
+      "_note": "OpenVibe.Tours: the Tours room (plan 2026-10-28 section 5.12); cities, places and routes from open data, IRL streams, stays, trips; database ov_tours",
+      "repo": "/opt/openvibe.tours",
+      "units": [
+        "openvibe-tours.service"
+      ],
+      "unitSources": {
+        "openvibe-tours.service": "deploy/systemd/openvibe-tours.service"
+      },
+      "envFile": "/etc/openvibe/tours.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5170,
+      "ready": {
+        "url": "http://127.0.0.1:5170/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "databases": [
+        {
+          "name": "tours",
+          "engine": "postgresql",
+          "database": "ov_tours"
+        }
+      ],
+      "drill": {
+        "port": 15170,
+        "databases": {
+          "tours": {
+            "url": "DATABASE_URL",
+            "directUrl": "DATABASE_DIRECT_URL"
+          }
+        },
+        "env": {
+          "PORT": "{port}",
+          "HOST": "127.0.0.1",
+          "VALKEY_URL": "redis://127.0.0.1:9/0",
+          "OV_OAUTH_CLIENT_SECRET": "",
+          "TOURS_DRILL": "1",
+          "TOURS_EVENTS_URL": "",
+          "TOURS_EVENTS_SECRET": "",
+          "OV_LIVE_INTERNAL_URL": "http://127.0.0.1:9"
+        },
+        "acceptance": [
+          {
+            "path": "/api/ready",
+            "status": 200,
+            "keys": []
+          }
+        ],
+        "counts": [
+          {
+            "db": "tours",
+            "table": "tours_cities"
+          }
+        ],
+        "countsTolerance": 5,
+        "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
+      }
     }
   }
 }
