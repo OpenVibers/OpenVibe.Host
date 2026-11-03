@@ -175,7 +175,31 @@ async function createApp(opts = {}) {
     // links as they are). /terms, /privacy and /dmca are shared legal pages with no twin, so they are linked as HTML;
     // what an agent may skip (the update log, /catalog/promos) is in `optional`, written last.
     const LLMS_TWINLESS = new Set(legalPaths);
-    app.get('/llms.txt', async (_req, res, next) => { try { res.type('text/plain').send(sharedSeo.llmsTxt({ name: 'OpenVibe.Host', summary, markdown: true, base: config.baseUrl, sections: [{ title: 'Public pages', links: (await allPages()).map((p) => ({ title: p.title, url: `${config.baseUrl}${p.url}`, ...(LLMS_TWINLESS.has(p.url) ? { html: true } : {}) })) }], optional: [{ title: 'Hosting promotions', url: `${config.baseUrl}/catalog/promos`, note: 'current provider promotions' }, { title: 'What shipped on OpenVibe.Host', url: `${config.baseUrl}/updates`, note: 'the public update log' }, { title: 'Sitemap', url: `${config.baseUrl}/sitemap.xml` }, { title: 'Full text for language models', url: `${config.baseUrl}/llms-full.txt` }] })); } catch (err) { next(err); } });
+    // llms.txt is a map, not the catalog (11-03: 1,361 links and 114 KB, one per domain ending and plan). It names the
+    // pages and every provider; the endings and plans are counted in a note, and each is in the sitemap and llms-full.txt.
+    const LLMS_SECONDARY = new Set(['/catalog/promos', '/updates', ...legalPaths]);
+    const llmsLink = (p, note) => ({ title: p.title, url: `${config.baseUrl}${p.url}`, ...(note ? { note } : {}), ...(LLMS_TWINLESS.has(p.url) ? { html: true } : {}) });
+    app.get('/llms.txt', async (_req, res, next) => {
+        try {
+            const [providers, endings, plans] = await Promise.all([catalog.providers(), catalog.domains.sitemap(), catalog.sitemapPlans()]);
+            const notes = {
+                '/catalog': `each of the ${plans.length} plans has a page at /catalog/plans/<id> with its sourced price history`,
+                '/catalog/domains': `each of the ${endings.length} endings has a page at /catalog/domains/<ending> (for example /catalog/domains/dev)`,
+            };
+            res.type('text/plain').send(sharedSeo.llmsTxt({
+                name: 'OpenVibe.Host', summary, markdown: true, base: config.baseUrl,
+                sections: [
+                    { title: 'Start here', links: publicPages.filter((p) => !LLMS_SECONDARY.has(p.url)).map((p) => llmsLink(p, notes[p.url])) },
+                    { title: 'Providers', links: providers.map((p) => llmsLink({ title: p.name, url: `/catalog/providers/${p.slug}` })) },
+                ],
+                optional: [
+                    ...publicPages.filter((p) => LLMS_SECONDARY.has(p.url)).map((p) => llmsLink(p)),
+                    { title: 'Sitemap', url: `${config.baseUrl}/sitemap.xml`, note: 'every plan and domain ending page' },
+                    { title: 'Full text for language models', url: `${config.baseUrl}/llms-full.txt`, note: 'every page, with what it holds' },
+                ],
+            }));
+        } catch (err) { next(err); }
+    });
     app.get('/llms-full.txt', async (_req, res, next) => { try { res.type('text/plain').send(sharedSeo.llmsFull({ site: { name: 'OpenVibe.Host', url: config.baseUrl }, summary, base: config.baseUrl, maxBytes: 512 * 1024, sections: [{ title: 'Public pages', pages: await allPages() }] })); } catch (err) { next(err); } });
     // /auth/me is the navbar's who-is-signed-in read on every page, so it is not counted with sign-ins: 60 page views in 15 minutes made a signed-in visitor look signed out.
     app.use('/auth/', rateLimit({ windowMs: 15 * 60_000, max: 60, skip: (req) => req.path === '/me', standardHeaders: true, legacyHeaders: false }));
