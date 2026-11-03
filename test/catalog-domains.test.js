@@ -170,6 +170,11 @@ function fakeRegistry() {
             assert.match(r.text, /\]\(https:\/\/openvibe\.host\/catalog\/providers\/porkbun\.md\)/, 'a catalog page is its twin');
             assert.match(r.text, /\]\(https:\/\/openvibe\.host\/terms\) \(HTML\)/, 'the shared legal pages have no twin');
             assert.match(r.text, /\n## Optional\n/);
+            // A map, not the catalog: the endings and plans are counted in notes, never listed one by one.
+            assert.ok(!/\/catalog\/domains\/[a-z]/.test(r.text.replace(/\/catalog\/domains\/<ending>|\/catalog\/domains\/dev\)/g, '')), 'no ending is listed by itself');
+            assert.match(r.text, /each of the \d+ endings has a page at \/catalog\/domains\/<ending>/);
+            assert.ok(Buffer.byteLength(r.text) < 16 * 1024, `${Buffer.byteLength(r.text)} bytes`);
+            assert.ok(r.text.indexOf('(https://openvibe.host/terms) (HTML)') > r.text.indexOf('\n## Optional\n'), 'the legal pages are optional');
         });
 
         await check('a name check: typed name read, registry asked, the same name priced at other endings; bad names are 422', async () => {
