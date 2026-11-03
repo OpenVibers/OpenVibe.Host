@@ -162,6 +162,16 @@ function fakeRegistry() {
             assert.strictEqual((await t.api('GET', '/domains/abc')).status, 410, 'old custom-domain pages still say hosting moved');
         });
 
+        await check('llms.txt links each page at its Markdown twin, and ends with the Optional section (AGT-5)', async () => {
+            const r = await t.api('GET', '/llms.txt');
+            assert.strictEqual(r.status, 200);
+            assert.match(r.text, /\]\(https:\/\/openvibe\.host\/index\.md\)/, 'the home link is its twin');
+            assert.match(r.text, /\]\(https:\/\/openvibe\.host\/catalog\.md\)/);
+            assert.match(r.text, /\]\(https:\/\/openvibe\.host\/catalog\/providers\/porkbun\.md\)/, 'a catalog page is its twin');
+            assert.match(r.text, /\]\(https:\/\/openvibe\.host\/terms\) \(HTML\)/, 'the shared legal pages have no twin');
+            assert.match(r.text, /\n## Optional\n/);
+        });
+
         await check('a name check: typed name read, registry asked, the same name priced at other endings; bad names are 422', async () => {
             const free = await t.api('GET', '/catalog/domains/check?name=OpenVibe.dev');
             assert.strictEqual(free.status, 200);
