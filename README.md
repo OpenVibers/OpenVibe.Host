@@ -382,7 +382,7 @@ Part of the [OpenVibe network](https://openvibe.network). Built in the open by [
 <!-- versions:start -->
 - openvibe-contracts: v0.272.0
 - openvibe-sdk: v0.82.0
-- openvibe-shared: v4.107.0
+- openvibe-shared: v4.107.1
 - openvibe-publishing: v1.4.0
 <!-- versions:end -->
 ---
