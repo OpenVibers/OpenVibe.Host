@@ -3,6 +3,7 @@
 // Every field is something this site really serves: the catalog API, the llms files, the sitemap and the
 // public pages that have a Markdown twin. The catalog publishes no OpenAPI document and has no docs page,
 // so neither is named.
+// 11-03 (SEO-3): this site serves /openapi.json now (the contracts' document for it), so it is named below.
 module.exports = {
     id: 'host',
     name: 'OpenVibe.Host',
@@ -11,6 +12,7 @@ module.exports = {
     site: 'openvibe.host',
     api: '/api/v1/catalog',
     docs: '/catalog',
+    openapi: '/openapi.json',
     policy: {
         auth: ['none', 'Network OIDC'],
         rateLimit: '300 page requests and 240 catalog API requests a minute per address; 30 domain name checks a minute; sign-in 60 attempts per 15 minutes',
