@@ -116,9 +116,19 @@ const YEAR = 365 * 86400000;
             assert.ok(ratePage.includes('$0.0010'), 'the rate is the stored rate');
             assert.ok(ratePage.includes('/GB/month'), 'the rate is a rate per GB');
             assert.ok(!ratePage.includes('$0.00</span>'), 'a rate never reads as a monthly price');
+            assert.ok(!/\$0\.00(?!\d)/.test(ratePage), 'the rate never prints as $0.00 in its trend summary');
+            assert.ok(ratePage.includes('($0.0010)'), "the trend summary keeps the rate's precision");
             const stalePage = render.plan(await catalog.plan(stale.id), null, { now: NOW });
             assert.ok(stalePage.includes('Checked <strong>2025-10-31</strong>, <span class="hc-stale"'), 'the price is marked as stale');
             assert.ok(stalePage.includes('not counted as a cheapest plan'));
+        });
+
+        await check('a changed per-GB rate keeps its precision in the trend and the history', async () => {
+            await catalog.save('plans', { price_monthly: 0.002, checked_at: NOW + 1000 }, rate.id, 'tester');
+            const page = render.plan(await catalog.plan(rate.id), null, { now: NOW + 1000 });
+            assert.ok(page.includes('$0.0020'), 'the new rate is shown');
+            assert.match(page, /\$0\.0010 → <strong>\$0\.0020<\/strong>/, 'the history row keeps four decimals');
+            assert.ok(!/\$0\.00(?!\d)/.test(page), 'neither the trend nor the history prints $0.00');
         });
     } finally {
         await db.close();

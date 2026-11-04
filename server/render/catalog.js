@@ -114,20 +114,28 @@ function valueAt(points, time) {
     return value;
 }
 
+/** Money in a trend line: a per-GB rate keeps four decimals, so $0.0010 never prints as $0.00. */
+const trendMoney = (v, currency) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? money(n, currency, Math.abs(n) > 0 && Math.abs(n) < 0.1 ? 4 : 2) : null;
+};
+/** A price in a history row: a positive price keeps its precision; zero is an unpublished price, not $0.00. */
+const rowMoney = (v, currency) => (Number(v) > 0 ? (trendMoney(v, currency) || String(v)) : 'price not stated');
+
 /** "Was $9 on 2 Sep, now $7 (−22%) · low $7 · high $12"; one observation says when it was first seen instead. */
 function trendSummary(t, label = '') {
     if (!t || !t.points || !t.points.length) return '';
     const cur = t.currency;
     const first = t.points[0];
-    const now = money(t.now, cur) || String(t.now);
-    const was = money(first.price, cur) || String(first.price);
+    const now = trendMoney(t.now, cur) || String(t.now);
+    const was = trendMoney(first.price, cur) || String(first.price);
     let line;
     if (t.points.length < 2) line = `No changes recorded since ${day(first.at) || first.at} (${now})`;
     else if (t.change && t.change.amount === 0) line = `Unchanged since ${day(first.at)}: ${now}`;
     else if (t.change && t.change.percent != null) line = `Was ${was} on ${day(first.at)}, now ${now} (${t.change.amount > 0 ? '+' : MINUS}${Math.abs(t.change.percent)}%)`;
     else if (t.change) line = `Was ${was} on ${day(first.at)}, now ${now}`;
-    const low = money(t.low, cur) || String(t.low);
-    const high = money(t.high, cur) || String(t.high);
+    const low = trendMoney(t.low, cur) || String(t.low);
+    const high = trendMoney(t.high, cur) || String(t.high);
     const lowAt = (t.points.find((p) => Number(p.price) === Number(t.low)) || first).at;
     const highAt = (t.points.find((p) => Number(p.price) === Number(t.high)) || first).at;
     return `<p class="hc-trend-summary">${label ? `<strong>${esc(label)}</strong> ` : ''}${esc(line)} · low ${esc(low)} (${esc(day(lowAt) || '')}), high ${esc(high)} (${esc(day(highAt) || '')}).</p>`;
@@ -325,7 +333,7 @@ function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '', n
     const trend = Number(p.price_monthly) > 0 ? p.price_trend : null;
     const chart = trendFigure(trend, { title: 'Monthly price over time', seriesName: 'Monthly price' }) || trendSummary(trend);
     const history = p.price_history.length
-        ? `<details class="hc-history-fold"><summary>Every change (${p.price_history.length})</summary><ol class="hc-history">${p.price_history.map((h) => `<li><time datetime="${esc(day(Number(h.observed_at)))}">${esc(day(Number(h.observed_at)))}</time> ${esc(money(h.price_monthly_before, h.currency) || h.price_monthly_before)} → <strong>${esc(money(h.price_monthly_after, h.currency) || h.price_monthly_after)}</strong></li>`).join('')}</ol></details>`
+        ? `<details class="hc-history-fold"><summary>Every change (${p.price_history.length})</summary><ol class="hc-history">${p.price_history.map((h) => `<li><time datetime="${esc(day(Number(h.observed_at)))}">${esc(day(Number(h.observed_at)))}</time> ${esc(rowMoney(h.price_monthly_before, h.currency))} → <strong>${esc(rowMoney(h.price_monthly_after, h.currency))}</strong></li>`).join('')}</ol></details>`
         : '';
     const priceHistory = chart || history ? `<h2>Price history</h2>\n${chart}\n${history}` : '';
     return `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog', 'Catalog')} / ${link(`/catalog/providers/${encodeURIComponent(p.provider_slug)}`, esc(p.provider_name))}</nav>
@@ -464,7 +472,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
 <ol class="hc-changes">${changes.map((c) => {
         const up = c.after > c.before;
         const move = c.percent == null ? (up ? 'Rose' : 'Dropped') : `${up ? 'Rose' : 'Dropped'} ${Math.abs(c.percent)}%`;
-        return `<li><a href="${esc(c.href)}"><span class="hc-change-what"><b>${esc(c.name)}</b><span class="hc-dim">${esc(c.kind)}</span></span><span class="hc-change-move ${up ? 'is-up' : 'is-down'}"><span class="hc-change-word">${move}</span><span class="hc-change-prices">${esc(money(c.before, c.currency) || String(c.before))} → ${esc(money(c.after, c.currency) || String(c.after))}</span></span></a></li>`;
+        return `<li><a href="${esc(c.href)}"><span class="hc-change-what"><b>${esc(c.name)}</b><span class="hc-dim">${esc(c.kind)}</span></span><span class="hc-change-move ${up ? 'is-up' : 'is-down'}"><span class="hc-change-word">${move}</span><span class="hc-change-prices">${esc(rowMoney(c.before, c.currency))} → ${esc(rowMoney(c.after, c.currency))}</span></span></a></li>`;
     }).join('')}</ol></section>` : '';
     // The aside is servers: a plan with vCPU and a price above zero. Per-GB storage (archive tiers at $0.00 a GB once
     // rounded) read as four free "plans" at the top of the home (2026-11-01).
