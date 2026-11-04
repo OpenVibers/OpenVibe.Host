@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openvibe.network/schemas/inference-cost-model.v1.json",
+  "title": "InferenceCostModelInput",
+  "description": "Inputs for scripts/inference-cost-model.js (PLAN.md §E). Every price and throughput is an operator-supplied placeholder or measurement; this schema cannot tell a quote from a guess, so the input must say which it is in `note`.",
+  "type": "object",
+  "required": ["window", "request", "throughput", "gpu", "serverless", "api_wholesale"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional editor association with this schema file."
+    },
+    "note": {
+      "type": "string",
+      "description": "Provenance, for example 'example, not a quote' or the quote ids and date checked."
+    },
+    "window": {
+      "type": "object",
+      "required": ["hours", "requests"],
+      "additionalProperties": false,
+      "properties": {
+        "hours": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Length of the measurement or billing window in hours."
+        },
+        "requests": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Requests in the window. Startup and storage are amortized over this count for rented-warm."
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": ["input_tokens", "cached_read_tokens", "cache_write_tokens", "output_tokens", "success_rate"],
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "I: fresh input tokens per request."
+        },
+        "cached_read_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "R: input tokens read from a prompt cache per request."
+        },
+        "cache_write_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "W: input tokens written to a prompt cache per request."
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "O: generated output tokens per request."
+        },
+        "success_rate": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Fraction of requests that produce a successful task (0 < rate <= 1). Cost per successful task divides by this."
+        }
+      }
+    },
+    "throughput": {
+      "type": "object",
+      "required": ["prefill_tokens_per_sec", "decode_tokens_per_sec"],
+      "additionalProperties": false,
+      "properties": {
+        "prefill_tokens_per_sec": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Measured prompt-processing throughput at the stated concurrency."
+        },
+        "decode_tokens_per_sec": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Measured output throughput at the stated concurrency."
+        },
+        "cached_read_tokens_per_sec": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Optional measured throughput for cached-read tokens. Omit to charge them at prefill throughput (conservative)."
+        },
+        "concurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Concurrency at which the two throughput numbers were measured. It is recorded, not used to multiply throughput."
+        }
+      }
+    },
+    "gpu": {
+      "type": "object",
+      "required": ["hourly_usd", "occupancy", "idle_policy", "startup_seconds", "storage_gb", "storage_usd_per_gb_month", "egress_gb_per_request", "egress_usd_per_gb"],
+      "additionalProperties": false,
+      "properties": {
+        "hourly_usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Rented GPU rate in USD per GPU-hour, from a complete quote."
+        },
+        "occupancy": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Steady-state fraction of paid GPU wall time that is busy, excluding the one-time startup. Billed steady-state time is busy / occupancy."
+        },
+        "idle_policy": {
+          "type": "string",
+          "enum": ["billed", "standby", "stopped"],
+          "description": "What idle time costs: the GPU rate, standby_hourly_usd, or nothing."
+        },
+        "standby_hourly_usd": {
+          "type": "number",
+          "minimum": 0,
+          "default": 0,
+          "description": "Idle rate when idle_policy is 'standby' (required in that case)."
+        },
+        "startup_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cold start per window: download, load, and warm-up. Charged at the GPU rate once, in addition to the occupancy allocation, and amortized over window.requests."
+        },
+        "storage_gb": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Model/artifact storage held for the window."
+        },
+        "storage_usd_per_gb_month": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Storage rate for a 730-hour month."
+        },
+        "egress_gb_per_request": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Network egress per request."
+        },
+        "egress_usd_per_gb": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Egress rate."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "idle_policy": { "const": "standby" } },
+            "required": ["idle_policy"]
+          },
+          "then": { "required": ["standby_hourly_usd"] }
+        }
+      ]
+    },
+    "serverless": {
+      "type": "object",
+      "required": ["hourly_usd", "startup_seconds", "storage_gb", "storage_usd_per_gb_month", "egress_gb_per_request", "egress_usd_per_gb"],
+      "additionalProperties": false,
+      "properties": {
+        "hourly_usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Scale-to-zero per-second rate in USD per GPU-hour. No idle charge is modelled."
+        },
+        "startup_seconds": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cold start charged on each scale-up."
+        },
+        "requests_per_cold_start": {
+          "type": "number",
+          "minimum": 1,
+          "default": 1,
+          "description": "Requests served per cold start before scaling down. 1 = every request pays a cold start."
+        },
+        "storage_gb": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Artifact storage held for the window."
+        },
+        "storage_usd_per_gb_month": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Storage rate for a 730-hour month."
+        },
+        "egress_gb_per_request": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Network egress per request."
+        },
+        "egress_usd_per_gb": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Egress rate."
+        }
+      }
+    },
+    "api_wholesale": {
+      "type": "object",
+      "required": ["input_usd_per_million", "cached_read_usd_per_million", "cache_write_usd_per_million", "output_usd_per_million", "per_request_usd"],
+      "additionalProperties": false,
+      "properties": {
+        "input_usd_per_million": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wholesale input-token rate per million tokens."
+        },
+        "cached_read_usd_per_million": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wholesale cached-read rate per million tokens."
+        },
+        "cache_write_usd_per_million": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wholesale cache-write rate per million tokens."
+        },
+        "output_usd_per_million": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Wholesale output-token rate per million tokens."
+        },
+        "per_request_usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Fixed fee per request, if the agreement has one."
+        },
+        "success_rate": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "description": "Optional provider-specific success rate; falls back to request.success_rate."
+        }
+      }
+    }
+  }
+}

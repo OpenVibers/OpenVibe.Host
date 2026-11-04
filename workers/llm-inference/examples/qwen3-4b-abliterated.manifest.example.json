@@ -1,0 +1,17 @@
+{
+  "schema": "openvibe.ai.worker-artifact@1",
+  "artifact": {
+    "id": "mradermacher/Huihui-Qwen3-4B-Instruct-2507-abliterated:q4_k_m@TODO-REVISION",
+    "family": "qwen3",
+    "variant": "abliterated",
+    "quant": "q4_k_m",
+    "revision": "TODO: pin the Hugging Face commit sha of mradermacher/Huihui-Qwen3-4B-Instruct-2507-abliterated-GGUF",
+    "sha256": "TODO: copy the published SHA-256 of the Q4_K_M file; never invent or reuse a hash",
+    "license": "apache-2.0",
+    "source_url": "https://huggingface.co/mradermacher/Huihui-Qwen3-4B-Instruct-2507-abliterated-GGUF"
+  },
+  "download": {
+    "url": "https://huggingface.co/mradermacher/Huihui-Qwen3-4B-Instruct-2507-abliterated-GGUF/resolve/TODO-REVISION/Huihui-Qwen3-4B-Instruct-2507-abliterated.Q4_K_M.gguf",
+    "filename": "Huihui-Qwen3-4B-Instruct-2507-abliterated.Q4_K_M.gguf"
+  }
+}

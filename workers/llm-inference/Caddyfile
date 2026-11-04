@@ -1,0 +1,43 @@
+# Gateway for the OpenVibe LLM inference worker.
+#
+# llama.cpp listens only on loopback; this is the only public listener. It adds the two endpoints
+# llama.cpp does not have as separate paths:
+#
+#   GET /ready    the same check as llama.cpp GET /health, so a slot/model that is not loaded is
+#                 not ready. The orchestrator removes the worker from rotation when this is not 2xx.
+#   GET /health   passed through to llama.cpp.
+#   GET /metrics  passed through, Prometheus text.
+#
+# Everything else (OpenAI-compatible chat/completions, props, slots, ...) is passed through
+# unchanged. Streaming responses are flushed immediately. Dynamic LoRA management is not exposed:
+# the worker starts no LoRA and the vLLM-style load/unload paths are refused here as well.
+#
+# DRAIN_SECONDS is also the gateway's shutdown grace period: on SIGTERM Caddy stops accepting new
+# connections and waits up to this long for in-flight requests before the entrypoint stops
+# llama.cpp.
+
+{
+	admin off
+	auto_https off
+	persist_config off
+	grace_period {$DRAIN_SECONDS}s
+}
+
+:{$PORT} {
+	@lora path /lora* /v1/load_lora_adapter* /v1/unload_lora_adapter*
+	respond @lora 404
+
+	@ready path /ready
+	handle @ready {
+		rewrite * /health
+		reverse_proxy 127.0.0.1:{$LLM_PORT} {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:{$LLM_PORT} {
+			flush_interval -1
+		}
+	}
+}
