@@ -17,6 +17,7 @@ const { openStore } = require('./db');
 const { createHostOutbox } = require('./events/outbox');
 const { createSsoClient } = require('openvibe-sdk/sso');
 const { createViewerResolver } = require('./auth/viewer');
+const createInferencePlannerConfig = require('./inference-planner-config').create;
 const { createHostSession } = require('./auth/sso');
 const { createHostReadiness } = require('./observability');
 const { createWorker } = require('./worker');
@@ -51,6 +52,11 @@ async function createApp(opts = {}) {
     const config = opts.config || configLib.load();
     const log = opts.log || console;
     const store = opts.store || await openStore(config, { now: opts.now, log });
+    // D11 owner settings (host.inference_planner): the planner's switches read through the store, env pins winning.
+    const plannerConfig = await createInferencePlannerConfig({ db: store.db, config, env: opts.env || process.env, log });
+    Object.defineProperty(config.inferencePlanner, 'enabled', { enumerable: true, configurable: true, get: () => plannerConfig.get('enabled') });
+    Object.defineProperty(config.inferencePlanner, 'source', { enumerable: true, configurable: true, get: () => plannerConfig.get('source') });
+    Object.defineProperty(config.inferencePlanner, 'budgetNanoUsdRaw', { enumerable: true, configurable: true, get: () => { const v = plannerConfig.get('budget_nano_usd'); return v == null ? '' : String(v); } });
     require('./http/errors').setLogger(log);
     const outbox = createHostOutbox({ db: store.db, config, fetchImpl: opts.fetchImpl, now: store.now, log });
     const auth = opts.auth || createSsoClient({
@@ -81,9 +87,10 @@ async function createApp(opts = {}) {
     const views = require('./http/catalog-views').createCatalogViews({ catalog, benchmarks, community, config, log });
     catalog.onChange(() => { if (config.worker.enabled) catalogSearch.sweepSoon(); });
     const worker = createWorker({ config, outbox, catalogIngest, catalogSearch, log });
-    const ctx = { config, store, outbox, catalog, domainCheck, benchmarks, community, catalogIngest, catalogSearch, auth, viewers, worker, log, views };
+    const ctx = { config, store, plannerConfig, outbox, catalog, domainCheck, benchmarks, community, catalogIngest, catalogSearch, auth, viewers, worker, log, views };
     ctx.console = require('./console/console').createConsole({ store, config, catalog, fetchImpl: opts.fetchImpl, log });
     const app = express();
+    plannerConfig.mount(app);
     // GET /openapi.json (SEO-3): this service's public API as OpenAPI 3.1, generated from the contracts
     // (openvibe-contracts); the operations they mark internal-only are left out.
     app.get('/openapi.json', (_req, res) => {
@@ -244,10 +251,10 @@ async function createApp(opts = {}) {
         return agentLayer(req, res, next);
     });
     app.use('/console', rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }), require('./console/pages').createConsolePages(ctx));
-    // Inference planner (PLAN.md §G-P7): a staff-only recommendation page, mounted only when
-    // HOST_INFERENCE_PLANNER=on. It reads a planning JSON and has no action endpoint: nothing here
-    // starts, stops or rents a GPU. Flag off adds no route and changes no existing behaviour.
-    if (config.inferencePlanner.enabled) {
+    // Inference planner (PLAN.md §G-P7): a staff-only recommendation page and JSON API. It reads a planning JSON
+    // and has no action endpoint: nothing here starts, stops or rents a GPU. D11 owner settings: the source and
+    // routes always exist, and the switch is read live (off, each router answers the ordinary 404).
+    {
         const { createInferencePlannerSource, createInferencePlannerPages, createInferencePlannerApi } = require('./http/inference-planner');
         ctx.inferencePlanner = createInferencePlannerSource({ config, log, now: store.now });
         const plannerCtx = { ...ctx, planner: ctx.inferencePlanner };

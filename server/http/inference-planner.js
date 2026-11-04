@@ -23,7 +23,14 @@ const render = require('../render/inference-planner');
 
 function createInferencePlannerSource({ config, log = console, feed = null, now = Date.now }) {
     let cached = null;
-    const demandFeed = feed || (config.inferencePlanner.source === 'ai' ? createDemandFeed({ config, log, clock: { now } }) : null);
+    // D11 owner settings: source may change live; the feed is created the first time the source is ai.
+    let demandFeed = feed || null;
+    function feedNow() {
+        if (feed) return feed;
+        if (config.inferencePlanner.source !== 'ai') return null;
+        if (!demandFeed) demandFeed = createDemandFeed({ config, log, clock: { now } });
+        return demandFeed;
+    }
 
     async function readDocument() {
         const file = path.resolve(config.inferencePlanner.inputPath);
@@ -57,9 +64,10 @@ function createInferencePlannerSource({ config, log = console, feed = null, now 
 
     async function current() {
         const document = await readDocument();
-        if (!demandFeed) return withDemand(planDocument(document), { source: 'json' });
+        const demand = feedNow();
+        if (!demand) return withDemand(planDocument(document), { source: 'json' });
         try {
-            const series = await demandFeed.current();
+            const series = await demand.current();
             const forecast = document && typeof document.forecast === 'object' && !Array.isArray(document.forecast) ? document.forecast : {};
             const result = planDocument({ ...document, forecast: { ...forecast, series: series.series } });
             return withDemand(result, { source: 'ai', from: series.from, to: series.to, days: series.days, fetched_at: series.fetched_at });
@@ -82,6 +90,8 @@ function createInferencePlannerSource({ config, log = console, feed = null, now 
 function createInferencePlannerPages(ctx) {
     const { config, viewers, planner, log = console } = ctx;
     const router = express.Router();
+    // D11 owner settings: off, the ordinary 404 and no session work.
+    router.use((_req, _res, next) => (ctx.config.inferencePlanner.enabled ? next() : next('router')));
     router.use(viewers.middleware('dashboard'));
     if (ctx.actorLimits) router.use(ctx.actorLimits);
     router.use((_req, res, next) => { res.set('Cache-Control', 'private, no-store'); res.vary('Cookie'); res.vary('Authorization'); next(); });
@@ -107,6 +117,8 @@ function createInferencePlannerPages(ctx) {
 function createInferencePlannerApi(ctx) {
     const { viewers, planner, actorLimits, log = console } = ctx;
     const router = express.Router();
+    // D11 owner settings: off, the ordinary 404 and no token work.
+    router.use((_req, _res, next) => (ctx.config.inferencePlanner.enabled ? next() : next('router')));
     router.use(viewers.middleware('api'));
     if (actorLimits) router.use(actorLimits);
     router.use((_req, res, next) => { privateNoStore(res); next(); });

@@ -55,7 +55,7 @@ fs.writeFileSync(fixturePath, JSON.stringify({
             const api = await off.api('GET', '/api/v1/catalog/inference-planner', { as: staff });
             assert.strictEqual(api.status, 404);
             assert.strictEqual(api.json().code, 'route.not_found');
-            assert.strictEqual(off.ctx.inferencePlanner, undefined);
+            assert.strictEqual(off.config.inferencePlanner.enabled, false, 'the source is constructed so the owner switch can apply live; off, it serves nothing');
         });
     } finally { await off.close(); }
 
