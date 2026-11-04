@@ -1,6 +1,7 @@
 'use strict';
 
 /** OpenVibe.Host catalog service configuration. */
+const path = require('path');
 require('dotenv').config();
 
 const trim = (s) => String(s || '').replace(/\/+$/, '');
@@ -62,6 +63,15 @@ function load(env = process.env) {
         // The console (server/console/): a person's own hosting accounts, their tokens sealed with HOST_CREDENTIALS_KEY
         // (32 bytes, hex or base64). Without it the console shows servers of no account and connects none.
         console: { credentialsKey: env.HOST_CREDENTIALS_KEY || '', maxAccounts: int(env.HOST_CONSOLE_MAX_ACCOUNTS, 10) },
+        // Inference placement planner (PLAN.md §G-P7): a staff-only forecast and break-even, off unless
+        // HOST_INFERENCE_PLANNER=on. It reads a planning JSON and never starts, stops or rents a GPU.
+        // The budget is integer nano-USD (D1); empty means 0, and an invalid value is treated as 0 by the
+        // planner (fail safe) and reported as invalid on the page.
+        inferencePlanner: {
+            enabled: String(env.HOST_INFERENCE_PLANNER || 'off').trim().toLowerCase() === 'on',
+            inputPath: env.HOST_INFERENCE_PLANNER_INPUT || path.join(__dirname, '..', 'workers', 'llm-inference', 'examples', 'inference-planner.example.json'),
+            budgetNanoUsdRaw: env.HOST_INFERENCE_BUDGET_NANO_USD === undefined ? '' : String(env.HOST_INFERENCE_BUDGET_NANO_USD),
+        },
         worker: {
             enabled: env.HOST_WORKER !== 'off',
             id: env.HOST_WORKER_ID || `host-${process.pid}`,

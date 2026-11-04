@@ -244,6 +244,16 @@ async function createApp(opts = {}) {
         return agentLayer(req, res, next);
     });
     app.use('/console', rateLimit({ windowMs: 60_000, max: 120, standardHeaders: true, legacyHeaders: false }), require('./console/pages').createConsolePages(ctx));
+    // Inference planner (PLAN.md §G-P7): a staff-only recommendation page, mounted only when
+    // HOST_INFERENCE_PLANNER=on. It reads a planning JSON and has no action endpoint: nothing here
+    // starts, stops or rents a GPU. Flag off adds no route and changes no existing behaviour.
+    if (config.inferencePlanner.enabled) {
+        const { createInferencePlannerSource, createInferencePlannerPages, createInferencePlannerApi } = require('./http/inference-planner');
+        ctx.inferencePlanner = createInferencePlannerSource({ config, log });
+        const plannerCtx = { ...ctx, planner: ctx.inferencePlanner };
+        app.use('/catalog/inference', rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false }), createInferencePlannerPages(plannerCtx));
+        app.use('/api/v1/catalog/inference-planner', rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false }), createInferencePlannerApi(plannerCtx));
+    }
     app.use('/api/v1/catalog', rateLimit({ windowMs: 60_000, max: 240, standardHeaders: true, legacyHeaders: false }), createCatalogApi(ctx));
     const movedApi = (req, res) => res.status(410).type('application/problem+json').json({ code: 'host.moved_to_space', title: 'Static hosting moved', detail: MOVED, url: SPACE_URL });
     const movedPage = (req, res) => res.status(410).type('html').send(renderPage({ title: 'Static hosting moved', body: `<h1>Static hosting moved</h1><p>${MOVED} <a href="${SPACE_URL}">Visit OpenVibe.Space</a>.</p>`, config, path: req.originalUrl }));
