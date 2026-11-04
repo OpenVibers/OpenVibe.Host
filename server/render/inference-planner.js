@@ -67,7 +67,7 @@ function method() {
 <ul>
 <li>The level is the mean of the trailing window of daily request counts. Each weekday's factor is that weekday's mean in the window divided by the level; a future day is the level times its weekday factor, rounded to a whole request.</li>
 <li>The band is ±1.96 × the pooled standard deviation of the window's residuals from their weekday means × √horizon. Daily residuals are assumed independent. It is a planning band, not a guarantee.</li>
-<li>The input is a JSON planning file (<code>HOST_INFERENCE_PLANNER_INPUT</code>). The AI usage feed is not connected yet; no provider API is read and no benchmark is invented.</li>
+<li>The input is a planning JSON (<code>HOST_INFERENCE_PLANNER_INPUT</code>); with <code>HOST_INFERENCE_PLANNER_SOURCE=ai</code> the daily request series comes from OpenVibe.AI's aggregate usage feed and is cached ten minutes. No provider API is read and no benchmark is invented.</li>
 </ul>
 </section>
 <section class="hc-method" aria-labelledby="hp-cost-h">
@@ -85,16 +85,26 @@ function method() {
 </section>`;
 }
 
+/** Where the demand came from: the AI feed, the JSON input, or the JSON after a failed feed. */
+function demandText(demand) {
+    if (!demand) return null;
+    if (demand.source === 'ai') return `Demand: OpenVibe.AI's aggregate usage series, ${commas(demand.days)} days (${demand.from} to ${demand.to}), cached up to 10 minutes.`;
+    if (demand.fallback) return `${demand.warning}; using the configured planning JSON instead.`;
+    return 'Demand: the configured planning JSON.';
+}
+
 /** The planner page body. `result` is the output of server/inference-planner.js. */
 function page(result) {
     const monthly = result.forecast.monthly;
     const candidates = result.candidates;
     const needs = result.summary.needs_owner_budget;
+    const demand = demandText(result.demand);
     return `<header class="hc-head">
 <p class="hc-eyebrow">OpenVibe.Host · staff · inference</p>
 <h1>Inference placement planner</h1>
 <p class="hc-lede">A forecast and a monthly break-even for a warm rented GPU, scale-to-zero and wholesale. This page recommends; it never starts, stops or rents anything. The owner approves every rental.</p>
 </header>
+${demand ? `<p class="hc-facts">${esc(demand)}</p>` : ''}
 <p class="hc-facts">Forecast: <strong>${commas(monthly.requests)} requests</strong> in the next ${result.forecast.horizon.days} days, uncertainty band ${commas(monthly.low)}–${commas(monthly.high)}. ${needs} of ${candidates.length} recommendation${candidates.length === 1 ? '' : 's'} need${needs === 1 ? 's' : ''} the owner's budget.</p>
 <p class="hc-facts">Budget: <strong>${money(result.budget.configured_nano_usd)}/month</strong> (<code>${commas(result.budget.configured_nano_usd)} nano-USD</code>). ${esc(budgetText(result.budget))}</p>
 ${result.note ? `<p class="hc-disclosure">${esc(result.note)}</p>` : ''}

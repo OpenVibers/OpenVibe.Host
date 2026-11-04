@@ -249,7 +249,7 @@ async function createApp(opts = {}) {
     // starts, stops or rents a GPU. Flag off adds no route and changes no existing behaviour.
     if (config.inferencePlanner.enabled) {
         const { createInferencePlannerSource, createInferencePlannerPages, createInferencePlannerApi } = require('./http/inference-planner');
-        ctx.inferencePlanner = createInferencePlannerSource({ config, log });
+        ctx.inferencePlanner = createInferencePlannerSource({ config, log, now: store.now });
         const plannerCtx = { ...ctx, planner: ctx.inferencePlanner };
         app.use('/catalog/inference', rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false }), createInferencePlannerPages(plannerCtx));
         app.use('/api/v1/catalog/inference-planner', rateLimit({ windowMs: 60_000, max: 60, standardHeaders: true, legacyHeaders: false }), createInferencePlannerApi(plannerCtx));

@@ -4,9 +4,12 @@
  * GET /api/v1/catalog/inference-planner (JSON). Both are mounted only when
  * HOST_INFERENCE_PLANNER=on, so flag off adds no route at all.
  *
- * The planner itself (server/inference-planner.js) is pure. This module reads the planning JSON
- * from HOST_INFERENCE_PLANNER_INPUT (mtime-cached), and that is the only I/O here. There is no
- * action endpoint: nothing can start, stop or rent a GPU from this page or its API.
+ * The planner itself (server/inference-planner.js) is pure. This module is the only I/O: it reads the
+ * planning JSON from HOST_INFERENCE_PLANNER_INPUT (mtime-cached), and with
+ * HOST_INFERENCE_PLANNER_SOURCE=ai (default: json) it asks server/inference-planner-feed.js for the
+ * daily request series from OpenVibe.AI (cached ten minutes). A feed failure falls back to the JSON
+ * series when HOST_INFERENCE_PLANNER_INPUT is configured, and is reported as "demand feed unavailable"
+ * either way. There is no action endpoint: nothing can start, stop or rent a GPU from here.
  */
 const express = require('express');
 const fs = require('fs');
@@ -15,11 +18,14 @@ const { ApiError, run, privateNoStore, sendError } = require('./errors');
 const { renderPage } = require('../render/layout');
 const { guard } = require('../auth/viewer');
 const { plan } = require('../inference-planner');
+const { createDemandFeed } = require('../inference-planner-feed');
 const render = require('../render/inference-planner');
 
-function createInferencePlannerSource({ config, log = console }) {
+function createInferencePlannerSource({ config, log = console, feed = null, now = Date.now }) {
     let cached = null;
-    async function current() {
+    const demandFeed = feed || (config.inferencePlanner.source === 'ai' ? createDemandFeed({ config, log, clock: { now } }) : null);
+
+    async function readDocument() {
         const file = path.resolve(config.inferencePlanner.inputPath);
         let stat;
         try {
@@ -28,21 +34,47 @@ function createInferencePlannerSource({ config, log = console }) {
             throw new ApiError(503, 'host.inference_planner.unavailable', 'the planning JSON is missing or unreadable (HOST_INFERENCE_PLANNER_INPUT)');
         }
         if (!stat.isFile()) throw new ApiError(503, 'host.inference_planner.unavailable', 'HOST_INFERENCE_PLANNER_INPUT is not a file');
-        if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.result;
+        if (cached && cached.mtimeMs === stat.mtimeMs && cached.size === stat.size) return cached.document;
         let document;
         try {
             document = JSON.parse(await fs.promises.readFile(file, 'utf8'));
         } catch (err) {
             throw new ApiError(503, 'host.inference_planner.invalid', `the planning JSON could not be read as JSON: ${err.message}`);
         }
-        let result;
+        cached = { mtimeMs: stat.mtimeMs, size: stat.size, document };
+        return document;
+    }
+
+    function planDocument(document) {
         try {
-            result = plan(document, { budgetNanoUsd: config.inferencePlanner.budgetNanoUsdRaw });
+            return plan(document, { budgetNanoUsd: config.inferencePlanner.budgetNanoUsdRaw });
         } catch (err) {
             throw new ApiError(503, 'host.inference_planner.invalid', `the planning JSON did not validate: ${err.message}`);
         }
-        cached = { mtimeMs: stat.mtimeMs, size: stat.size, result };
-        return result;
+    }
+
+    const withDemand = (result, demand) => ({ ...result, demand });
+
+    async function current() {
+        const document = await readDocument();
+        if (!demandFeed) return withDemand(planDocument(document), { source: 'json' });
+        try {
+            const series = await demandFeed.current();
+            const forecast = document && typeof document.forecast === 'object' && !Array.isArray(document.forecast) ? document.forecast : {};
+            const result = planDocument({ ...document, forecast: { ...forecast, series: series.series } });
+            return withDemand(result, { source: 'ai', from: series.from, to: series.to, days: series.days, fetched_at: series.fetched_at });
+        } catch (err) {
+            const warning = `demand feed unavailable: ${err.message}`;
+            if (!config.inferencePlanner.inputConfigured) {
+                throw new ApiError(503, 'host.inference_planner.unavailable', warning);
+            }
+            log.warn(`[Host inference planner] ${warning}; using the configured planning JSON`);
+            try {
+                return withDemand(planDocument(document), { source: 'json', fallback: true, warning });
+            } catch (fallbackErr) {
+                throw new ApiError(fallbackErr.status || 503, fallbackErr.code || 'host.inference_planner.invalid', `${warning}; ${fallbackErr.message}`);
+            }
+        }
     }
     return { current };
 }

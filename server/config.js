@@ -64,12 +64,24 @@ function load(env = process.env) {
         // (32 bytes, hex or base64). Without it the console shows servers of no account and connects none.
         console: { credentialsKey: env.HOST_CREDENTIALS_KEY || '', maxAccounts: int(env.HOST_CONSOLE_MAX_ACCOUNTS, 10) },
         // Inference placement planner (PLAN.md §G-P7): a staff-only forecast and break-even, off unless
-        // HOST_INFERENCE_PLANNER=on. It reads a planning JSON and never starts, stops or rents a GPU.
+        // HOST_INFERENCE_PLANNER=on. It never starts, stops or rents a GPU. Its demand comes from the
+        // planning JSON (default) or, with HOST_INFERENCE_PLANNER_SOURCE=ai, from OpenVibe.AI's aggregate
+        // usage series (GET /api/v1/usage/series, Host's service token, capability ai.usage.read).
         // The budget is integer nano-USD (D1); empty means 0, and an invalid value is treated as 0 by the
         // planner (fail safe) and reported as invalid on the page.
         inferencePlanner: {
             enabled: String(env.HOST_INFERENCE_PLANNER || 'off').trim().toLowerCase() === 'on',
+            source: String(env.HOST_INFERENCE_PLANNER_SOURCE || 'json').trim().toLowerCase() === 'ai' ? 'ai' : 'json',
             inputPath: env.HOST_INFERENCE_PLANNER_INPUT || path.join(__dirname, '..', 'workers', 'llm-inference', 'examples', 'inference-planner.example.json'),
+            // A feed failure may only fall back to a JSON input the operator configured, never to the
+            // bundled example that happens to be the default path.
+            inputConfigured: env.HOST_INFERENCE_PLANNER_INPUT != null && String(env.HOST_INFERENCE_PLANNER_INPUT).trim() !== '',
+            aiUrl: trim(env.OV_AI_INTERNAL_URL || 'http://127.0.0.1:4700'),
+            aiAudience: 'openvibe.ai',
+            aiCapability: 'ai.usage.read',
+            days: Math.max(14, Math.min(90, int(env.HOST_INFERENCE_PLANNER_DAYS, 28))),
+            cacheMs: Math.max(0, int(env.HOST_INFERENCE_PLANNER_CACHE_MS, 10 * 60 * 1000)),
+            timeoutMs: Math.max(100, int(env.HOST_INFERENCE_PLANNER_TIMEOUT_MS, 5000)),
             budgetNanoUsdRaw: env.HOST_INFERENCE_BUDGET_NANO_USD === undefined ? '' : String(env.HOST_INFERENCE_BUDGET_NANO_USD),
         },
         worker: {
