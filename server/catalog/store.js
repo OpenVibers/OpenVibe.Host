@@ -207,7 +207,12 @@ function createCatalog({ store, community = null, log = console, indexnow = null
         const rows = await db.prepare(`SELECT * FROM catalog_offers WHERE ${where} ORDER BY ${OFFER_SORTS[sort]} LIMIT 51 OFFSET ${offset}`).all(...args);
         return { offers: rows.slice(0, 50).map(offerOut), next_cursor: rows.length > 50 ? String(offset + 50) : null };
     }
-    const planOut = (p) => ({ ...p, affiliate_rel: p.affiliate_url ? 'sponsored nofollow noopener' : null, affiliate_disclosure: p.affiliate_url ? 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.' : null, price_per_vcpu: p.vcpu > 0 ? Number(p.price_monthly) / Number(p.vcpu) : null, price_per_gb_ram: p.ram_mb > 0 ? Number(p.price_monthly) * 1024 / Number(p.ram_mb) : null, price_per_gb_disk: p.disk_gb > 0 ? Number(p.price_monthly) / Number(p.disk_gb) : null, checked_at: new Date(Number(p.checked_at)).toISOString(), stale: isStale(p.checked_at, store.now()), price_unit: isStorageRate(p) ? 'per_gb_month' : 'month' });
+    // A per-resource ratio divides a monthly server price, so a zero, missing or per-GB storage rate has no ratio:
+    // it stays null and the page says Unknown, never $0.00 (market outcome 8, server/catalog/pricing.js).
+    const planOut = (p) => {
+        const priced = Number(p.price_monthly) > 0 && !isStorageRate(p);
+        return { ...p, affiliate_rel: p.affiliate_url ? 'sponsored nofollow noopener' : null, affiliate_disclosure: p.affiliate_url ? 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.' : null, price_per_vcpu: priced && p.vcpu > 0 ? Number(p.price_monthly) / Number(p.vcpu) : null, price_per_gb_ram: priced && p.ram_mb > 0 ? Number(p.price_monthly) * 1024 / Number(p.ram_mb) : null, price_per_gb_disk: priced && p.disk_gb > 0 ? Number(p.price_monthly) / Number(p.disk_gb) : null, checked_at: new Date(Number(p.checked_at)).toISOString(), stale: isStale(p.checked_at, store.now()), price_unit: isStorageRate(p) ? 'per_gb_month' : 'month' };
+    };
     async function plans(query = {}) {
         const allowed = new Set(['kind', 'min_vcpu', 'min_ram_mb', 'min_disk_gb', 'max_price', 'currency', 'location', 'provider', 'sort', 'cursor']);
         for (const k of Object.keys(query)) if (!allowed.has(k) || Array.isArray(query[k])) invalid(`Invalid filter: ${k}`);

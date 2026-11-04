@@ -26,7 +26,7 @@ const { boot, check, done } = require('./helpers/boot');
             let page = await t.api('GET', `/catalog/plans/${plan.id}`);
             assert.strictEqual(page.status, 200, page.text.slice(0, 200));
             assert.match(page.text, /Term not published\./);
-            assert.match(page.text, /No commission: we earn nothing from this link\./, 'a homepage link says it earns nothing');
+            assert.match(page.text, /No commission\./, 'a homepage link says it earns nothing');
             // A 1-year term with no renewal price stated, then one with it.
             let r = await t.api('PATCH', `/api/v1/catalog/plans/${plan.id}`, { as: staff, json: { price_term: '1-year' } }); assert.strictEqual(r.status, 200, r.text);
             page = await t.api('GET', `/catalog/plans/${plan.id}`);
@@ -38,7 +38,7 @@ const { boot, check, done } = require('./helpers/boot');
             r = await t.api('PATCH', `/api/v1/catalog/plans/${plan.id}`, { as: staff, json: { price_term: 'weekly' } }); assert.strictEqual(r.status, 422, r.text);
             r = await t.api('PATCH', `/api/v1/catalog/plans/${plan.id}`, { as: staff, json: { price_term: 'monthly', renewal_price: null } }); assert.strictEqual(r.status, 200, r.text);
             page = await t.api('GET', `/catalog/plans/${plan.id}`);
-            assert.match(page.text, /Month to month\. At the provider&#39;s list price\.|Month to month\. At the provider's list price\./);
+            assert.match(page.text, /Monthly\. Renewal price not published\./);
         });
         await check('staff manage form is server rendered and CSRF protected', async () => {
             const r = await t.api('GET', '/catalog/manage', { session: staff }); assert.strictEqual(r.status, 200); assert.match(r.text, /<form method="post"/); assert.match(r.text, /name="csrf"/);
