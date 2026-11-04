@@ -1,0 +1,48 @@
+{
+  "$schema": "../../../scripts/inference-cost-model.schema.json",
+  "note": "example, not a quote — every price and throughput below is a placeholder for arithmetic only. Replace each one with a dated complete quote and a measured tok/s run before using this model for a decision.",
+  "window": {
+    "hours": 24,
+    "requests": 1000
+  },
+  "request": {
+    "input_tokens": 1000,
+    "cached_read_tokens": 0,
+    "cache_write_tokens": 0,
+    "output_tokens": 500,
+    "success_rate": 0.95
+  },
+  "throughput": {
+    "prefill_tokens_per_sec": 800,
+    "decode_tokens_per_sec": 40,
+    "concurrency": 1
+  },
+  "gpu": {
+    "hourly_usd": 0.1,
+    "occupancy": 0.35,
+    "idle_policy": "standby",
+    "standby_hourly_usd": 0,
+    "startup_seconds": 90,
+    "storage_gb": 4,
+    "storage_usd_per_gb_month": 0.1,
+    "egress_gb_per_request": 0.0002,
+    "egress_usd_per_gb": 0.09
+  },
+  "serverless": {
+    "hourly_usd": 0.75,
+    "startup_seconds": 45,
+    "requests_per_cold_start": 1,
+    "storage_gb": 4,
+    "storage_usd_per_gb_month": 0.1,
+    "egress_gb_per_request": 0.0002,
+    "egress_usd_per_gb": 0.09
+  },
+  "api_wholesale": {
+    "input_usd_per_million": 0.1,
+    "cached_read_usd_per_million": 0.02,
+    "cache_write_usd_per_million": 0.1,
+    "output_usd_per_million": 0.4,
+    "per_request_usd": 0.000005,
+    "success_rate": 0.98
+  }
+}
