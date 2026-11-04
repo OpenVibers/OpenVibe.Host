@@ -54,40 +54,44 @@ const checkedText = (p, now) => `${esc(day(p.checked_at) || 'unknown')}${staleMa
 const or = (v) => (v == null ? UNKNOWN : esc(v));
 const kindName = (k) => (KINDS.find(([v]) => v === k) || [k, k])[1];
 const link = (href, label, cls = '') => `<a href="${esc(href)}"${cls ? ` class="${cls}"` : ''}>${label}</a>`;
-const out = (href, label, { affiliate = false, cls = '' } = {}) => `<a href="${esc(href)}"${cls ? ` class="${cls}"` : ''} rel="${affiliate ? 'sponsored nofollow noopener' : 'noopener'}">${label}</a>`;
+// Market outcome 7: every outbound link says what it earns us, in the page's own words. A link with no affiliate
+// deal says so; an affiliate link says we earn a commission and keeps the provider's own note beside it.
+const EARN_AFFILIATE = 'We earn a commission on this link.';
+const EARN_NONE = 'No commission.';
+const out = (href, label, { affiliate = false, cls = '', rel = null } = {}) => `<a href="${esc(href)}"${cls ? ` class="${cls}"` : ''} rel="${rel || (affiliate ? 'sponsored nofollow noopener' : 'noopener')}">${label}</a><small class="hc-note">${affiliate ? EARN_AFFILIATE : EARN_NONE}</small>`;
 
 /** The visit button for a provider: its affiliate link (marked, with the provider's own disclosure) or its homepage. */
 function visit(p, label = 'Visit provider') {
     if (p.affiliate_url) {
         return `<span class="hc-visit">${out(p.affiliate_url, `${esc(label)} <span class="hc-chip">Affiliate</span>`, { affiliate: true, cls: 'button' })}${p.affiliate_note ? `<small class="hc-note">${esc(p.affiliate_note)}</small>` : ''}</span>`;
     }
-    // What a link earns us, said on every link (market outcome 7): an affiliate link is marked above; this one earns nothing.
-    return p.homepage_url ? `<span class="hc-visit">${out(p.homepage_url, esc(label), { cls: 'button hc-button-quiet' })}<small class="hc-note">No commission: we earn nothing from this link.</small></span>` : '';
+    return p.homepage_url ? `<span class="hc-visit">${out(p.homepage_url, esc(label), { cls: 'button hc-button-quiet' })}</span>` : '';
 }
 
 /**
  * The term a price is quoted for, and what it renews at (market outcomes 1 and 2, migration 0014). A sourced plan's
- * price is the provider's own monthly list price; a staff entry states its term or leaves it unknown, and an unknown
- * renewal price is said to be unknown, never assumed.
+ * price is the provider's own monthly list price; a staff entry states its term or leaves it unknown. The renewal
+ * price is shown only when the row states one; otherwise the page says it is not published and never assumes the
+ * current price carries over.
  */
-const TERMS = { monthly: 'Month to month', '1-year': '1-year term', '3-year': '3-year term' };
+const TERMS = { monthly: 'Monthly', '1-year': '1-year term', '3-year': '3-year term' };
+const termText = (p) => TERMS[p.price_term] || 'term not published';
+const renewalStated = (p) => p.renewal_price != null && Number.isFinite(Number(p.renewal_price)) && Number(p.renewal_price) > 0;
+const renewText = (p) => (renewalStated(p) ? `Renews at ${money(Number(p.renewal_price), p.currency)} a month` : 'Renewal price not published');
 function termLines(p) {
-    if (isStorageRate(p)) return '';
-    const term = TERMS[p.price_term];
-    if (!term) return '<p class="hc-dim">Term not published.</p>';
-    const renews = p.renewal_price != null && Number.isFinite(Number(p.renewal_price))
-        ? `Renews at ${esc(money(Number(p.renewal_price), p.currency))} a month.`
-        : p.price_term === 'monthly' ? 'At the provider\'s list price.' : 'Renewal price not published.';
-    return `<p class="hc-dim">${esc(term)}. ${renews}</p>`;
+    const term = TERMS[p.price_term] ? `${TERMS[p.price_term]}.` : 'Term not published.';
+    const renews = renewalStated(p) ? `Renews at ${esc(money(Number(p.renewal_price), p.currency))} a month.` : 'Renewal price not published.';
+    return `<p class="hc-dim">${esc(term)} ${renews}</p>`;
 }
 
 function priceCell(p) {
     const price = Number(p.price_monthly);
-    // A per-GB rate is not a monthly price: it is shown as the rate per GB it is (server/catalog/pricing.js).
-    if (isStorageRate(p)) return `<span class="hc-price">${Number.isFinite(price) ? esc(money(price, p.currency, 4)) : 'price not stated'}</span><span class="hc-per">/GB/month</span>`;
-    const m = Number.isFinite(price) && price > 0 ? money(price, p.currency) : null;
-    const term = p.price_term === 'monthly' ? '' : TERMS[p.price_term] ? `<span class="hc-term">${esc(TERMS[p.price_term])}</span>` : '<span class="hc-term">term not published</span>';
-    return `<span class="hc-price">${m ? esc(m) : 'price not stated'}</span><span class="hc-per">/mo</span>${term}`;
+    const storage = isStorageRate(p);
+    // A per-GB rate is not a monthly price: it is shown as the rate per GB it is (server/catalog/pricing.js). A zero
+    // or missing row is "price not stated", never $0.00 (market outcome 8).
+    const stated = Number.isFinite(price) && price > 0;
+    const main = storage ? (stated ? money(price, p.currency, 4) : 'price not stated') : (stated ? money(price, p.currency) : 'price not stated');
+    return `<span class="hc-price">${esc(main)}</span><span class="hc-per">${storage ? '/GB/month' : '/mo'}</span><span class="hc-term">${esc(termText(p))}</span><span class="hc-term">${esc(renewText(p))}</span>`;
 }
 
 const isoAt = (v) => new Date(v).toISOString();
@@ -206,7 +210,7 @@ function method(hasAffiliate) {
 <li><strong>Sourced.</strong> Plans come from providers' official APIs through OpenVibe.Sources, or from a staff entry that names the page it was copied from. Nothing is estimated.</li>
 <li><strong>Dated.</strong> Every price shows the day it was last checked and links its source. Prices change; the provider's own page is the final word.</li>
 <li><strong>Normalised.</strong> "Per vCPU" and "per GB" divide the monthly price by what the plan states, in the plan's own currency. A value the source does not state stays Unknown and sorts last.</li>
-<li><strong>Not for sale.</strong> The order comes only from the sort you pick.${hasAffiliate ? ` ${esc(DISCLOSURE)}` : ' No provider pays to be listed or ranked.'}</li>
+<li><strong>Not for sale.</strong> The order comes only from the sort you pick. Every outbound link says what it earns us.${hasAffiliate ? ` ${esc(DISCLOSURE)}` : ' No provider pays to be listed or ranked.'}</li>
 </ul>
 </section>`;
 }
@@ -317,16 +321,18 @@ function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '', n
         ['Locations', p.locations && p.locations.length ? p.locations.join(', ') : null], ['Kind', kindName(p.kind)],
     ];
     const value = [['Per vCPU', money(p.price_per_vcpu, p.currency)], ['Per GB of RAM', money(p.price_per_gb_ram, p.currency)], ['Per GB of disk', money(p.price_per_gb_disk, p.currency, 3)]];
-    const trend = p.price_trend;
+    // A zero or missing price has no trend to draw: the summary would print $0.00 as if it were a price (outcome 8).
+    const trend = Number(p.price_monthly) > 0 ? p.price_trend : null;
     const chart = trendFigure(trend, { title: 'Monthly price over time', seriesName: 'Monthly price' }) || trendSummary(trend);
     const history = p.price_history.length
         ? `<details class="hc-history-fold"><summary>Every change (${p.price_history.length})</summary><ol class="hc-history">${p.price_history.map((h) => `<li><time datetime="${esc(day(Number(h.observed_at)))}">${esc(day(Number(h.observed_at)))}</time> ${esc(money(h.price_monthly_before, h.currency) || h.price_monthly_before)} → <strong>${esc(money(h.price_monthly_after, h.currency) || h.price_monthly_after)}</strong></li>`).join('')}</ol></details>`
         : '';
+    const priceHistory = chart || history ? `<h2>Price history</h2>\n${chart}\n${history}` : '';
     return `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog', 'Catalog')} / ${link(`/catalog/providers/${encodeURIComponent(p.provider_slug)}`, esc(p.provider_name))}</nav>
 <header class="hc-head"><p class="hc-eyebrow">${esc(p.provider_name)} · ${esc(kindName(p.kind))}</p><h1>${esc(p.name)}</h1></header>
 <div class="hc-plan">
 <section class="hc-price-card" aria-label="Price">
-<p class="hc-big">${esc((() => { const price = Number(p.price_monthly); if (isStorageRate(p)) return Number.isFinite(price) ? money(price, p.currency, 4) : 'price not stated'; return (Number.isFinite(price) && price > 0) ? money(price, p.currency) : 'price not stated'; })())}<span>${isStorageRate(p) ? '/GB/month' : '/month'}</span></p>
+<p class="hc-big">${esc((() => { const price = Number(p.price_monthly); if (isStorageRate(p)) return Number.isFinite(price) && price > 0 ? money(price, p.currency, 4) : 'price not stated'; return (Number.isFinite(price) && price > 0) ? money(price, p.currency) : 'price not stated'; })())}<span>${isStorageRate(p) ? '/GB/month' : '/month'}</span></p>
 ${isStorageRate(p) ? '<p class="hc-dim">A storage rate: the price per GB a month, not a monthly server price.</p>' : ''}
 ${p.price_hourly != null ? `<p class="hc-dim">${esc(money(p.price_hourly, p.currency, 4))} an hour</p>` : ''}
 ${p.setup_fee != null && Number(p.setup_fee) > 0 ? `<p class="hc-dim">Setup fee ${esc(money(p.setup_fee, p.currency))}</p>` : ''}
@@ -338,9 +344,7 @@ ${visit(p)}
 <section aria-labelledby="hc-spec-h"><h2 id="hc-spec-h">What you get</h2><dl class="hc-spec">${spec.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${or(v)}</dd></div>`).join('')}</dl></section>
 <section aria-labelledby="hc-value-h"><h2 id="hc-value-h">Value</h2><dl class="hc-spec">${value.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${or(v)}</dd></div>`).join('')}</dl></section>
 </div>
-<h2>Price history</h2>
-${chart}
-${history}
+${priceHistory}
 ${baseUrl && watchUrl ? `<p class="hc-watch">${out(`${watchUrl}/watches/new?${new URLSearchParams({ template: 'json', url: `${baseUrl}/api/v1/catalog/plans/${p.id}`, value_path: 'plan.price_monthly', op: 'changed', name: `${p.provider_name} ${p.name} price` })}`, 'Tell me when this price changes', { cls: 'button hc-button-quiet' })} <span class="hc-dim">with OpenVibe.Watch, free</span></p>` : ''}
 ${extra}
 ${discussionSection(discussion)}
@@ -361,7 +365,7 @@ function offerItem(o, now) {
         : '<p class="hc-offer-price">Price in the post</p>';
     const when = `<time datetime="${esc(o.published_at)}">${esc(day(o.published_at))}</time>`;
     return `<li class="hc-offer">${price}
-<div class="hc-offer-body"><h3><a href="${esc(o.url)}" rel="nofollow ugc noopener">${esc(o.title)}</a></h3>
+<div class="hc-offer-body"><h3>${out(o.url, esc(o.title), { rel: 'nofollow ugc noopener' })}</h3>
 <p class="hc-offer-meta">${esc(o.source)}${o.poster ? ` · posted by ${esc(o.poster)}` : ''} · ${when}${age > 30 ? ` <span class="hc-chip" title="Offers often end; the post says whether this one still runs">${age} days old</span>` : ''}</p></div></li>`;
 }
 function offers({ result, query = {}, now = Date.now() }) {
@@ -412,10 +416,11 @@ const jsonLd = {
             // One Product node for the plan's own page: the page's own heading is the plan's name,
             // the page names the provider (so it is the brand), and the price it shows is the monthly
             // price as a number. The plan is on sale only while it is active, so that is its availability.
+            // A zero, missing or per-GB rate is not a monthly Offer and says nothing (market outcome 8).
             seo.jsonLd.product({
                 name: p.name, url, brand: { '@type': 'Brand', name: p.provider_name },
                 description: [p.vcpu != null ? `${Number(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb) ? `${bytesMb(p.ram_mb)} RAM` : null, sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).join(', ') || undefined,
-                offers: (Number.isFinite(price) && price > 0) ? { '@type': 'Offer', price, priceCurrency: p.currency, url, availability: 'https://schema.org/InStock',
+                offers: (Number.isFinite(price) && price > 0 && !isStorageRate(p)) ? { '@type': 'Offer', price, priceCurrency: p.currency, url, availability: 'https://schema.org/InStock',
                     priceSpecification: { '@type': 'UnitPriceSpecification', price, priceCurrency: p.currency, unitText: 'MONTH' } } : undefined,
             }),
         ];
@@ -427,14 +432,15 @@ const jsonLd = {
 const planCard = (label, p, note = '', now = Date.now()) => {
     const price = Number(p.price_monthly);
     const storage = isStorageRate(p);
-    const priceLabel = storage ? (Number.isFinite(price) ? money(price, p.currency, 4) : 'price not stated') : (Number.isFinite(price) && price > 0 ? money(price, p.currency) : 'price not stated');
+    const stated = Number.isFinite(price) && price > 0;
+    const priceLabel = storage ? (stated ? money(price, p.currency, 4) : 'price not stated') : (stated ? money(price, p.currency) : 'price not stated');
     const unit = storage ? ' a GB a month' : ' a month';
-    return `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span class="hh-label">${esc(label)}</span><b>${esc(p.provider_name)} ${esc(p.name)}</b><span class="hh-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb), sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).map(esc).join(' · ')}</span><span class="hh-price"><strong>${esc(priceLabel)}</strong>${priceLabel === 'price not stated' ? '' : unit}${note ? ` · ${esc(note)}` : ''}</span>${day(p.checked_at) ? `<span class="hh-spec">checked ${esc(day(p.checked_at))}${isStale(p.checked_at, now) ? ', stale' : ''}</span>` : ''}`)}</li>`;
+    return `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span class="hh-label">${esc(label)}</span><b>${esc(p.provider_name)} ${esc(p.name)}</b><span class="hh-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb), sizeGb(p.disk_gb) ? `${sizeGb(p.disk_gb)} disk` : null].filter(Boolean).map(esc).join(' · ')}</span><span class="hh-price"><strong>${esc(priceLabel)}</strong>${priceLabel === 'price not stated' ? '' : unit}${note ? ` · ${esc(note)}` : ''}</span><span class="hh-spec">${esc(termText(p))} · ${esc(renewText(p))}</span>${day(p.checked_at) ? `<span class="hh-spec">checked ${esc(day(p.checked_at))}${isStale(p.checked_at, now) ? ', stale' : ''}</span>` : ''}`)}</li>`;
 };
 const perUnit = (p, by) => {
     const price = Number(p.price_monthly);
     const n = by === 'vcpu' ? Number(p.vcpu) : by === 'ram' ? Number(p.ram_mb) / 1024 : Number(p.disk_gb);
-    return Number.isFinite(price) && n > 0 ? money(price / n, p.currency) : null;
+    return Number.isFinite(price) && price > 0 && n > 0 ? money(price / n, p.currency) : null;
 };
 
 /** The home's extra blocks, each from real rows and left out when it has none. */
@@ -465,7 +471,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
     const servers = plans.filter((p) => p.vcpu != null && Number(p.price_monthly) > 0 && !isStale(p.checked_at, now));
     const aside = servers.length ? `<div class="hc-aside" aria-label="Lowest prices right now">
 <p class="hc-aside-h">Cheapest servers right now</p>
-<ol>${servers.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
+<ol>${servers.slice(0, 5).map((p) => `<li>${link(`/catalog/plans/${encodeURIComponent(p.id)}`, `<span>${esc(p.provider_name)} <b>${esc(p.name)}</b></span><span class="hc-aside-spec">${[p.vcpu != null ? `${num(p.vcpu)} vCPU` : null, bytesMb(p.ram_mb)].filter(Boolean).map(esc).join(' · ')} · ${esc(termText(p))} · ${esc(renewText(p))}</span><strong>${esc(money(p.price_monthly, p.currency))}</strong>`)}</li>`).join('')}</ol>
 <p class="hc-aside-foot">Checked ${esc(day(stats.lastChecked) || '')} · ${link('/catalog', 'compare all')}</p>
 </div>` : '';
     return showcase.hero({
@@ -487,12 +493,12 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
             { icon: 'ov:check', title: 'Straight from the source', text: 'Every provider in one table, from their own APIs or from staff entries that name the page they came from. Nothing is estimated.' },
             { icon: 'ov:history', title: 'Dated prices', text: 'Every price shows when it was last checked, and price changes are kept as a history per plan.' },
             { icon: 'ov:search', title: 'Compare what matters', text: 'Sort by monthly price, or by price per vCPU, per GB of RAM or per GB of disk. Unknown stays unknown.' },
-            { icon: 'ov:account', title: 'Ranked by you', text: 'No paid placement. Affiliate links are marked, disclosed beside the link, and never change the order.' },
+            { icon: 'ov:account', title: 'Ranked by you', text: 'No paid placement. Every outbound link says what it earns us, and an affiliate link never changes the order.' },
         ],
     }) + '</details></section>' + (recent.length ? `<section class="sc-sec"><h2>Latest hosting offers</h2><ol class="hc-offers">${recent.slice(0, 6).map((o) => offerItem(o, now)).join('')}</ol><p class="hc-more">${link('/catalog/offers', 'Every offer, by price or date →')}</p></section>` : '')
     + (live.length ? `<section class="sc-sec"><h2>Promotions running now</h2>${promoCards(live.slice(0, 3))}<p class="hc-more">${link('/catalog/promos', 'All promotions →')}</p></section>` : '')
     + extra.faq
-    + `<p class="hc-own">Want to host a site with OpenVibe? ${link('https://openvibe.space', 'Visit OpenVibe.Space')}.</p>`;
+    + `<p class="hc-own">Want to host a site with OpenVibe? ${out('https://openvibe.space', 'Visit OpenVibe.Space')}.</p>`;
 }
 
 module.exports = { front, catalog, providerList, provider, plan, promos, offers, planTable, jsonLd, DISCLOSURE, money, bytesMb, sizeGb, trendFigure, tldTrendFigure, trendSummary, day };

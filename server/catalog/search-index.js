@@ -26,9 +26,10 @@ const day = (ms) => (Number.isFinite(Number(ms)) ? new Date(Number(ms)).toISOStr
 const iso = (ms) => (Number.isFinite(Number(ms)) && ms != null ? new Date(Number(ms)).toISOString() : null);
 
 function planDocument(row) {
-    // A per-GB storage rate is not a monthly price: the document names it as the rate per GB it is.
+    // A per-GB storage rate is not a monthly price: the document names it as the rate per GB it is. A zero or
+    // missing row has no price to name, so the document says nothing rather than "$0.00 a month" (outcome 8).
     const storage = isStorageRate(row);
-    const price = money(row.price_monthly, row.currency, storage ? 4 : 2);
+    const price = Number(row.price_monthly) > 0 ? money(row.price_monthly, row.currency, storage ? 4 : 2) : null;
     const priceText = price ? (storage ? `${price} a GB a month` : `${price} a month`) : null;
     const transfer = row.unmetered ? 'unmetered transfer' : (sizeGb(row.bandwidth_gb) ? `${sizeGb(row.bandwidth_gb)} transfer` : null);
     const specs = [row.vcpu != null ? `${Number(row.vcpu)} vCPU` : null, bytesMb(row.ram_mb) ? `${bytesMb(row.ram_mb)} RAM` : null,

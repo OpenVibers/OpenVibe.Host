@@ -16,6 +16,7 @@ const ovServe = require('openvibe-shared/serve');
 const render = require('../render/catalog');
 const renderDomains = require('../render/domains');
 const renderBench = require('../render/benchmarks');
+const { isStorageRate } = require('../catalog/pricing');
 
 // The home's questions are Host's own FAQ in its service manifest (openvibe-contracts), shown and published as FAQPage.
 const HOST_FAQ = (((contracts.services.manifests.find((m) => m.id === 'host') || {}).site || {}).faq || []);
@@ -111,12 +112,18 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
         const p = await catalog.plan(id);
         const [discussion, bench] = await Promise.all([discussionFor(ctx, 'plan', p, p.provider_name + ' ' + p.name), benchmarks.summary({ planId: p.id })]);
         const benchHtml = renderBench.summaryBlock(bench, { href: '/catalog/benchmarks?plan=' + encodeURIComponent(p.id), label: p.provider_name + ' ' + p.name });
+        // The description repeats the page's price only when the row states a monthly price; a per-GB rate or an
+        // unpublished price is named as such, never as "$0.00 a month" (market outcome 8).
+        const price = Number(p.price_monthly);
+        const priceText = price > 0
+            ? (isStorageRate(p) ? `${render.money(price, p.currency, 4)} a GB a month` : `${render.money(price, p.currency)} a month`)
+            : 'price not published';
         return {
             title: p.provider_name + ' ' + p.name,
             body: render.plan(p, discussion, { baseUrl, watchUrl, extra: benchHtml }),
             styles: ['kit.css', 'kit-data.css'], scripts: ['kit-data-web.js'],
             indexable: true,
-            description: p.provider_name + ' ' + p.name + ': ' + p.currency + ' ' + p.price_monthly + ' a month, with its specifications, price per resource and price history.',
+            description: p.provider_name + ' ' + p.name + ': ' + priceText + ', with its specifications, price per resource and price history.',
             jsonLd: render.jsonLd.plan(baseUrl, p),
         };
     }
