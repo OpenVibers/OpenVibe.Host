@@ -7,6 +7,7 @@ const SOURCES = Object.freeze({
     'linode-types': { slug: 'linode', name: 'Linode', homepage_url: 'https://www.linode.com/', source_url: 'https://www.linode.com/pricing/' },
     'aws-lightsail-bundles': { slug: 'aws-lightsail', name: 'Amazon Lightsail', homepage_url: 'https://aws.amazon.com/lightsail/', source_url: 'https://aws.amazon.com/lightsail/pricing/' },
     'ovhcloud-vps': { slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://us.ovhcloud.com/', source_url: 'https://us.ovhcloud.com/vps/' },
+    'ovhcloud-baremetal': { slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://us.ovhcloud.com/', source_url: 'https://us.ovhcloud.com/bare-metal/prices/' },
     'azure-retail-prices': { slug: 'azure', name: 'Microsoft Azure', homepage_url: 'https://azure.microsoft.com/', source_url: 'https://azure.microsoft.com/en-us/pricing/' },
 });
 const number = (v, field) => {
@@ -70,6 +71,44 @@ function ovhcloud(x, id, title) {
         price_monthly: monthly, price_hourly: null, ipv4: null, locations: null,
     };
 }
+// OVHcloud's dedicated-server catalogs (Sources `ovhcloud-baremetal`): the plan's CPU is on its product, while its
+// default memory, storage and bandwidth are addons of that plan, each with a product of its own. The source joins
+// them and gives the size of one disk and the number of disks; the plan's total is their product. A socket count is
+// usually stated (two in a dual-socket HGR); where the catalog omits it the CPU is one socket, so the cores stay as
+// the catalog gives them. The installation fee is the catalog's phase 0 none price, which OVHcloud states beside the
+// monthly price on its own page ($204 and $204 for Advance-1 2026). Prices are hundred-millionths of a dollar.
+function ovhBaremetal(x, id, title) {
+    if (x.currency !== 'USD') throw new TypeError('OVHcloud price is not in USD');
+    const units = number(x.price_monthly, 'monthly price');
+    if (units == null) throw new TypeError('missing monthly price');
+    const monthly = Math.round(units / 1e6) / 100;
+    if (monthly <= 0) return null;
+    const setupUnits = number(x.setup_fee, 'setup fee');
+    const setup = setupUnits == null ? null : Math.round(setupUnits / 1e6) / 100;
+    const cores = number(x.cpu_cores, 'cpu cores');
+    const sockets = number(x.cpu_sockets, 'cpu sockets');
+    const memoryGb = number(x.memory_gb, 'memory');
+    const perDisk = number(x.disk_capacity_gb, 'disk capacity');
+    const diskCount = number(x.disk_count, 'disk count');
+    const diskGb = perDisk == null || diskCount == null ? null : perDisk * diskCount;
+    const iface = String(x.disk_interface || '').toLowerCase();
+    const technology = String(x.disk_technology || '').toLowerCase();
+    const diskType = diskGb > 0
+        ? (/nvme/.test(iface) ? 'nvme' : /ssd/.test(iface) || /ssd/.test(technology) ? 'ssd' : /hdd|sas|sata/.test(iface) || /hdd|sas|sata/.test(technology) ? 'hdd' : null)
+        : null;
+    const limit = number(x.bandwidth_limit, 'bandwidth limit');
+    return {
+        name: (typeof title === 'string' && title.trim()) || id, kind: 'dedicated',
+        vcpu: cores == null ? null : cores * (sockets == null ? 1 : sockets),
+        ram_mb: memoryGb == null ? null : Math.round(memoryGb * 1024),
+        disk_gb: diskGb, disk_type: diskType,
+        bandwidth_gb: null, unmetered: limit == null ? null : limit === 0, port_mbps: number(x.bandwidth_mbps, 'bandwidth'),
+        price_monthly: monthly, price_hourly: null, ipv4: null,
+        locations: Array.isArray(x.locations) && x.locations.length ? x.locations : null,
+        setup_fee: setup,
+    };
+}
+
 // Vultr's plan types as its pricing page names them; a plan is named from its type, CPU vendor, vCPUs and memory
 // ("High Performance AMD · 1 vCPU, 1 GB"), never by its API id alone.
 const VULTR_TYPES = Object.freeze({ vc2: 'Cloud Compute', vhf: 'High Frequency', vhp: 'High Performance', voc: 'Optimized Cloud', vcg: 'Cloud GPU', vbm: 'Bare Metal', vdc: 'Dedicated Cloud' });
@@ -118,7 +157,7 @@ function mapItem(item) {
         // Every price the mappers below read is the source's monthly price (Lightsail's and Azure's hourly rates
         // become a month's worth, OVHcloud is its commitment=0 one-month price), so the row's term is monthly. No
         // source states a renewal price for a server plan, so it stays unknown rather than guessed.
-        price_term: 'monthly', renewal_price: null,
+        price_term: 'monthly', renewal_price: null, setup_fee: null,
     };
     if (item.source_key === 'aws-lightsail-bundles') return { ...common, ...lightsail(x, id) };
     if (item.source_key === 'azure-retail-prices') {
@@ -133,6 +172,10 @@ function mapItem(item) {
     }
     if (item.source_key === 'ovhcloud-vps') {
         const plan = ovhcloud(x, id, item.title);
+        return plan && { ...common, ...plan };
+    }
+    if (item.source_key === 'ovhcloud-baremetal') {
+        const plan = ovhBaremetal(x, id, item.title);
         return plan && { ...common, ...plan };
     }
     const vultr = item.source_key === 'vultr-plans';

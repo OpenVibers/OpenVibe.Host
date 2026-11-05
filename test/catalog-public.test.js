@@ -96,6 +96,15 @@ const { boot, check, done } = require('./helpers/boot');
             assert.ok(!types((await t.api('GET', '/catalog?min_vcpu=2')).text).includes('ItemList'), 'a filtered view carries no JSON-LD');
             const promos = await t.api('GET', '/api/v1/catalog/promos'); assert.strictEqual(promos.json().promos.length, 1);
         });
+        await check('the comparison page shows dedicated plans in their own section, and kind=dedicated is that table once', async () => {
+            const metal = await plan(p, 'metal', 120, { kind: 'dedicated', vcpu: 8, ram_mb: 32768, disk_gb: 960, disk_type: 'nvme', setup_fee: 120 });
+            const page = await t.api('GET', '/catalog');
+            assert.match(page.text, /Dedicated servers compared/);
+            assert.ok(page.text.includes(`href="/catalog/plans/${metal.id}"`), 'the dedicated plan is linked');
+            const only = await t.api('GET', '/catalog?kind=dedicated');
+            assert.ok(only.text.includes(`href="/catalog/plans/${metal.id}"`), 'the dedicated view lists it');
+            assert.doesNotMatch(only.text, /Dedicated servers compared/, 'the dedicated view is the table itself, not a second copy');
+        });
         await check('the sitemap dates catalog pages by their newest price check', async () => {
             const xml = (await t.api('GET', '/sitemap.xml')).text;
             const planUrl = xml.match(/<url><loc>[^<]*\/catalog\/plans\/[^<]+<\/loc><lastmod>(\d{4}-\d{2}-\d{2})<\/lastmod><\/url>/);
