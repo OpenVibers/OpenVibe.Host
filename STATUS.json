@@ -13,13 +13,13 @@
   "runtime": "node 22; Express 4 + PostgreSQL 18 (openvibe-sdk/db, async) + optional Valkey",
   "port": 4910,
   "domain": "openvibe.host",
-  "contracts": "openvibe-contracts v0.272.0",
+  "contracts": "openvibe-contracts v0.288.0",
   "sdk": "openvibe-sdk v0.82.0",
-  "shared": "openvibe-shared v4.109.2",
+  "shared": "openvibe-shared v4.110.0",
   "packages": [
-    "openvibe-contracts v0.272.0",
+    "openvibe-contracts v0.288.0",
     "openvibe-sdk v0.82.0",
-    "openvibe-shared v4.109.2"
+    "openvibe-shared v4.110.0"
   ],
   "capabilities": [
     "host.catalog.manage"

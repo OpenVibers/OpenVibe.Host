@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openvibe.network/schemas/inference-planner.v1.json",
+  "title": "InferencePlannerInput",
+  "description": "Inputs for OpenVibe.Host's inference placement planner (PLAN.md §D, §E and §G-P7). It forecasts a daily request series and compares the monthly cost of a warm rented GPU, scale-to-zero and wholesale for every model × GPU-class candidate. Every price is an integer nano-USD (D1). There is no action: this document can recommend a rental but never starts, stops or rents anything.",
+  "type": "object",
+  "required": ["forecast", "request", "models", "gpu_classes"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional editor association with this schema file."
+    },
+    "note": {
+      "type": "string",
+      "description": "Provenance, for example 'example, not a quote' or the quote ids and measurement dates."
+    },
+    "forecast": {
+      "type": "object",
+      "required": ["series"],
+      "additionalProperties": false,
+      "properties": {
+        "horizon_days": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 365,
+          "default": 30,
+          "description": "Days to forecast after the last series point."
+        },
+        "window_days": {
+          "type": "integer",
+          "minimum": 7,
+          "maximum": 365,
+          "default": 28,
+          "description": "Trailing days used for the moving average and the day-of-week factors; not more than the series length."
+        },
+        "series": {
+          "type": "array",
+          "minItems": 14,
+          "description": "Consecutive daily request counts, oldest first. Dates must be calendar days and every point must be the next day.",
+          "items": {
+            "type": "object",
+            "required": ["date", "requests"],
+            "additionalProperties": false,
+            "properties": {
+              "date": {
+                "type": "string",
+                "format": "date",
+                "description": "UTC calendar day (YYYY-MM-DD)."
+              },
+              "requests": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000000,
+                "description": "Requests counted on that day."
+              }
+            }
+          }
+        }
+      }
+    },
+    "request": {
+      "type": "object",
+      "required": ["input_tokens", "cached_read_tokens", "cache_write_tokens", "output_tokens"],
+      "additionalProperties": false,
+      "properties": {
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "description": "I: fresh input tokens per request."
+        },
+        "cached_read_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "description": "R: input tokens read from a prompt cache per request."
+        },
+        "cache_write_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "description": "W: input tokens written to a prompt cache per request."
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000000,
+          "description": "O: generated output tokens per request."
+        }
+      }
+    },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Model candidates. Every model is paired with every GPU class.",
+      "items": {
+        "type": "object",
+        "required": ["id", "throughput", "success_bps", "wholesale"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Exact model id, for example qwen/qwen3-9b:q4_k_m@3f2a1c9."
+          },
+          "label": {
+            "type": "string",
+            "description": "Display name; defaults to id."
+          },
+          "throughput": {
+            "type": "object",
+            "required": ["prefill_tokens_per_sec", "decode_tokens_per_sec"],
+            "additionalProperties": false,
+            "properties": {
+              "prefill_tokens_per_sec": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Measured prompt-processing throughput at the stated concurrency."
+              },
+              "decode_tokens_per_sec": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Measured output throughput at the stated concurrency."
+              },
+              "cached_read_tokens_per_sec": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Optional measured cached-read throughput; omitted means prefill throughput (conservative)."
+              },
+              "concurrency": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 1024,
+                "default": 1,
+                "description": "Concurrency at which the throughput numbers were measured; recorded, not multiplied."
+              }
+            }
+          },
+          "success_bps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "description": "Successful tasks per 10,000 requests (basis points), used for cost per successful task."
+          },
+          "wholesale": {
+            "type": "object",
+            "required": ["input_nano_usd_per_million", "cached_read_nano_usd_per_million", "cache_write_nano_usd_per_million", "output_nano_usd_per_million", "per_request_nano_usd"],
+            "additionalProperties": false,
+            "properties": {
+              "input_nano_usd_per_million": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Wholesale input rate, nano-USD per million tokens."
+              },
+              "cached_read_nano_usd_per_million": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Wholesale cached-read rate, nano-USD per million tokens."
+              },
+              "cache_write_nano_usd_per_million": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Wholesale cache-write rate, nano-USD per million tokens."
+              },
+              "output_nano_usd_per_million": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Wholesale output rate, nano-USD per million tokens."
+              },
+              "per_request_nano_usd": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Wholesale per-request fee, nano-USD."
+              },
+              "success_bps": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 10000,
+                "description": "Optional wholesale success rate in basis points; defaults to the model's success_bps."
+              }
+            }
+          }
+        }
+      }
+    },
+    "gpu_classes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "GPU classes. Every GPU class is paired with every model.",
+      "items": {
+        "type": "object",
+        "required": ["id", "warm", "scale_to_zero"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Class id, for example rtx-4070-12gb."
+          },
+          "label": {
+            "type": "string",
+            "description": "Display name; defaults to id."
+          },
+          "warm": {
+            "type": "object",
+            "required": ["hourly_nano_usd", "storage_gb", "storage_nano_usd_per_gb_month", "egress_bytes_per_request", "egress_nano_usd_per_gb"],
+            "additionalProperties": false,
+            "properties": {
+              "hourly_nano_usd": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Rented warm GPU rate, nano-USD per GPU-hour."
+              },
+              "storage_gb": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Model storage held for the warm deployment, in GB (counted once per candidate)."
+              },
+              "storage_nano_usd_per_gb_month": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Storage rate, nano-USD per GB-month."
+              },
+              "egress_bytes_per_request": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Response bytes sent per request (1 GB = 1,000,000,000 bytes)."
+              },
+              "egress_nano_usd_per_gb": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Egress rate, nano-USD per GB."
+              }
+            }
+          },
+          "scale_to_zero": {
+            "type": "object",
+            "required": ["hourly_nano_usd", "startup_seconds", "requests_per_cold_start", "storage_gb", "storage_nano_usd_per_gb_month", "egress_bytes_per_request", "egress_nano_usd_per_gb"],
+            "additionalProperties": false,
+            "properties": {
+              "hourly_nano_usd": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Serverless execution rate, nano-USD per GPU-hour of busy time."
+              },
+              "startup_seconds": {
+                "type": "number",
+                "minimum": 0,
+                "description": "Cold-start seconds paid at the serverless hourly rate."
+              },
+              "requests_per_cold_start": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Requests served per cold start; one cold start is paid per this many requests."
+              },
+              "storage_gb": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Storage held for the scale-to-zero deployment, in GB."
+              },
+              "storage_nano_usd_per_gb_month": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Storage rate, nano-USD per GB-month."
+              },
+              "egress_bytes_per_request": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Response bytes sent per request."
+              },
+              "egress_nano_usd_per_gb": {
+                "$ref": "#/$defs/nanoUsd",
+                "description": "Egress rate, nano-USD per GB."
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nanoUsd": {
+      "description": "Integer nano-USD (D1). JSON numbers above 2^53 must be written as decimal strings to survive parsing; the planner accepts both.",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        }
+      ]
+    }
+  }
+}

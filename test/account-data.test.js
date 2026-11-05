@@ -17,6 +17,7 @@ const { testDb } = require('./helpers/db');
             exempt: {
                 account_data_events: 'the ledger of requests itself: which export and deletion host applied',
                 host_index_revisions: "owner is the search-index document's owner (type/id), not a person; the row holds a revision and hash",
+                config_snapshots: 'D11 configuration revisions: created_by names the owner who changed a setting, not a person\'s account data',
             },
         });
         assert.deepStrictEqual(missing, [], `a table with a person column is neither covered nor exempted: ${missing.join(', ')}`);

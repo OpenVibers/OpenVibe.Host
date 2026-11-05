@@ -25,6 +25,7 @@ of long-running worker: it can run under a `workerUnits` unit or any GPU orchest
 | `Caddyfile` | `/health`, `/ready`, `/metrics` and API passthrough; blocks LoRA paths |
 | `examples/qwen3-4b-abliterated.manifest.example.json` | one compact abliterated Qwen 4B artifact, revision and hash **TODO** |
 | `examples/inference-cost-model.example.json` | clearly labelled placeholder inputs for the cost model |
+| `examples/inference-planner.example.json` | clearly labelled placeholder inputs for the placement planner (daily series, models, GPU classes) |
 
 ## Build
 
@@ -206,11 +207,49 @@ built-in benchmarks. Replace them with dated complete quotes and measured tok/s 
 The script uses floats for forecasting. Customer liability is Billing's integer nano-USD ledger
 (D1); this is not a settlement or quoting authority.
 
+## Placement planner (staff, flag off)
+
+`server/inference-planner.js` (schema: `scripts/inference-planner.schema.json`) turns a daily
+request series into a 30-day forecast and, for every model × GPU-class candidate, compares the
+expected monthly cost of a **warm rented GPU**, **scale-to-zero** and **wholesale** at the forecast
+and at its high band. It is a pure module: no file, socket, clock or child process, and every
+amount is integer nano-USD (BigInt).
+
+- **Forecast:** level = mean of the trailing window; each weekday factor = that weekday's mean /
+  the level; a future day = level × factor. The band is ±1.96 × the pooled residual standard
+  deviation × √horizon, assuming independent daily residuals.
+- **Warm:** 730 h × the GPU hourly rate for each GPU the busy time needs, plus storage and egress.
+  The idle burn is the part of the rental not spent on busy requests.
+- **Scale-to-zero:** busy milliseconds at the serverless rate, one cold start every
+  `requests_per_cold_start`, plus storage and egress; idle is free.
+- **Wholesale:** per-million token rates plus the per-request fee, all-in.
+- **Recommendation:** the cheapest monthly cost, with a tie preferring wholesale, then
+  scale-to-zero — never a rental. If the forecast or high-band cost is above
+  `HOST_INFERENCE_BUDGET_NANO_USD` the row is marked **needs the owner's budget**; unset means 0.
+
+The staff page is `GET /catalog/inference` and the JSON is
+`GET /api/v1/catalog/inference-planner`. Both are mounted only when `HOST_INFERENCE_PLANNER=on`
+(default off), and both use Host's existing staff gate (`staff.site.configure`/role) and catalog
+page style. There is no action endpoint: nothing here starts, stops or rents a GPU. The owner
+approves every rental separately.
+
+```sh
+HOST_INFERENCE_PLANNER=on \
+HOST_INFERENCE_PLANNER_INPUT=workers/llm-inference/examples/inference-planner.example.json \
+HOST_INFERENCE_BUDGET_NANO_USD=0 \
+node server/index.js
+```
+
+The example file is **example, not a quote**: every price and throughput is a placeholder. The
+input may be JSON now; the AI usage feed is not connected.
+
 ## Tests
 
 ```sh
 node test/inference-artifact-verify.test.js
 node test/inference-cost-model.test.js
+node test/inference-planner.test.js
+node test/inference-planner-http.test.js
 # or, through the repository runner:
 npm test -- inference
 ```
@@ -218,7 +257,11 @@ npm test -- inference
 The artifact test covers a correct download, a wrong hash (refused, no file left), a `TODO`
 placeholder, a traversal filename, a local URL without the smoke-test opt-in, a cached file, and
 the entrypoint's bounded-env refusals. The cost-model test checks the arithmetic against numbers
-worked out by hand, invalid inputs and the checked-in example.
+worked out by hand, invalid inputs and the checked-in example. The planner test covers the
+forecast and its band on fixtures, integer nano-USD costs, hand-computed warm/scale/wholesale
+break-evens, the budget lock (including a high band that crosses it), validation, and asserts that
+the module has no network call, process spawn or clock. The HTTP test covers flag off (no route),
+the staff gate, the page and JSON, and a missing input.
 
 ## Not done here
 
