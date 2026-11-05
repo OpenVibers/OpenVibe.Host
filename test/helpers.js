@@ -1,7 +1,7 @@
 'use strict';
 /**
  * A standard fake host with the shapes of the real estate: Live (socket-activated, /api/streams),
- * Media (recordings counted in PostgreSQL), Tools (several packages and units), Sites (static build +
+ * Media (recordings counted by its /api/ready, ffmpeg and browser chunk sessions), Tools (several packages and units), Sites (static build +
  * nginx vhosts, no units) and Events (SSE, drain policy "report").
  */
 const path = require('path');
@@ -60,7 +60,7 @@ function inventoryDoc() {
                 env: { required: 'from-example' },
                 port: 4100,
                 ready: { url: 'http://127.0.0.1:4100/healthz', timeoutSeconds: 30 },
-                protected: { kind: 'postgresql-count', database: 'ov_media', sql: 'SELECT count(*) AS n FROM vods WHERE is_recording = 1', label: 'recordings in progress' },
+                protected: { kind: 'http-json-count', url: 'http://127.0.0.1:4100/api/ready', field: 'recordings_in_progress', addFields: ['chunked_recordings_in_progress'], label: 'recordings in progress' },
                 databases: [{ name: 'media', engine: 'postgresql', database: 'ov_media' }],
                 lifecycle: lifecycleDoc({ liveness: { endpoint: '/healthz', means: 'the process answers HTTP and reads its database' }, shutdown: { signal: 'SIGTERM', deadlineSeconds: 70, drains: ['recordings stopped', 'HTTP server closed'] } }),
             },
@@ -103,6 +103,8 @@ function scenario() {
     host.badShas = new Set();
     host.liveStreams = [];
     host.recording = 0;
+    host.chunkedRecording = 0;
+    host.mediaReportChunked = true;
     host.sseConnections = 0;
     host.unitRepo = {};
 
@@ -181,6 +183,13 @@ function scenario() {
     host.http.set('http://127.0.0.1:3000/api/ready', readyFor('openvibe-live.service'));
     host.http.set('http://127.0.0.1:3000/api/streams', () => ({ status: 200, body: { streams: host.liveStreams } }));
     host.http.set('http://127.0.0.1:4100/healthz', readyFor('openvibe-media.service'));
+    host.http.set('http://127.0.0.1:4100/api/ready', () => {
+        const u = host.units.get('openvibe-media.service');
+        if (!u || u.active !== 'active') return { status: 502 };
+        const body = { status: 'ready', recordings_in_progress: host.recording };
+        if (host.mediaReportChunked) body.chunked_recordings_in_progress = host.chunkedRecording;
+        return { status: 200, body };
+    });
     host.http.set('http://127.0.0.1:4001/api/health', readyFor('openvibe-tools.service'));
     host.http.set('http://127.0.0.1:4300/api/ready', readyFor('openvibe-events.service'));
     host.psqlHandler = (db, sql) => (/is_recording/.test(sql) ? [{ n: host.recording }] : undefined);
