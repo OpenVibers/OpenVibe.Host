@@ -120,19 +120,45 @@ runTests([
         assert.deepStrictEqual(host.restarts(), []);
     }),
 
-    test('refuses to restart Media while a recording is in progress (read-only PostgreSQL query)', async () => {
+    test('refuses to restart Media while an ffmpeg or chunked browser recording is in progress', async () => {
         const host = scenario();
         const from = host.repo('media').head;
         push(host, 'media', { 'server/index.js': 'media2();' });
         host.recording = 1;
+        host.chunkedRecording = 2;
+        const r = await host.cli('deploy', 'media');
+        assert.strictEqual(r.code, 5, r.out);
+        assert.match(r.out, /3 recordings in progress — refusing/);
+        assert.strictEqual(host.repo('media').head, from);
+        assert.deepStrictEqual(host.restarts(), []);
+        assert.ok(host.calls.some((c) => c.cmd === 'curl' && c.args[0] === 'http://127.0.0.1:4100/api/ready'), 'the probe asks Media /api/ready, not PostgreSQL');
+        assert.deepStrictEqual(host.psqlCalls.filter((c) => c.database === 'ov_media'), [], 'nothing queries the media database');
+    }),
+
+    test('falls back to recordings_in_progress when Media does not report chunk sessions yet', async () => {
+        const host = scenario();
+        const from = host.repo('media').head;
+        push(host, 'media', { 'server/index.js': 'media2();' });
+        host.recording = 1;
+        host.chunkedRecording = 2;
+        host.mediaReportChunked = false;   // an older Media: the additive field is absent
         const r = await host.cli('deploy', 'media');
         assert.strictEqual(r.code, 5, r.out);
         assert.match(r.out, /1 recordings in progress — refusing/);
         assert.strictEqual(host.repo('media').head, from);
         assert.deepStrictEqual(host.restarts(), []);
-        const q = host.psqlCalls.find((c) => c.database === 'ov_media');
-        assert.strictEqual(q.as, 'postgres');
-        assert.match(q.sql, /^SELECT count\(\*\) AS n FROM vods WHERE is_recording = 1$/);
+    }),
+
+    test('a malformed chunked count is unknown (treated as active), never zero', async () => {
+        const host = scenario();
+        const from = host.repo('media').head;
+        push(host, 'media', { 'server/index.js': 'media2();' });
+        host.chunkedRecording = 'many';
+        const r = await host.cli('deploy', 'media');
+        assert.strictEqual(r.code, 5, r.out);
+        assert.match(r.out, /recordings in progress: unknown \(no number at "chunked_recordings_in_progress"\) — treated as active/);
+        assert.strictEqual(host.repo('media').head, from);
+        assert.deepStrictEqual(host.restarts(), []);
     }),
 
     test('Media deploys once no recording is running', async () => {

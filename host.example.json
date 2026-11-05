@@ -338,6 +338,9 @@
         "kind": "http-json-count",
         "url": "http://127.0.0.1:4100/api/ready",
         "field": "recordings_in_progress",
+        "addFields": [
+          "chunked_recordings_in_progress"
+        ],
         "label": "recordings in progress"
       },
       "drain": {

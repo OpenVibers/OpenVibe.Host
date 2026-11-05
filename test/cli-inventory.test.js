@@ -25,8 +25,8 @@ runTests([
         assert.strictEqual(inv.services.live.socketUnit, 'openvibe-live.socket');
         assert.ok(!inv.services.live.units.includes('openvibe-live.socket'));
         assert.strictEqual(inv.services.live.protected.url, 'http://127.0.0.1:3000/api/streams');
-        // Media on PostgreSQL (ADR-035): recordings in progress come from its /api/ready, through PostgreSQL.
-        assert.deepStrictEqual([inv.services.media.protected.kind, inv.services.media.protected.field], ['http-json-count', 'recordings_in_progress']);
+        // Media: its /api/ready reports ffmpeg and chunked browser recordings in two fields; the probe sums them.
+        assert.deepStrictEqual([inv.services.media.protected.kind, inv.services.media.protected.field, inv.services.media.protected.addFields], ['http-json-count', 'recordings_in_progress', ['chunked_recordings_in_progress']]);
         // Every service on the host is deployed by a strategy (WS-N task 11): Games by pnpm-build.
         assert.ok(Object.values(inv.services).every((s) => s.managed), 'every service is managed');
         assert.deepStrictEqual(Object.fromEntries(['live', 'tools', 'games', 'openre', 'network'].map((id) => [id, inv.services[id].strategy])), { live: 'release-layout', tools: 'multi-app', games: 'pnpm-build', openre: 'release-layout', network: 'git-checkout' });
@@ -74,6 +74,8 @@ runTests([
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', nginx: { skipVhosts: ['../../etc/passwd'] } } } }), /vhost file names/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', ready: { url: 'http://evil.example/ready' } } } }), /loopback/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', protected: { kind: 'postgresql-count', database: 'ov_x', sql: 'DELETE FROM vods' } } } }), /SELECT/);
+        assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', protected: { kind: 'postgresql-count', database: 'ov_x', sql: 'SELECT 1 AS n', addFields: ['n'] } } } }), /addFields/);
+        assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', protected: { kind: 'http-json-count', url: 'http://127.0.0.1:4100/api/ready', field: 'n', addFields: 'n' } } } }), /addFields/);
         assert.throws(() => normalise({ services: { 'X Y': { ...base, repo: '/opt/x' } } }), /service id/);
         assert.throws(() => normalise({ services: { x: { ...base, repo: '/opt/x', unitSources: { 'a.service': '../../etc/shadow' } } } }), /inside the checkout/);
     }),
