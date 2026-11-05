@@ -223,13 +223,21 @@ function method(hasAffiliate) {
 </section>`;
 }
 
-function catalog({ result, query, providers, currencies }) {
+function catalog({ result, query, providers, currencies, dedicated = [] }) {
     const plans = result.plans;
     const filtered = Object.keys(query || {}).some((k) => k !== 'sort' && k !== 'cursor' && query[k]);
     const empty = plans.length ? '' : filtered
         ? `<div class="hc-empty"><p><strong>No plan matches these filters.</strong></p><p>${link('/catalog', 'Clear the filters')} or widen one of them.</p></div>`
         : `<div class="hc-empty"><p><strong>The catalog is filling up.</strong></p><p>Plans arrive from providers' official APIs as each source is checked and enabled, and from staff entries with their source pages.</p></div>`;
     const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog?${new URLSearchParams({ ...query, cursor: result.next_cursor })}`, 'Next 50 plans →', 'button hc-button-quiet')}</p>` : '';
+    // The catalog filter already has a Dedicated kind; when there are dedicated plans, the comparison page also
+    // shows them as their own section, with the same table. A kind=dedicated view is that table, so no second copy.
+    const dedicatedSection = dedicated.length ? `<section aria-labelledby="hc-dedicated-h">
+<h2 id="hc-dedicated-h">Dedicated servers compared</h2>
+<p class="hc-dim">Bare-metal plans from providers' official catalogs, with the same columns and the day each price was checked.</p>
+${planTable(dedicated.slice(0, 10), { caption: `Dedicated servers, lowest price first${dedicated.length > 10 ? ' (10 shown)' : ''}` })}
+${dedicated.length > 10 ? `<p class="hc-more">${link('/catalog?kind=dedicated', `All ${dedicated.length} dedicated servers →`, 'button hc-button-quiet')}</p>` : ''}
+</section>` : '';
     return `<header class="hc-head">
 <p class="hc-eyebrow">OpenVibe.Host · hosting compared · alpha</p>
 <h1>Compare hosting plans</h1>
@@ -238,6 +246,7 @@ function catalog({ result, query, providers, currencies }) {
 ${filters(query, providers, currencies)}
 ${planTable(plans, { caption: `${plans.length}${result.next_cursor ? '+' : ''} plan${plans.length === 1 ? '' : 's'}, sorted by ${(SORTS.find(([v]) => v === (query.sort || 'price')) || SORTS[0])[1].toLowerCase()}` })}
 ${empty}${next}
+${dedicatedSection}
 <p class="hc-links">${link('/catalog/promos', 'Current promotions')} · ${link('/catalog/providers', 'All providers')}</p>
 ${method(plans.some((p) => p.affiliate_url))}`;
 }

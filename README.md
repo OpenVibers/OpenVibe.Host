@@ -18,10 +18,13 @@ OpenVibe's own static hosting moved to OpenVibe.Space ([below](#static-hosting-m
 
 - **Where plans come from.**
   - OpenVibe.Sources items in category `hosting` (official provider APIs), read with `openvibe-publishing/ingest`: an event consumer at `/internal/catalog/events` plus a cursor pull. The switch is `HOST_CATALOG_INGEST` (default off) with `HOST_CATALOG_SOURCES_URL`.
-  - The mapping is `server/catalog/mapping.js`, keyed by source: `linode-types`, `aws-lightsail-bundles` and `vultr-plans`.
-    Lightsail's price list gives numbers as text and prices by the hour; a bundle's monthly price is its hourly rate for
-    744 hours (AWS bills up to that cap), and IPv6-only bundles show 0 IPv4 addresses. Vultr's API host disallows
-    robots, so that Sources seed stays disabled.
+  - The mapping is `server/catalog/mapping.js`, keyed by source: `linode-types`, `aws-lightsail-bundles` and `vultr-plans`,
+    plus `ovhcloud-vps` and `ovhcloud-baremetal` and Azure. Lightsail's price list gives numbers as text and prices by
+    the hour; a bundle's monthly price is its hourly rate for 744 hours (AWS bills up to that cap), and IPv6-only
+    bundles show 0 IPv4 addresses. OVHcloud's dedicated catalog keeps a plan's default memory, storage and bandwidth
+    addons apart from the plan, so the Sources mapping joins each default addon to its own product; Host multiplies the
+    socket count by the cores and one disk's size by the disk count. Vultr's API host disallows robots, so that
+    Sources seed stays disabled.
   - Staff entries, which must name their source URL.
   - Nothing is estimated. A value the source does not state is shown as Unknown.
 - **Offers** (`/catalog/offers`, `GET /api/v1/catalog/offers`, a block on the front page). What providers post on LowEndSpirit's Offers board, from its public feed through Sources (`lowendspirit-offers`; `server/catalog/offers.js`). LowEndTalk's and LowEndBox's feeds (`lowendtalk-offers`, `lowendbox-posts`) answer 403 to the production host's network (2026-10-18), so those sources are off. Host keeps the headline, poster, date and link, and the cheapest "per month" or "per year" price the headline (or the post's opening) states, as stated, with its monthly equivalent (a yearly price divided by 12). LowEndBox editorials and giveaways are not offers; a post the source removes is hidden; offers older than 120 days drop off. Newest first, or cheapest a month within one currency (`sort=price` needs `currency`: nothing is converted); filters `currency`, `max_monthly`, `source`, `priced=1`.

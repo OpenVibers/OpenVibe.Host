@@ -65,6 +65,32 @@ const item = (key, id, fields, time = at, title = id) => ({ id: `itm_${'0'.repea
             const row = (await catalog.plans({ provider: 'ovhcloud' })).plans[0];
             assert.deepStrictEqual([row.name, Number(row.price_monthly), row.unmetered, Number(row.port_mbps), row.bandwidth_gb], ['VPS-1 2027', 5.35, true, 500, null]);
         });
+        await check('an OVHcloud dedicated plan maps from the source join: sockets multiply cores, one disk size times the count, and the installation fee is kept', async () => {
+            const base = {
+                product: '24adv01', currency: 'USD', range: 'advance',
+                cpu_cores: 6, cpu_sockets: 1, cpu_model: 'EPYC 4244P', cpu_brand: 'AMD', memory_gb: 32,
+                disk_capacity_gb: 960, disk_count: 2, disk_interface: 'NVMe', disk_technology: 'SSD',
+                bandwidth_mbps: 3000, bandwidth_limit: 0, price_monthly: 14700000000, setup_fee: 14700000000,
+                locations: ['vin', 'hil'],
+            };
+            const p = mapItem(item('ovhcloud-baremetal', '24adv01-v3-us', base, at, 'ADVANCE-1 | AMD EPYC 4244P'));
+            assert.deepStrictEqual([p.provider.slug, p.name, p.kind, p.vcpu, p.ram_mb, p.disk_gb, p.disk_type, p.bandwidth_gb, p.unmetered, p.port_mbps, p.price_monthly, p.price_hourly, p.setup_fee, p.locations, p.source_url],
+                ['ovhcloud', 'ADVANCE-1 | AMD EPYC 4244P', 'dedicated', 6, 32768, 1920, 'nvme', null, true, 3000, 147, null, 147, ['vin', 'hil'], 'https://us.ovhcloud.com/bare-metal/prices/']);
+            const dual = mapItem(item('ovhcloud-baremetal', 'dual', { ...base, cpu_cores: 24, cpu_sockets: 2, memory_gb: 256, disk_capacity_gb: 3840, disk_count: 6, price_monthly: 165500000000, setup_fee: 165500000000 }));
+            assert.deepStrictEqual([dual.vcpu, dual.ram_mb, dual.disk_gb, dual.unmetered, dual.price_monthly, dual.setup_fee], [48, 262144, 23040, true, 1655, 1655]);
+            // A legacy HG product states 28 cores with no socket count: one socket, not an invented second one.
+            const hg = mapItem(item('ovhcloud-baremetal', 'hg', { ...base, cpu_cores: 28, cpu_sockets: null, setup_fee: 0 }));
+            assert.deepStrictEqual([hg.vcpu, hg.setup_fee], [28, 0]);
+            // A Scale plan sold with no drives states 0 and 0; the comparison shows 0 GB, not Unknown.
+            const bare = mapItem(item('ovhcloud-baremetal', 'bare', { ...base, disk_capacity_gb: 0, disk_count: 0 }));
+            assert.deepStrictEqual([bare.disk_gb, bare.disk_type], [0, null]);
+            assert.throws(() => mapItem(item('ovhcloud-baremetal', 'x', { ...base, currency: 'EUR' })), /not in USD/);
+            assert.throws(() => mapItem(item('ovhcloud-baremetal', 'x', { ...base, price_monthly: null })), /missing monthly price/);
+            assert.strictEqual(mapItem(item('ovhcloud-baremetal', 'x', { ...base, price_monthly: 0 })), null, 'a zero price is not listed');
+            await catalog.applyItem(item('ovhcloud-baremetal', '24adv01-v3-us', base, at, 'ADVANCE-1 | AMD EPYC 4244P'));
+            const row = (await catalog.plans({ provider: 'ovhcloud', kind: 'dedicated' })).plans[0];
+            assert.deepStrictEqual([row.name, row.kind, Number(row.price_monthly), Number(row.setup_fee), row.source_key, row.locations], ['ADVANCE-1 | AMD EPYC 4244P', 'dedicated', 147, 147, 'ovhcloud-baremetal', ['vin', 'hil']]);
+        });
         await check('upsert preserves first seen and records only a changed price', async () => {
             const raw = { vcpu_count: 1, ram: 1024, disk: 25, bandwidth: 1000, monthly_cost: 5, hourly_cost: 0.007, type: 'vc2' };
             await catalog.applyItem(item('vultr-plans', 'vc2-1c-1gb', raw));

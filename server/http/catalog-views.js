@@ -84,10 +84,16 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
     }
 
     async function index(query = {}) {
-        const [result, providers, currencies] = await Promise.all([catalog.plans(query), catalog.providers(), catalog.currencies()]);
+        // The comparison table is whatever the filters ask for; dedicated plans also get their own section, unless
+        // the reader already asked for that kind (then the table itself is the dedicated view).
+        const dedicatedQuery = query.kind ? null : { kind: 'dedicated', currency: query.currency || 'USD' };
+        const [result, providers, currencies, dedicated] = await Promise.all([
+            catalog.plans(query), catalog.providers(), catalog.currencies(),
+            dedicatedQuery ? catalog.plans(dedicatedQuery).then((r) => r.plans) : Promise.resolve([]),
+        ]);
         return {
             title: 'Compare hosting plans',
-            body: render.catalog({ result, query, providers, currencies }),
+            body: render.catalog({ result, query, providers, currencies, dedicated }),
             indexable: !Object.keys(query).length,
             description: 'Compare cloud, VPS and dedicated hosting plans: price per month, per vCPU and per GB, each with the day it was checked and its source.',
             jsonLd: render.jsonLd.catalog(baseUrl, result.plans),
