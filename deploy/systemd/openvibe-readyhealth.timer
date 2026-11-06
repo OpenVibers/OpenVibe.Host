@@ -1,0 +1,10 @@
+[Unit]
+Description=Check that every OpenVibe service's ready URL answers, every 5 minutes (docs/ready-health.md)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
