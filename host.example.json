@@ -339,9 +339,11 @@
         "url": "http://127.0.0.1:4100/api/ready",
         "field": "recordings_in_progress",
         "addFields": [
-          "chunked_recordings_in_progress"
+          "chunked_recordings_in_progress",
+          "recordings_untracked_in_progress",
+          "uploads_in_progress"
         ],
-        "label": "recordings in progress"
+        "label": "recordings and uploads in progress"
       },
       "drain": {
         "policy": "refuse",

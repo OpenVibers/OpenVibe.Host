@@ -128,7 +128,7 @@ runTests([
         host.chunkedRecording = 2;
         const r = await host.cli('deploy', 'media');
         assert.strictEqual(r.code, 5, r.out);
-        assert.match(r.out, /3 recordings in progress — refusing/);
+        assert.match(r.out, /3 recordings and uploads in progress — refusing/);
         assert.strictEqual(host.repo('media').head, from);
         assert.deepStrictEqual(host.restarts(), []);
         assert.ok(host.calls.some((c) => c.cmd === 'curl' && c.args[0] === 'http://127.0.0.1:4100/api/ready'), 'the probe asks Media /api/ready, not PostgreSQL');
@@ -144,7 +144,7 @@ runTests([
         host.mediaReportChunked = false;   // an older Media: the additive field is absent
         const r = await host.cli('deploy', 'media');
         assert.strictEqual(r.code, 5, r.out);
-        assert.match(r.out, /1 recordings in progress — refusing/);
+        assert.match(r.out, /1 recordings and uploads in progress — refusing/);
         assert.strictEqual(host.repo('media').head, from);
         assert.deepStrictEqual(host.restarts(), []);
     }),
@@ -156,9 +156,73 @@ runTests([
         host.chunkedRecording = 'many';
         const r = await host.cli('deploy', 'media');
         assert.strictEqual(r.code, 5, r.out);
-        assert.match(r.out, /recordings in progress: unknown \(no number at "chunked_recordings_in_progress"\) — treated as active/);
+        assert.match(r.out, /recordings and uploads in progress: unknown \(no number at "chunked_recordings_in_progress"\) — treated as active/);
         assert.strictEqual(host.repo('media').head, from);
         assert.deepStrictEqual(host.restarts(), []);
+    }),
+
+    test('refuses to restart Media while an object upload is in progress', async () => {
+        const host = scenario();
+        const from = host.repo('media').head;
+        push(host, 'media', { 'server/index.js': 'media2();' });
+        host.uploadInProgress = 2;
+        const r = await host.cli('deploy', 'media');
+        assert.strictEqual(r.code, 5, r.out);
+        assert.match(r.out, /2 recordings and uploads in progress — refusing/);
+        assert.strictEqual(host.repo('media').head, from);
+        assert.deepStrictEqual(host.restarts(), []);
+    }),
+
+    test('an unanswerable upload count is unknown (treated as active), never zero', async () => {
+        const host = scenario();
+        const from = host.repo('media').head;
+        push(host, 'media', { 'server/index.js': 'media2();' });
+        host.uploadInProgress = null;   // Media reports the field but cannot answer it
+        const r = await host.cli('deploy', 'media');
+        assert.strictEqual(r.code, 5, r.out);
+        assert.match(r.out, /recordings and uploads in progress: unknown \(unknown at "uploads_in_progress"\) — treated as active/);
+        assert.strictEqual(host.repo('media').head, from);
+        assert.deepStrictEqual(host.restarts(), []);
+    }),
+
+    test('--wait-idle holds the Media restart while an upload is in progress, then deploys', async () => {
+        const host = scenario();
+        const to = push(host, 'media', { 'server/index.js': 'media2();' });
+        let polls = 0;
+        host.http.set('http://127.0.0.1:4100/api/ready', () => {
+            polls += 1;
+            const u = host.units.get('openvibe-media.service');
+            if (!u || u.active !== 'active') return { status: 502 };
+            return { status: 200, body: { status: 'ready', recordings_in_progress: 0, chunked_recordings_in_progress: 0, recordings_untracked_in_progress: 0, uploads_in_progress: polls < 4 ? 1 : 0 } };
+        });
+        const r = await host.cli('deploy', 'media', '--wait-idle');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.match(r.out, /holding the restart/);
+        assert.match(r.out, /idle for 2 checks — proceeding/);
+        assert.strictEqual(host.repo('media').head, to);
+        assert.deepStrictEqual(host.restarts(), ['openvibe-media.service']);
+    }),
+
+    test('--force restarts Media with an upload in progress, loudly, and records it', async () => {
+        const host = scenario();
+        push(host, 'media', { 'server/index.js': 'media2();' });
+        host.uploadInProgress = 1;
+        const r = await host.cli('deploy', 'media', '--force');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.match(r.out, /!!! --force/);
+        assert.match(r.out, /1 recordings and uploads in progress WILL BE DROPPED/);
+        const [rec] = await releases.list(host.exec, host.inv, 'media');
+        assert.strictEqual(rec.forced, true);
+    }),
+
+    test('an older Media that reports no upload counts still deploys', async () => {
+        const host = scenario();
+        const to = push(host, 'media', { 'server/index.js': 'media2();' });
+        host.mediaReportUploads = false;   // the additive fields are absent
+        const r = await host.cli('deploy', 'media');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.strictEqual(host.repo('media').head, to);
+        assert.deepStrictEqual(host.restarts(), ['openvibe-media.service']);
     }),
 
     test('Media deploys once no recording is running', async () => {
