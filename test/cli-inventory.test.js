@@ -25,8 +25,9 @@ runTests([
         assert.strictEqual(inv.services.live.socketUnit, 'openvibe-live.socket');
         assert.ok(!inv.services.live.units.includes('openvibe-live.socket'));
         assert.strictEqual(inv.services.live.protected.url, 'http://127.0.0.1:3000/api/streams');
-        // Media: its /api/ready reports ffmpeg and chunked browser recordings in two fields; the probe sums them.
-        assert.deepStrictEqual([inv.services.media.protected.kind, inv.services.media.protected.field, inv.services.media.protected.addFields], ['http-json-count', 'recordings_in_progress', ['chunked_recordings_in_progress']]);
+        // Media: its /api/ready reports ffmpeg recordings, chunked browser recordings, the recordings the
+        // database still holds and the uploads in flight in four fields; the probe sums them.
+        assert.deepStrictEqual([inv.services.media.protected.kind, inv.services.media.protected.field, inv.services.media.protected.addFields], ['http-json-count', 'recordings_in_progress', ['chunked_recordings_in_progress', 'recordings_untracked_in_progress', 'uploads_in_progress']]);
         // Every service on the host is deployed by a strategy (WS-N task 11): Games by pnpm-build.
         assert.ok(Object.values(inv.services).every((s) => s.managed), 'every service is managed');
         assert.deepStrictEqual(Object.fromEntries(['live', 'tools', 'games', 'openre', 'network'].map((id) => [id, inv.services[id].strategy])), { live: 'release-layout', tools: 'multi-app', games: 'pnpm-build', openre: 'release-layout', network: 'git-checkout' });
@@ -113,7 +114,7 @@ runTests([
         const r = await host.cli('status');
         assert.strictEqual(r.code, 0, r.out);
         assert.match(r.out, /^live +[0-9a-f]{12} ready +openvibe-live=active socket=active live streams=1$/m);
-        assert.match(r.out, /^media .* recordings in progress=2$/m);
+        assert.match(r.out, /^media .* recordings and uploads in progress=2$/m);
         assert.match(r.out, /^tools .*openvibe-tools=active openvibe-tools-maps=active/m);
         assert.match(r.out, /^events .*NOT READY \(502\)/m);
         assert.match(r.out, /^sites .*\(no units\)/m);

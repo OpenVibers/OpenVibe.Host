@@ -60,7 +60,7 @@ function inventoryDoc() {
                 env: { required: 'from-example' },
                 port: 4100,
                 ready: { url: 'http://127.0.0.1:4100/healthz', timeoutSeconds: 30 },
-                protected: { kind: 'http-json-count', url: 'http://127.0.0.1:4100/api/ready', field: 'recordings_in_progress', addFields: ['chunked_recordings_in_progress'], label: 'recordings in progress' },
+                protected: { kind: 'http-json-count', url: 'http://127.0.0.1:4100/api/ready', field: 'recordings_in_progress', addFields: ['chunked_recordings_in_progress', 'recordings_untracked_in_progress', 'uploads_in_progress'], label: 'recordings and uploads in progress' },
                 databases: [{ name: 'media', engine: 'postgresql', database: 'ov_media' }],
                 lifecycle: lifecycleDoc({ liveness: { endpoint: '/healthz', means: 'the process answers HTTP and reads its database' }, shutdown: { signal: 'SIGTERM', deadlineSeconds: 70, drains: ['recordings stopped', 'HTTP server closed'] } }),
             },
@@ -104,7 +104,10 @@ function scenario() {
     host.liveStreams = [];
     host.recording = 0;
     host.chunkedRecording = 0;
+    host.untrackedRecording = 0;
+    host.uploadInProgress = 0;
     host.mediaReportChunked = true;
+    host.mediaReportUploads = true;
     host.sseConnections = 0;
     host.unitRepo = {};
 
@@ -188,6 +191,10 @@ function scenario() {
         if (!u || u.active !== 'active') return { status: 502 };
         const body = { status: 'ready', recordings_in_progress: host.recording };
         if (host.mediaReportChunked) body.chunked_recordings_in_progress = host.chunkedRecording;
+        if (host.mediaReportUploads) {
+            body.recordings_untracked_in_progress = host.untrackedRecording;
+            body.uploads_in_progress = host.uploadInProgress;
+        }
         return { status: 200, body };
     });
     host.http.set('http://127.0.0.1:4001/api/health', readyFor('openvibe-tools.service'));
