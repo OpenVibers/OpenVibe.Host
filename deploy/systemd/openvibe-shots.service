@@ -1,0 +1,19 @@
+[Unit]
+Description=OpenVibe screenshot pass: each public page at two viewports, stored in OpenVibe.Media (plan L9)
+Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/operator-alerts.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Root reads the inventory and uploads the PNGs; Chrome runs as the unprivileged ovcheck account
+# (runuser), never as root. The pages are the ones the inventory lists for each service ("/" when it
+# lists none). The Media credentials are in /etc/openvibe/host.env (OV_OAUTH_CLIENT_SECRET).
+User=root
+ExecStart=/usr/local/bin/ovhost shots
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
+Nice=10
+TimeoutStartSec=30min
+PrivateTmp=true
+ProtectSystem=full

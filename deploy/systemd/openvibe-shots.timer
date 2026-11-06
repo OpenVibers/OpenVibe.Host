@@ -1,0 +1,10 @@
+[Unit]
+Description=Capture the public pages of every service every six hours (plan L9, devblog §3.3)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=6h
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
