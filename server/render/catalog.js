@@ -4,7 +4,8 @@
  * The hosting catalog's pages (plan T20 step 3: hosting compared). Server-rendered, complete without JavaScript:
  *
  *   front({ plans, providers, promos, stats, domains })   the front page of openvibe.host (`domains`: render/domains.js frontSection)
- *   catalog({ result, query, providers })        /catalog: the filterable comparison table
+ *   catalog({ result, query, providers, currencies, dedicated })   /catalog: the filterable comparison table, and the
+ *                                                dedicated plans' own section (`dedicated`: { plans, total })
  *   provider(p)                                  /catalog/providers/:slug
  *   plan(p)                                      /catalog/plans/:id
  *   promos(list)                                 /catalog/promos
@@ -223,7 +224,7 @@ function method(hasAffiliate) {
 </section>`;
 }
 
-function catalog({ result, query, providers, currencies, dedicated = [] }) {
+function catalog({ result, query, providers, currencies, dedicated = { plans: [], total: 0 } }) {
     const plans = result.plans;
     const filtered = Object.keys(query || {}).some((k) => k !== 'sort' && k !== 'cursor' && query[k]);
     const empty = plans.length ? '' : filtered
@@ -232,11 +233,11 @@ function catalog({ result, query, providers, currencies, dedicated = [] }) {
     const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog?${new URLSearchParams({ ...query, cursor: result.next_cursor })}`, 'Next 50 plans →', 'button hc-button-quiet')}</p>` : '';
     // The catalog filter already has a Dedicated kind; when there are dedicated plans, the comparison page also
     // shows them as their own section, with the same table. A kind=dedicated view is that table, so no second copy.
-    const dedicatedSection = dedicated.length ? `<section aria-labelledby="hc-dedicated-h">
+    const dedicatedSection = dedicated.plans.length ? `<section aria-labelledby="hc-dedicated-h">
 <h2 id="hc-dedicated-h">Dedicated servers compared</h2>
 <p class="hc-dim">Bare-metal plans from providers' official catalogs, with the same columns and the day each price was checked.</p>
-${planTable(dedicated.slice(0, 10), { caption: `Dedicated servers, lowest price first${dedicated.length > 10 ? ' (10 shown)' : ''}` })}
-${dedicated.length > 10 ? `<p class="hc-more">${link('/catalog?kind=dedicated', `All ${dedicated.length} dedicated servers →`, 'button hc-button-quiet')}</p>` : ''}
+${planTable(dedicated.plans.slice(0, 10), { caption: `Dedicated servers, lowest price first${dedicated.plans.length > 10 ? ' (10 shown)' : ''}` })}
+${dedicated.plans.length > 10 ? `<p class="hc-more">${link('/catalog?kind=dedicated', `All ${dedicated.total} dedicated servers →`, 'button hc-button-quiet')}</p>` : ''}
 </section>` : '';
     return `<header class="hc-head">
 <p class="hc-eyebrow">OpenVibe.Host · hosting compared · alpha</p>

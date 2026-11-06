@@ -234,13 +234,16 @@ function createCatalog({ store, community = null, log = console, indexnow = null
             const n = Number(query[key]); if (!Number.isFinite(n) || n < 0 || query[key] === '') invalid(`Invalid ${key}`);
             where += ` AND ${col} ${key === 'max_price' ? '<=' : '>='} ?`; args.push(n);
         }
-        // The stale cutoff is the last of the ORDER BY placeholders, so it goes after the filters.
-        if (sorts[sort].includes('?')) args.push(freshCutoff(store.now()));
+        // The stale cutoff is the last of the ORDER BY placeholders, so it goes after the filters: the count below
+        // has no ORDER BY and takes the filter arguments alone.
+        const order = sorts[sort].includes('?') ? [...args, freshCutoff(store.now())] : args;
         const offset = query.cursor == null ? 0 : Number(query.cursor);
         if (!Number.isSafeInteger(offset) || offset < 0) invalid('Invalid cursor');
         // Affiliation is deliberately absent from the ORDER BY expression.
-        const rows = await db.prepare(`SELECT p.*, v.slug AS provider_slug, v.name AS provider_name, v.affiliate_url, v.affiliate_note FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${where} ORDER BY ${sorts[sort]} ASC NULLS LAST, p.id ASC LIMIT 51 OFFSET ${offset}`).all(...args);
-        return { plans: rows.slice(0, 50).map(planOut), next_cursor: rows.length > 50 ? String(offset + 50) : null };
+        const rows = await db.prepare(`SELECT p.*, v.slug AS provider_slug, v.name AS provider_name, v.affiliate_url, v.affiliate_note FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${where} ORDER BY ${sorts[sort]} ASC NULLS LAST, p.id ASC LIMIT 51 OFFSET ${offset}`).all(...order);
+        // Every plan the filters match, not just the 50 a page carries, so a page can say how many there are.
+        const counted = await db.prepare(`SELECT COUNT(*) AS n FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE ${where}`).get(...args);
+        return { plans: rows.slice(0, 50).map(planOut), next_cursor: rows.length > 50 ? String(offset + 50) : null, total: Number(counted.n) || 0 };
     }
     async function plan(id) {
         const p = await db.prepare("SELECT p.*, v.slug AS provider_slug, v.name AS provider_name, v.homepage_url, v.affiliate_url, v.affiliate_note FROM catalog_plans p JOIN catalog_providers v ON v.id = p.provider_id WHERE p.id = ? AND p.status = 'active' AND v.status = 'active'").get(id);

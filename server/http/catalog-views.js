@@ -89,7 +89,7 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
         const dedicatedQuery = query.kind ? null : { kind: 'dedicated', currency: query.currency || 'USD' };
         const [result, providers, currencies, dedicated] = await Promise.all([
             catalog.plans(query), catalog.providers(), catalog.currencies(),
-            dedicatedQuery ? catalog.plans(dedicatedQuery).then((r) => r.plans) : Promise.resolve([]),
+            dedicatedQuery ? catalog.plans(dedicatedQuery).then((r) => ({ plans: r.plans, total: r.total })) : Promise.resolve({ plans: [], total: 0 }),
         ]);
         return {
             title: 'Compare hosting plans',
