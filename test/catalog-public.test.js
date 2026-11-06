@@ -1,5 +1,6 @@
 'use strict';
 const assert = require('assert');
+const render = require('../server/render/catalog');
 const { boot, check, done } = require('./helpers/boot');
 (async () => {
     const t = await boot();
@@ -104,6 +105,12 @@ const { boot, check, done } = require('./helpers/boot');
             const only = await t.api('GET', '/catalog?kind=dedicated');
             assert.ok(only.text.includes(`href="/catalog/plans/${metal.id}"`), 'the dedicated view lists it');
             assert.doesNotMatch(only.text, /Dedicated servers compared/, 'the dedicated view is the table itself, not a second copy');
+            const list = (await t.api('GET', '/api/v1/catalog/plans?kind=dedicated')).json();
+            assert.strictEqual(list.total, 1, 'the list says how many plans match, not just how many this page carries');
+            // The link under the section counts every dedicated plan, not the 50 one page carries (109 from OVHcloud).
+            const eleven = Array.from({ length: 11 }, (_, i) => ({ ...list.plans[0], id: `metal-${i}` }));
+            const many = render.catalog({ result: { plans: [], next_cursor: null }, query: {}, providers: [], currencies: ['USD'], dedicated: { plans: eleven, total: 109 } });
+            assert.match(many, /All 109 dedicated servers →/, 'the link counts every dedicated server');
         });
         await check('the sitemap dates catalog pages by their newest price check', async () => {
             const xml = (await t.api('GET', '/sitemap.xml')).text;
