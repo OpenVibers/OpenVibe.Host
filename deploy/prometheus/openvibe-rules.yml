@@ -27,6 +27,15 @@ groups:
         labels: { severity: page }
         annotations:
           summary: "The readiness check has not completed a run for more than 20 minutes (openvibe-readyhealth.timer; check systemctl status openvibe-readyhealth.service)"
+      # OpenVibe.AI's hourly balance probe (AI server/providers/balance.js; DeepSeek). Below $2 the owner must
+      # top the provider up before every AI feature on the network starts failing. A ticket (bell), not a page:
+      # the account still answers until it reaches zero.
+      - alert: OpenVibeAiProviderBalanceLow
+        expr: ai_provider_balance_usd < 2
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: "OpenVibe.AI provider {{ $labels.provider }} balance is ${{ $value | humanize }} (below $2): top it up before AI stops answering"
       - alert: HighErrorRate
         expr: |
           sum by (service) (rate(http_requests_total{status=~"5.."}[10m]))
