@@ -36,6 +36,15 @@ groups:
         labels: { severity: page }
         annotations:
           summary: 'OpenVibe.AI provider {{ $labels.provider }} balance is ${{ printf "%.2f" $value }} (below $2): top it up before AI stops answering'
+      # OpenVibe.AI's GPU provisioner (AI server/gpu/): a marketplace instance that could not be given back
+      # three times in a row is still running and still being paid for. This pages: the money runs on until
+      # somebody gives it back, and the owner set a monthly cap that the instance is inside of.
+      - alert: OpenVibeAiGpuInstanceNotDestroyed
+        expr: ai_gpu_destroy_failures >= 3
+        for: 10m
+        labels: { severity: page }
+        annotations:
+          summary: 'OpenVibe.AI could not give a {{ $labels.marketplace }} GPU instance back ({{ $value }} tries in a row): it is still running and still being paid for'
       - alert: HighErrorRate
         expr: |
           sum by (service) (rate(http_requests_total{status=~"5.."}[10m]))
