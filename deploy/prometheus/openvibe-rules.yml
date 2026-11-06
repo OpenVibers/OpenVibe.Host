@@ -45,6 +45,15 @@ groups:
         labels: { severity: page }
         annotations:
           summary: 'OpenVibe.AI could not give a {{ $labels.marketplace }} GPU instance back ({{ $value }} tries in a row): it is still running and still being paid for'
+      # OpenVibe.AI's free-tier abuse controls (AI server/abuse/, plan E5): a burst of throttles means free capacity is
+      # being pushed much harder than usual from one network, device or repeated request. The throttle itself is
+      # automatic; this opens a review queue item, with the page at /console/abuse on the AI operator console.
+      - alert: OpenVibeAiAbuseThrottling
+        expr: sum(ai_abuse_throttles) > 20
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'OpenVibe.AI is throttling free use hard ({{ $value }} requests in 15 minutes): review /console/abuse'
       - alert: HighErrorRate
         expr: |
           sum by (service) (rate(http_requests_total{status=~"5.."}[10m]))
