@@ -12,6 +12,21 @@ groups:
         labels: { severity: page }
         annotations:
           summary: "{{ $labels.process }} ({{ $labels.instance }}) has not answered /metrics for 5 minutes"
+      # Readiness of every service with a ready URL (deploy/scripts/ready-health.sh,
+      # openvibe-readyhealth.timer; docs/ready-health.md). Games answered /api/ready 503 for 8 hours on
+      # 2026-11-05 while its process and /metrics were up, so TargetDown never fired.
+      - alert: OpenVibeServiceNotReady
+        expr: openvibe_service_ready == 0
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $labels.service }} has not been ready for 15 minutes (read its /api/ready; sudo ovhost status {{ $labels.service }})"
+      - alert: OpenVibeServiceReadyMissed
+        expr: time() - openvibe_service_ready_last_run_timestamp > 20 * 60 or absent(openvibe_service_ready_last_run_timestamp)
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "The readiness check has not completed a run for more than 20 minutes (openvibe-readyhealth.timer; check systemctl status openvibe-readyhealth.service)"
       - alert: HighErrorRate
         expr: |
           sum by (service) (rate(http_requests_total{status=~"5.."}[10m]))
