@@ -24,10 +24,14 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
     const http = new Map(); // url -> fn({ headers, method, body }) -> { status, body } (request() also passes method and body)
     const alivePids = new Set();
     const listeners = new Map(); // port -> [{ pid, process }]
+    const deployLockQueue = [];
+    let deployLockOwner = null;
     let clock = start;
     let seq = 0;
     const host = {
         files, calls, repos, remoteRepos, units, http, alivePids, listeners,
+        deployLockEvents: [],
+        memAvailableMiB: 4096,
         nginxTest: () => ({ code: 0, stderr: 'nginx: configuration file /etc/nginx/nginx.conf test is successful' }),
         npm: null, // (cwd, argv, as) -> undefined | { code, stderr } ; default installs package.json deps
         npmRewritesLockfile: true,
@@ -765,6 +769,21 @@ function createFakeHost({ root = true, user = 'root', hostname = 'fake-host', st
             }
             return true;
         },
+        async acquireDeployLock(file, service, timeoutSeconds, onWait) {
+            if (deployLockOwner) {
+                host.deployLockEvents.push(`wait:${service}:${deployLockOwner}`);
+                onWait(deployLockOwner);
+                await new Promise((resolve) => deployLockQueue.push(resolve));
+            }
+            deployLockOwner = service;
+            host.deployLockEvents.push(`acquire:${service}`);
+            return { release: async () => {
+                host.deployLockEvents.push(`release:${service}`);
+                deployLockOwner = null;
+                if (deployLockQueue.length) deployLockQueue.shift()();
+            } };
+        },
+        async memAvailableBytes() { return (typeof host.memAvailableMiB === 'function' ? host.memAvailableMiB() : host.memAvailableMiB) * 1024 * 1024; },
         async sleep(ms) { clock += ms; },
         now: () => clock,
         async isRoot() { return root; },
