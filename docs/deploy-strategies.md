@@ -19,6 +19,12 @@ Production deploys and rollbacks use `ovhost deploy <svc>` and `ovhost rollback 
 
 Every other service keeps the default strategy, `git-checkout`, which is what `ovhost deploy` did before.
 
+## Host deploy admission
+
+Deploys and rollbacks take one host-wide kernel lock at `/run/lock/openvibe-host-deploy.lock` before preparing a release or changing a checkout. The lock remains held through preflight, switching, restart, readiness and automatic rollback. Another service waits and names the current owner; it fails after the configured lock timeout. A `--wait-idle` operation releases the host lock while it polls streams or recordings, then takes it again before continuing. The existing per-service lock remains held during that wait.
+
+Before each dependency install, ovhost checks Linux `MemAvailable`. When it is below 1536 MiB, ovhost waits for memory and reports the wait. If memory stays low for 300 seconds, the install does not start and the deploy fails through its normal cleanup path. The root of `host.json` may set `deployGuard.minAvailableMiB`, `deployGuard.memoryWaitSeconds`, `deployGuard.memoryPollSeconds`, and `deployGuard.lockWaitSeconds` (default 1536, 300, 5, and 1800). Each must be a positive integer. This applies to `npm` and `pnpm` installs in both deploy strategies and to dependency reinstall during automatic rollback.
+
 ## Deploy wrappers
 
 Repository wrappers call `ovhost plan`, `ovhost deploy`, or `ovhost rollback` for their service. If ovhost is missing, the wrapper exits with an error. The `capabilities` command remains available for installed wrappers that still query it.
