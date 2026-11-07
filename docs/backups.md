@@ -11,7 +11,9 @@ Restore drills (a second instance started from a backup and compared with produc
 
 ## What is backed up
 
-Every inventory database is PostgreSQL. `ovhost backup --all` verifies the cluster's pgBackRest backups and WAL archiver on every run. It makes a per-service `pg_dump -Fc` when the last good logical dump is over seven days old or when `--logical` is given. Declared content-addressed object directories are archived as `.tar.gz` files. Restore drills use the logical dumps and object archives.
+Every inventory database is PostgreSQL. `ovhost backup --all` verifies the cluster's pgBackRest backups and WAL archiver on every run. It makes a per-service `pg_dump -Fc` when the last good logical dump is over seven days old or when `--logical` is given. Declared object directories are archived as `.tar.gz` files. Restore drills use the logical dumps and object archives.
+
+A directory whose files are named by their own sha256 is content-addressed and a drill verifies every blob. Some stores compress or encrypt their blobs (Stalwart's message blobs under `/var/lib/openvibe-stalwart/blobs`), so the bytes do not hash to the file name: declare `"verify": false` in the inventory's `objects` entry. The directory is still archived, uploaded and restored; the drill checks the archive, not each blob.
 
 ## One run
 

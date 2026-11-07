@@ -20,7 +20,7 @@ runTests([
         // Every service on the host (2026-10-15): Sites retired, and the fourteen added since the first copy of this file.
         assert.deepStrictEqual(Object.keys(inv.services), ['network', 'live', 'media', 'tools', 'community', 'events', 'games', 'host', 'billing', 'chat', 'search', 'sources', 'wiki', 'blog', 'tips', 'vip', 'news', 'reviews', 'deals', 'coupons', 'trade', 'codes', 'ai', 'bot', 'openre',
             'actor', 'food', 'help', 'work', 'quest', 'rent', 'media-hub', 'inventory', 'play', 'zone', 'watch', 'run', 'services', 'space',
-            'design', 'exchange', 'report', 'vision', 'fun', 'shoes', 'bench', 'cam', 'domains', 'meme', 'surf', 'today', 'tours']);
+            'design', 'exchange', 'report', 'vision', 'fun', 'shoes', 'bench', 'cam', 'domains', 'meme', 'surf', 'today', 'tours', 'mail']);
         assert.ok(Object.values(inv.services).filter((s) => s.databases.length).every((s) => s.drill), 'every service with a database has a restore drill');
         assert.strictEqual(inv.services.live.socketUnit, 'openvibe-live.socket');
         assert.ok(!inv.services.live.units.includes('openvibe-live.socket'));
@@ -42,8 +42,22 @@ runTests([
         assert.deepStrictEqual([inv.services.bot.nginx.vhost, inv.services.bot.nginx.repoVhost, inv.services.bot.nginx.installOnDeploy], ['openvibe.bot.conf', 'deploy/nginx/openvibe.bot.conf', true]);
         assert.strictEqual(inv.services.bot.installUnits, true);
         assert.strictEqual(inv.services.bot.enableUnits, true);
+        // Mail: the Node API on loopback, Stalwart as an auxiliary unit that a deploy does not restart,
+        // the database (Stalwart's data store too) and the message blobs outside the database.
+        assert.deepStrictEqual([inv.services.mail.port, inv.services.mail.envFile, inv.services.mail.ready.url], [5250, '/etc/openvibe/mail.env', 'http://127.0.0.1:5250/api/ready']);
+        assert.deepStrictEqual(inv.services.mail.units, ['openvibe-mail.service']);
+        assert.deepStrictEqual(inv.services.mail.auxiliaryUnits.map(({ unit, restartOn, applyOn }) => ({ unit, restartOn, applyOn })),
+            [{ unit: 'openvibe-stalwart.service', restartOn: ['deploy/systemd/openvibe-stalwart.service', 'deploy/systemd/openvibe-stalwart.slice'], applyOn: ['deploy/stalwart/'] }]);
+        assert.match(inv.services.mail.auxiliaryUnits[0].applyHint, /render and apply/);
+        assert.strictEqual(inv.services.mail.unitSources['openvibe-stalwart.slice'], 'deploy/systemd/openvibe-stalwart.slice');
+        assert.deepStrictEqual([inv.services.mail.databases[0].database, inv.services.mail.databases[0].role], ['ov_mail', 'ov_mail']);
+        assert.deepStrictEqual(inv.services.mail.objects, [{ name: 'stalwart-blobs', path: '/var/lib/openvibe-stalwart/blobs', verify: false }]);
+        assert.deepStrictEqual([inv.services.mail.nginx.vhost, inv.services.mail.nginx.repoVhost, inv.services.mail.nginx.installOnDeploy], ['openvibe.email.conf', 'deploy/nginx/openvibe.email.conf', true]);
+        assert.strictEqual(inv.services.mail.drill.supported, false);
+        assert.ok(inv.services.mail.lifecycle.shutdown.deadlineSeconds <= 20, 'within openvibe-mail.service TimeoutStopSec');
         const text = JSON.stringify(raw);
-        assert.ok(!/(sk_|ghp_|BEGIN [A-Z ]*PRIVATE KEY|password\s*[:=]\s*\S)/i.test(text), 'no secret values in the example');
+        // Token-shaped values only: MAIL_MASK_DOMAIN is a name, not a secret (the old /i "sk_" caught it).
+        assert.ok(!/(\bsk_[A-Za-z0-9]{8,}|\bghp_[A-Za-z0-9]{8,}|BEGIN [A-Z ]*PRIVATE KEY|password\s*[:=]\s*\S)/.test(text), 'no secret values in the example');
     }),
 
     test('the released service manifest is valid against the contracts schema', () => {
