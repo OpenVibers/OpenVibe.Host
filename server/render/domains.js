@@ -23,7 +23,8 @@ const day = (v) => { const t = typeof v === 'number' ? v : Date.parse(v); return
 const usd = (v) => (v == null ? UNKNOWN : esc(money(v, 'USD')));
 const link = (href, label, cls = '') => `<a href="${esc(href)}"${cls ? ` class="${cls}"` : ''}>${label}</a>`;
 const out = (href, label, cls = '') => `<a href="${esc(href)}"${cls ? ` class="${cls}"` : ''} rel="nofollow noopener">${label}</a>`;
-const tldHref = (tld) => `/catalog/domains/${encodeURIComponent(tld)}`;
+const DOMAINS = 'https://openvibe.domains';
+const tldHref = (tld) => `${DOMAINS}/tld/${encodeURIComponent(tld)}`;
 const checkHref = (name) => `/catalog/domains/check?${new URLSearchParams({ name })}`;
 const select = (name, label, options, current) => `<label><span>${esc(label)}</span><select name="${name}">${options.map(([v, l]) => `<option value="${esc(v)}"${String(current || '') === v ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`;
 // A renewal more than a fifth above the first year is the usual trap: a cheap first year, then the real price.
@@ -169,10 +170,10 @@ ${stats.tlds ? `<p class="hc-more">${link('/catalog/domains', `All ${Number(stat
 
 const jsonLd = {
     index(base, rows) {
-        return [seo.jsonLd.itemList('Domain endings by price', rows.slice(0, 50).map((r) => ({ name: `${r.display} domains`, url: `${base}${tldHref(r.tld)}` })), { url: `${base}/catalog/domains` })];
+        return [seo.jsonLd.itemList('Domain endings by price', rows.slice(0, 50).map((r) => ({ name: `${r.display} domains`, url: tldHref(r.tld) })), { url: `${base}/catalog/domains` })];
     },
     tld(base, t) {
-        return [seo.jsonLd.breadcrumbs([{ name: 'Domains', url: `${base}/catalog/domains` }, { name: t.display, url: `${base}${tldHref(t.tld)}` }])];
+        return [seo.jsonLd.breadcrumbs([{ name: 'Domains', url: `${base}/catalog/domains` }, { name: t.display, url: tldHref(t.tld) }])];
     },
 };
 

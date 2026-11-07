@@ -39,7 +39,6 @@ function createDomainStore({ store, announce = () => {} }) {
             const tld = domains.normalizeTld(item.identity);
             if (!tld) return 'hold';
             const r = await t.prepare("UPDATE catalog_tld_prices SET status = 'gone', updated_at = ? WHERE source_key = ? AND tld = ? AND status = 'active'").run(now, item.source_key, tld);
-            if (r.changes) announce([`/catalog/domains/${encodeURIComponent(tld)}`]);
             return r.changes ? 'removed' : 'hold';
         }
         const v = domains.mapTldPrice(item);
@@ -51,7 +50,6 @@ function createDomainStore({ store, announce = () => {} }) {
             p = { id, status: 'active' };
         }
         const old = await t.prepare('SELECT * FROM catalog_tld_prices WHERE provider_id = ? AND tld = ?').get(p.id, v.tld);
-        const page = `/catalog/domains/${encodeURIComponent(v.tld)}`;
         if (old) {
             if (old.origin !== 'sources' || v.checked_at < Number(old.checked_at)) return 'hold';
             const moved = ['register', 'renew', 'transfer'].some((k) => n(old[k]) !== v[k]) || old.currency !== v.currency;
@@ -63,13 +61,12 @@ function createDomainStore({ store, announce = () => {} }) {
             const status = old.status === 'gone' ? 'active' : old.status;
             await t.prepare('UPDATE catalog_tld_prices SET currency = ?, register = ?, renew = ?, transfer = ?, source_item_id = ?, source_url = ?, checked_at = ?, last_seen_at = ?, status = ?, updated_at = ? WHERE id = ?')
                 .run(v.currency, v.register, v.renew, v.transfer, v.source_item_id, v.source_url, v.checked_at, v.checked_at, status, now, old.id);
-            if ((moved || status !== old.status) && status === 'active' && p.status === 'active') announce([page]);
             return 'applied';
         }
         await t.prepare('INSERT INTO catalog_tld_prices (id, provider_id, tld, currency, register, renew, transfer, origin, source_key, source_item_id, source_url, checked_at, first_seen_at, last_seen_at, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
             .run(newId('catalogTldPrice', now), p.id, v.tld, v.currency, v.register, v.renew, v.transfer, 'sources', v.source_key, v.source_item_id, v.source_url, v.checked_at, v.first_seen_at, v.checked_at, 'active', now, now);
         known.at = 0;
-        if (p.status === 'active') announce([page, '/catalog/domains']);
+        if (p.status === 'active') announce(['/catalog/domains']);
         return 'applied';
     }
 
