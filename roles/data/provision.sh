@@ -78,6 +78,9 @@ repo1-retention-full=2
 repo1-retention-full-type=count
 process-max=2
 start-fast=y
+# A backup waits for its last WAL segment to reach the repository (B2, over the internet). The default 60 s failed the
+# 2026-11-07 diff during the 02:35 load spike (ERROR [082]); five minutes rides out a slow B2 minute.
+archive-timeout=300
 compress-type=zst
 log-level-console=warn
 log-level-file=info
