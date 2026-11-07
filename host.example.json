@@ -4014,10 +4014,13 @@
         {
           "unit": "openvibe-stalwart.service",
           "restartOn": [
-            "deploy/stalwart/config.toml",
             "deploy/systemd/openvibe-stalwart.service",
             "deploy/systemd/openvibe-stalwart.slice"
-          ]
+          ],
+          "applyOn": [
+            "deploy/stalwart/"
+          ],
+          "applyHint": "render and apply it as OpenVibe.Mail docs/INSTALL.md says (render.js, then apply.js with the plan); a restart alone keeps the old configuration"
         }
       ],
       "unitSources": {

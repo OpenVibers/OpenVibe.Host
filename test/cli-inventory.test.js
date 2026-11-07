@@ -46,7 +46,9 @@ runTests([
         // the database (Stalwart's data store too) and the message blobs outside the database.
         assert.deepStrictEqual([inv.services.mail.port, inv.services.mail.envFile, inv.services.mail.ready.url], [5250, '/etc/openvibe/mail.env', 'http://127.0.0.1:5250/api/ready']);
         assert.deepStrictEqual(inv.services.mail.units, ['openvibe-mail.service']);
-        assert.deepStrictEqual(inv.services.mail.auxiliaryUnits, [{ unit: 'openvibe-stalwart.service', restartOn: ['deploy/stalwart/config.toml', 'deploy/systemd/openvibe-stalwart.service', 'deploy/systemd/openvibe-stalwart.slice'] }]);
+        assert.deepStrictEqual(inv.services.mail.auxiliaryUnits.map(({ unit, restartOn, applyOn }) => ({ unit, restartOn, applyOn })),
+            [{ unit: 'openvibe-stalwart.service', restartOn: ['deploy/systemd/openvibe-stalwart.service', 'deploy/systemd/openvibe-stalwart.slice'], applyOn: ['deploy/stalwart/'] }]);
+        assert.match(inv.services.mail.auxiliaryUnits[0].applyHint, /render and apply/);
         assert.strictEqual(inv.services.mail.unitSources['openvibe-stalwart.slice'], 'deploy/systemd/openvibe-stalwart.slice');
         assert.deepStrictEqual([inv.services.mail.databases[0].database, inv.services.mail.databases[0].role], ['ov_mail', 'ov_mail']);
         assert.deepStrictEqual(inv.services.mail.objects, [{ name: 'stalwart-blobs', path: '/var/lib/openvibe-stalwart/blobs', verify: false }]);

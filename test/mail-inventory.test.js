@@ -99,9 +99,21 @@ function lastRecord(host, id) {
         assert.ok(host.files.has('/etc/nginx/sites-enabled/openvibe.email.conf'), 'the vhost was linked into sites-enabled');
     });
 
-    await atest('a Stalwart config change restarts only the auxiliary unit', async () => {
+    await atest('a Stalwart template change restarts nothing and says it is not live until applied', async () => {
         const host = mailHost();
         host.push({ 'deploy/stalwart/config.toml': '# Stalwart configuration, changed\n' }, 'mail server change');
+        const r = await host.cli('deploy', 'mail');
+        assert.strictEqual(r.code, 0, r.out);
+        assert.deepStrictEqual(host.restarts(), [], 'a restart would keep the old configuration, so nothing restarts');
+        assert.match(r.out, /openvibe-stalwart\.service's configuration changed and is NOT live until it is applied by hand: render and apply/);
+        const [rec] = (host.read(`${STATE}/releases/mail.jsonl`) || '').trim().split('\n').map((l) => JSON.parse(l));
+        assert.deepStrictEqual(rec.auxApplyPending, ['openvibe-stalwart.service']);
+        assert.strictEqual(rec.restarted, false);
+    });
+
+    await atest('a Stalwart unit change restarts only the auxiliary unit', async () => {
+        const host = mailHost();
+        host.push({ 'deploy/systemd/openvibe-stalwart.slice': '[Slice]\nMemoryMax=1G\nCPUQuota=100%\n# changed\n' }, 'slice change');
         const r = await host.cli('deploy', 'mail');
         assert.strictEqual(r.code, 0, r.out);
         assert.deepStrictEqual(host.restarts(), ['openvibe-stalwart.service']);
@@ -109,7 +121,6 @@ function lastRecord(host, id) {
         assert.match(r.out, /restarting auxiliary openvibe-stalwart\.service/);
         const [rec] = (host.read(`${STATE}/releases/mail.jsonl`) || '').trim().split('\n').map((l) => JSON.parse(l));
         assert.deepStrictEqual(rec.auxRestarted, ['openvibe-stalwart.service']);
-        assert.strictEqual(rec.restarted, false);
     });
 
     await atest('a docs-only change restarts nothing', async () => {
