@@ -4003,6 +4003,143 @@
         "countsTolerance": 5,
         "_notes": "The restored copy boots with no service credentials (no tokens, no outbox publishing or subscriptions), Valkey on a closed port and every outbound service URL on a closed port; counts and readiness."
       }
+    },
+    "mail": {
+      "_note": "OpenVibe.Mail (M1): receive-only Stalwart on inbound TCP 25, masks, burners and agent inboxes; database ov_mail; public door openvibe.email. openvibe-stalwart.service and its slice are auxiliary: installed from this checkout and listed by status/validate, but a Mail deploy restarts them only when deploy/stalwart/config.toml or one of their unit files changes. The binary is installed by hand from scripts/fetch-stalwart.js (pinned sha256) — ovhost never builds or downloads it. Message blobs at /var/lib/openvibe-stalwart/blobs are compressed and named by content hash, so they are archived by backup with verify:false and not sha256-checked. Remove openvibe.email from /etc/nginx/sites-enabled/parked-domains.conf before the vhost can win the name. Ports 587 and 465 stay closed.",
+      "repo": "/opt/openvibe.mail",
+      "units": [
+        "openvibe-mail.service"
+      ],
+      "auxiliaryUnits": [
+        {
+          "unit": "openvibe-stalwart.service",
+          "restartOn": [
+            "deploy/stalwart/config.toml",
+            "deploy/systemd/openvibe-stalwart.service",
+            "deploy/systemd/openvibe-stalwart.slice"
+          ]
+        }
+      ],
+      "unitSources": {
+        "openvibe-mail.service": "deploy/systemd/openvibe-mail.service",
+        "openvibe-stalwart.service": "deploy/systemd/openvibe-stalwart.service",
+        "openvibe-stalwart.slice": "deploy/systemd/openvibe-stalwart.slice"
+      },
+      "installUnits": true,
+      "enableUnits": true,
+      "envFile": "/etc/openvibe/mail.env",
+      "env": {
+        "required": [
+          "NODE_ENV",
+          "PORT",
+          "HOST",
+          "BASE_URL",
+          "TRUST_PROXY",
+          "DATABASE_URL",
+          "DATABASE_DIRECT_URL",
+          "VALKEY_URL",
+          "VALKEY_PREFIX",
+          "OV_NETWORK_URL",
+          "OV_NETWORK_INTERNAL_URL",
+          "OV_OAUTH_CLIENT_ID",
+          "OV_OAUTH_CLIENT_SECRET",
+          "MAIL_BASE_DOMAIN",
+          "MAIL_MASK_DOMAIN",
+          "BURNER_DOMAINS",
+          "STALWART_URL",
+          "STALWART_ADMIN_USER",
+          "STALWART_ADMIN_PASSWORD"
+        ]
+      },
+      "port": 5250,
+      "health": {
+        "url": "http://127.0.0.1:5250/api/health"
+      },
+      "ready": {
+        "url": "http://127.0.0.1:5250/api/ready",
+        "timeoutSeconds": 30
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md",
+        "deploy/stalwart/",
+        "deploy/systemd/openvibe-stalwart.service",
+        "deploy/systemd/openvibe-stalwart.slice"
+      ],
+      "databases": [
+        {
+          "name": "mail",
+          "engine": "postgresql",
+          "database": "ov_mail",
+          "role": "ov_mail"
+        }
+      ],
+      "objects": [
+        {
+          "name": "stalwart-blobs",
+          "path": "/var/lib/openvibe-stalwart/blobs",
+          "verify": false
+        }
+      ],
+      "drill": {
+        "supported": false,
+        "reason": "M1 has no drill switch: readiness depends on the live Stalwart directory and the process writes the directory view at boot, so a second instance is not side-effect free."
+      },
+      "nginx": {
+        "vhost": "openvibe.email.conf",
+        "repoVhost": "deploy/nginx/openvibe.email.conf",
+        "installOnDeploy": true
+      },
+      "lifecycle": {
+        "liveness": {
+          "endpoint": "/api/health",
+          "means": "the process answers HTTP; nothing else is checked"
+        },
+        "shutdown": {
+          "signal": "SIGTERM",
+          "deadlineSeconds": 10,
+          "drains": [
+            "the HTTP server closes",
+            "the purge job stops",
+            "the database connection closes"
+          ]
+        },
+        "startupRecovery": {
+          "resumes": [
+            {
+              "kind": "jobs",
+              "what": "due mask expiries and burner purges run on the next interval"
+            },
+            {
+              "kind": "outbox",
+              "what": "unsent mail.received and mail.mask.created events stay in the outbox until the relay starts"
+            }
+          ]
+        },
+        "rollback": {
+          "conditions": [
+            "automatic: not ready within ready.timeoutSeconds"
+          ],
+          "window": "while ovhost waits for readiness",
+          "blockers": {
+            "none": "the service's migrations only add; Stalwart's tables live in the same database and are not touched by a Mail release"
+          }
+        },
+        "contracts": {
+          "range": ">=0.329.0 <1.0.0"
+        },
+        "leases": {
+          "claims": [
+            {
+              "what": "the purge job lease",
+              "holder": "the one mail process",
+              "expires": "MAIL_PURGE_INTERVAL_MS (60 s)",
+              "fencing": "a conditional UPDATE on mail_settings.updated_at"
+            }
+          ]
+        }
+      }
     }
   }
 }

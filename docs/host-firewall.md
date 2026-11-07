@@ -34,3 +34,18 @@ Why it is not switched on without the owner:
 - the provider's edge firewall may already filter some of these ports.
 
 Enable it at a quiet time, with a second SSH session open, then run the browser check and a WebRTC publish and view.
+
+## OpenVibe.Mail (M1, 2026-11-07)
+
+Inbound **TCP 25 only**. Stalwart M1 is receive-only: the rendered plan removes its submission
+(587), SMTPS (465), POP3, Sieve and HTTPS listeners before they open. JMAP/management (8080) and
+IMAP (143) stay on loopback; the Mail API (5250) is loopback behind nginx.
+
+When the default-deny proposal above is enabled, add only:
+
+```
+sudo ufw allow 25/tcp
+```
+
+Do **not** add 587 or 465. If `sudo ss -ltnp | grep -E ':(587|465|993|995|4190)\b'` names Stalwart,
+stop it and re-apply `deploy/stalwart/apply.js` before opening anything.

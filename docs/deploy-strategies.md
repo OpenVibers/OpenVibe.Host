@@ -47,6 +47,8 @@ Repository wrappers call `ovhost plan`, `ovhost deploy`, or `ovhost rollback` fo
    nothing restarted (exit 2).
 7. Restart the units (plus unit files matching `unitsMatch`), wait for readiness (`ready.release`,
    `ready.allUnits`), and on failure roll back: restore, reinstall, rebuild, restart (exit 3, or 4).
+   An auxiliary unit (`auxiliaryUnits`, Mail's Stalwart) is restarted first, and only when one of its
+   `restartOn` paths changed; the service itself is not restarted for a Stalwart-only change.
 8. Record the release; announce it (Sites: one notification per `dist/<domain>/release.json`).
 
 ### Release layout (release-layout)
@@ -105,6 +107,7 @@ overrides them.
 | `generated` | tracked paths a build rewrites; restored from git before the merge, never a local change | static-build: `["dist/"]` |
 | `installUnits` | install drifted `unitSources` on every deploy (as `--install-units`) | false |
 | `unitsMatch` | also restart unit files matching this glob (named when the inventory lacks them) | none |
+| `auxiliaryUnits` | `[{ unit, restartOn: [paths] }]` units the service depends on but that an ordinary deploy must not restart (Mail's Stalwart). Installed from `unitSources`, listed by `status`/`validate`; restarted before the service only when a `restartOn` path changed. A rollback never restarts them | `[]` |
 | `announce.releaseFiles` | one notification per `<dir>/*/release.json` instead of one for the service | static-build: `dist/*/release.json` |
 | `install.lockfile` | the lockfile that decides an install | `package-lock.json` (pnpm-build: `pnpm-lock.yaml`) |
 | `install.workspace` | one install at the root for a workspace | pnpm-build: true |
