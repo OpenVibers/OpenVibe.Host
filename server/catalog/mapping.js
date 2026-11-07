@@ -9,6 +9,9 @@ const SOURCES = Object.freeze({
     'ovhcloud-vps': { slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://us.ovhcloud.com/', source_url: 'https://us.ovhcloud.com/vps/' },
     'ovhcloud-baremetal': { slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://us.ovhcloud.com/', source_url: 'https://us.ovhcloud.com/bare-metal/prices/' },
     'azure-retail-prices': { slug: 'azure', name: 'Microsoft Azure', homepage_url: 'https://azure.microsoft.com/', source_url: 'https://azure.microsoft.com/en-us/pricing/' },
+    // Read by Host itself with the owner's read-only token (server/catalog/keyed-feeds.js), not through Sources.
+    'digitalocean-sizes': { slug: 'digitalocean', name: 'DigitalOcean', homepage_url: 'https://www.digitalocean.com/', source_url: 'https://www.digitalocean.com/pricing/droplets' },
+    'hetzner-server-types': { slug: 'hetzner', name: 'Hetzner', homepage_url: 'https://www.hetzner.com/', source_url: 'https://www.hetzner.com/cloud/' },
 });
 const number = (v, field) => {
     if (v == null) return null;
@@ -144,6 +147,48 @@ function azure(x, id, title) {
     }
     throw new TypeError('unknown Azure price unit');
 }
+// DigitalOcean's Droplet sizes (GET /v2/sizes): memory in MB, disk in GB, transfer in TB, prices in USD. Named as its
+// pricing page names them ("Basic · 1 vCPU, 1 GB"); a premium size (-amd/-intel) has NVMe disks, the rest SSD.
+function digitalOcean(x, id) {
+    const monthly = number(x.price_monthly, 'monthly price');
+    if (monthly == null) throw new TypeError('missing monthly price');
+    if (monthly <= 0) return null;
+    const vcpu = number(x.vcpus, 'vcpu');
+    const ram = number(x.memory, 'memory');
+    const memory = ram == null ? null : ram >= 1024 ? `${Math.round((ram / 1024) * 10) / 10} GB` : `${ram} MB`;
+    const family = typeof x.description === 'string' && x.description.trim() ? x.description.trim() : null;
+    const transfer = number(x.transfer, 'transfer');
+    return {
+        name: family && vcpu != null && memory ? `${family} · ${vcpu} vCPU, ${memory}` : id, kind: 'cloud',
+        vcpu, ram_mb: ram, disk_gb: number(x.disk, 'disk'), disk_type: /-(amd|intel)$/.test(id) ? 'nvme' : 'ssd',
+        bandwidth_gb: transfer == null ? null : Math.round(transfer * 1000), unmetered: null, port_mbps: null,
+        price_monthly: monthly, price_hourly: number(x.price_hourly, 'hourly price'), ipv4: 1,
+        locations: Array.isArray(x.regions) && x.regions.length ? x.regions : null,
+    };
+}
+
+// Hetzner Cloud's server types (GET /v1/server_types): memory in GB, disk in GB, and a price per location in euros
+// (net, before VAT, as text). The plan's price is its cheapest location's; every location it is sold in is listed.
+function hetzner(x, id, title) {
+    const prices = (Array.isArray(x.prices) ? x.prices : []).map((p) => ({
+        location: p && p.location, monthly: Number(p && p.price_monthly && p.price_monthly.net), hourly: Number(p && p.price_hourly && p.price_hourly.net),
+        traffic: Number(p && p.included_traffic),
+    })).filter((p) => typeof p.location === 'string' && Number.isFinite(p.monthly) && p.monthly > 0);
+    if (!prices.length) throw new TypeError('missing monthly price');
+    const cheapest = prices.reduce((a, b) => (b.monthly < a.monthly ? b : a));
+    const memoryGb = number(x.memory, 'memory');
+    const cores = number(x.cores, 'cores');
+    const name = (typeof title === 'string' && title.trim()) || id;
+    return {
+        name: cores != null && memoryGb != null ? `${name} · ${cores} vCPU${x.cpu_type === 'dedicated' ? ' (dedicated)' : ''}, ${memoryGb} GB` : name,
+        kind: 'cloud', vcpu: cores, ram_mb: memoryGb == null ? null : Math.round(memoryGb * 1024), disk_gb: number(x.disk, 'disk'),
+        disk_type: x.storage_type === 'local' ? 'nvme' : null,
+        bandwidth_gb: Number.isFinite(cheapest.traffic) && cheapest.traffic > 0 ? Math.round(cheapest.traffic / 1e9) : null, unmetered: null, port_mbps: null,
+        price_monthly: Math.round(cheapest.monthly * 100) / 100, price_hourly: Number.isFinite(cheapest.hourly) ? cheapest.hourly : null, ipv4: null,
+        locations: [...new Set(prices.map((p) => p.location))],
+    };
+}
+
 function mapItem(item) {
     const provider = SOURCES[item && item.source_key];
     if (!provider) return null;
@@ -169,6 +214,14 @@ function mapItem(item) {
         const observed = Number.isFinite(effective) ? effective : common.checked_at;
         const region = typeof x.region === 'string' && x.region ? x.region : null;
         return { ...common, ...plan, external_id: region ? `${id}@${region}` : id, checked_at: observed };
+    }
+    if (item.source_key === 'digitalocean-sizes') {
+        const plan = digitalOcean(x, id);
+        return plan && { ...common, ...plan };
+    }
+    if (item.source_key === 'hetzner-server-types') {
+        const plan = hetzner(x, id, item.title);
+        return plan && { ...common, ...plan, currency: 'EUR' };
     }
     if (item.source_key === 'ovhcloud-vps') {
         const plan = ovhcloud(x, id, item.title);
