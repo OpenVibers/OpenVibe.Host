@@ -127,24 +127,22 @@ function fakeRegistry() {
             assert.strictEqual((await t.api('GET', '/api/v1/catalog/domains?registrar=porkbun&sort=tld')).json().tlds.length, 6);
         });
 
-        await check('pages: the comparison, a TLD (canonical lower case), the provider, the front page, sitemap and robots', async () => {
+        await check('pages: the comparison links OpenVibe.Domains; a TLD page here 301s there (query kept)', async () => {
             const index = await t.api('GET', '/catalog/domains');
             assert.strictEqual(index.status, 200);
             assert.match(index.text, /<h1>Compare domain prices<\/h1>/);
             assert.match(index.text, /6 endings with what registrars charge/);
-            assert.match(index.text, /href="\/catalog\/domains\/dev">\.dev<\/a>/);
+            assert.match(index.text, /href="https:\/\/openvibe\.domains\/tld\/dev">\.dev<\/a>/);
             assert.match(index.text, /Renews higher/);
             assert.match(index.text, /Porkbun today/);
             assert.match(index.text, /rel="nofollow noopener"/);
             assert.doesNotMatch(index.text, /noindex/);
             const dev = await t.api('GET', '/catalog/domains/dev');
-            assert.strictEqual(dev.status, 200);
-            assert.match(dev.text, /<h1>\.dev domain prices<\/h1>/);
-            assert.match(dev.text, /from <strong>\$8\.75<\/strong> for the first year and renews from <strong>\$13\.50<\/strong>/);
-            assert.match(dev.text, /renewal \$12\.87 → <strong>\$13\.50<\/strong>/);
-            assert.match(dev.text, /Register at Porkbun/);
+            assert.deepStrictEqual([dev.status, dev.headers.location], [301, 'https://openvibe.domains/tld/dev']);
+            const filtered = await t.api('GET', '/catalog/domains/dev?registrar=porkbun&sort=tld');
+            assert.deepStrictEqual([filtered.status, filtered.headers.location], [301, 'https://openvibe.domains/tld/dev?registrar=porkbun&sort=tld']);
             const upper = await t.api('GET', '/catalog/domains/DEV');
-            assert.deepStrictEqual([upper.status, upper.headers.location], [301, '/catalog/domains/dev']);
+            assert.deepStrictEqual([upper.status, upper.headers.location], [301, 'https://openvibe.domains/tld/dev']);
             assert.strictEqual((await t.api('GET', '/catalog/domains/nope')).status, 404);
             const pb = await t.api('GET', '/catalog/providers/porkbun');
             assert.match(pb.text, /6 domain endings priced/);
@@ -155,7 +153,7 @@ function fakeRegistry() {
             assert.match(front.text, /href="\/catalog\/domains"/);
             const map = (await t.api('GET', '/sitemap.xml')).text;
             assert.match(map, /\/catalog\/domains<\/loc>/);
-            assert.match(map, /\/catalog\/domains\/co\.uk<\/loc>/);
+            assert.ok(!map.includes('/catalog/domains/co.uk</loc>'), 'a TLD page is OpenVibe.Domains\'s, not Host\'s');
             assert.match((await t.api('GET', '/robots.txt')).text, /Disallow: \/catalog\/domains\/check/);
             const old = await t.api('GET', '/domains');
             assert.deepStrictEqual([old.status, old.headers.location], [301, '/catalog/domains']);
@@ -171,8 +169,8 @@ function fakeRegistry() {
             assert.match(r.text, /\]\(https:\/\/openvibe\.host\/terms\) \(HTML\)/, 'the shared legal pages have no twin');
             assert.match(r.text, /\n## Optional\n/);
             // A map, not the catalog: the endings and plans are counted in notes, never listed one by one.
-            assert.ok(!/\/catalog\/domains\/[a-z]/.test(r.text.replace(/\/catalog\/domains\/<ending>|\/catalog\/domains\/dev\)/g, '')), 'no ending is listed by itself');
-            assert.match(r.text, /each of the \d+ endings has a page at \/catalog\/domains\/<ending>/);
+            assert.ok(!/\/catalog\/domains\/[a-z]/.test(r.text), 'no ending is listed by itself');
+            assert.match(r.text, /each of the \d+ endings has a page on OpenVibe\.Domains at https:\/\/openvibe\.domains\/tld\/<ending>/);
             assert.ok(Buffer.byteLength(r.text) < 16 * 1024, `${Buffer.byteLength(r.text)} bytes`);
             assert.ok(r.text.indexOf('(https://openvibe.host/terms) (HTML)') > r.text.indexOf('\n## Optional\n'), 'the legal pages are optional');
         });

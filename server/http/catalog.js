@@ -112,10 +112,12 @@ function createCatalogPages({ catalog, domainCheck, benchmarks, community, confi
         }
         page(req, res, { title: c.display + ': is it taken?', body: renderDomains.check(c), indexable: false, description: 'Whether ' + c.display + ' is registered, and what it costs at each registrar.' });
     }));
+    // One canonical copy of a domain ending's page: OpenVibe.Domains' /tld/:tld. Host keeps the comparison
+    // (/catalog/domains) and the name check, but a price page here would be a second self-canonical copy.
     router.get('/domains/:tld', view(async (req, res) => {
         const t = await catalog.domains.tld(req.params.tld);
-        if (req.params.tld !== t.tld) return res.redirect(301, '/catalog/domains/' + encodeURIComponent(t.tld));
-        page(req, res, await views.domainTld(req.params.tld));
+        const q = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+        return res.redirect(301, `https://openvibe.domains/tld/${encodeURIComponent(t.tld)}${q}`);
     }));
     router.get('/benchmarks', view(async (req, res) => page(req, res, await views.benchmarkList(req.query))));
     const benchForm = async (req, res, { error = null, status = 200 } = {}) => {

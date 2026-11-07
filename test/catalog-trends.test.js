@@ -109,13 +109,9 @@ const item = (tld, fields) => ({
             const renew = (await t.api('GET', '/api/v1/catalog/tlds/dev/price-trend?kind=renew')).json();
             assert.deepStrictEqual([renew.kind, renew.now, renew.high, renew.change], ['renew', 13, 13, { amount: 1, percent: 8 }]);
             assert.strictEqual((await t.api('GET', '/api/v1/catalog/tlds/dev/price-trend?kind=transfer')).status, 422);
+            // The chart page itself is OpenVibe.Domains' (Host's old path 301s there, query kept); the API stays here.
             const page = await t.api('GET', '/catalog/domains/dev');
-            assert.strictEqual(page.status, 200);
-            assert.match(page.text, /Registration and renewal over time/);
-            assert.match(page.text, /class="ovk-chart ovk-chart--line"/);
-            assert.match(page.text, /Registration<\/strong> Was \$9\.00 on 2026-09-\d\d, now \$8\.00 \(−11%\)/);
-            assert.match(page.text, /Renewal<\/strong> Was \$12\.00 on 2026-09-\d\d, now \$13\.00 \(\+8%\)/);
-            assert.match(page.text, /Every change \(1\)/);
+            assert.deepStrictEqual([page.status, page.headers.location], [301, 'https://openvibe.domains/tld/dev']);
         });
     } finally { await t.close(); }
     done();

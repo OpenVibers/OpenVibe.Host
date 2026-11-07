@@ -175,7 +175,7 @@ async function createApp(opts = {}) {
             const urls = [{ path: '/', lastmod: latest(plans) }, ...legalPaths.map((p) => ({ path: p })), { path: '/catalog', lastmod: latest(plans) }, { path: '/catalog/promos' }, { path: '/catalog/benchmarks' }, { path: '/catalog/providers', lastmod: latest(plans) },
                 ...providers.map((p) => ({ path: `/catalog/providers/${p.slug}`, lastmod: latest(plans.filter((v) => v.provider_slug === p.slug)) })),
                 ...plans.map((p) => ({ path: `/catalog/plans/${p.id}`, lastmod: day(p.checked_at) })),
-                ...(tlds.length ? [{ path: '/catalog/domains', lastmod: latest(tlds) }, ...tlds.map((t) => ({ path: `/catalog/domains/${encodeURIComponent(t.tld)}`, lastmod: day(t.checked_at) }))] : [{ path: '/catalog/domains' }])];
+                { path: '/catalog/domains', lastmod: tlds.length ? latest(tlds) : undefined }];
             res.type('application/xml').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.sitemapXml(urls.map((u) => ({ loc: `${config.baseUrl}${u.path}`, lastmod: u.lastmod }))));
         } catch (err) { next(err); }
     });
@@ -192,7 +192,6 @@ async function createApp(opts = {}) {
     ];
     const allPages = async () => [...publicPages,
         ...(await catalog.providers()).map((p) => ({ title: p.name, url: `/catalog/providers/${p.slug}`, text: `Hosting plans from ${p.name}.` })),
-        ...(await catalog.domains.sitemap()).map((t) => ({ title: `${require('./catalog/domains').displayTld(t.tld)} domain prices`, url: `/catalog/domains/${encodeURIComponent(t.tld)}`, text: 'Every registrar\'s price for this ending.' })),
         ...(await catalog.sitemapPlans()).map((p) => ({ title: `Hosting plan ${p.id}`, url: `/catalog/plans/${p.id}`, text: 'Sourced plan and price history.' }))];
     // AGT-5: each of Host's own pages is linked at its Markdown twin (openvibe-shared 4.108.0 leaves files and other
     // links as they are). /terms, /privacy and /dmca are shared legal pages with no twin, so they are linked as HTML;
@@ -207,7 +206,7 @@ async function createApp(opts = {}) {
             const [providers, endings, plans] = await Promise.all([catalog.providers(), catalog.domains.sitemap(), catalog.sitemapPlans()]);
             const notes = {
                 '/catalog': `each of the ${plans.length} plans has a page at /catalog/plans/<id> with its sourced price history`,
-                '/catalog/domains': `each of the ${endings.length} endings has a page at /catalog/domains/<ending> (for example /catalog/domains/dev)`,
+                '/catalog/domains': `each of the ${endings.length} endings has a page on OpenVibe.Domains at https://openvibe.domains/tld/<ending> (for example https://openvibe.domains/tld/dev)`,
             };
             res.type('text/plain').send(sharedSeo.llmsTxt({
                 name: 'OpenVibe.Host', summary, markdown: true, base: config.baseUrl,
@@ -217,7 +216,7 @@ async function createApp(opts = {}) {
                 ],
                 optional: [
                     ...publicPages.filter((p) => LLMS_SECONDARY.has(p.url)).map((p) => llmsLink(p)),
-                    { title: 'Sitemap', url: `${config.baseUrl}/sitemap.xml`, note: 'every plan and domain ending page' },
+                    { title: 'Sitemap', url: `${config.baseUrl}/sitemap.xml`, note: 'every plan and provider page' },
                     { title: 'Full text for language models', url: `${config.baseUrl}/llms-full.txt`, note: 'every page, with what it holds' },
                 ],
             }));
