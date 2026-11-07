@@ -25,6 +25,12 @@ OpenVibe's own static hosting moved to OpenVibe.Space ([below](#static-hosting-m
     addons apart from the plan, so the Sources mapping joins each default addon to its own product; Host multiplies the
     socket count by the cores and one disk's size by the disk count. Vultr's API host disallows robots, so that
     Sources seed stays disabled.
+  - DigitalOcean's Droplet sizes and Hetzner Cloud's server types, which their APIs show only to a signed-in account:
+    Host reads them itself every six hours (`server/catalog/keyed-feeds.js`) with the owner's read-only token from the
+    admin panel's Setup tab (`host.data_sources`, sealed; `HOST_DIGITALOCEAN_TOKEN` / `HOST_HETZNER_TOKEN` are the
+    fallback), through the same mapping (`digitalocean-sizes`, `hetzner-server-types`, prices in euros as Hetzner
+    states them). Without a token that provider is left out. `POST /internal/config/host.data_sources/test/:key` is the
+    Setup tab's Test button: one read-only call, one line back, never the token.
   - Staff entries, which must name their source URL.
   - Nothing is estimated. A value the source does not state is shown as Unknown.
 - **Offers** (`/catalog/offers`, `GET /api/v1/catalog/offers`, a block on the front page). What providers post on LowEndSpirit's Offers board, from its public feed through Sources (`lowendspirit-offers`; `server/catalog/offers.js`). LowEndTalk's and LowEndBox's feeds (`lowendtalk-offers`, `lowendbox-posts`) answer 403 to the production host's network (2026-10-18), so those sources are off. Host keeps the headline, poster, date and link, and the cheapest "per month" or "per year" price the headline (or the post's opening) states, as stated, with its monthly equivalent (a yearly price divided by 12). LowEndBox editorials and giveaways are not offers; a post the source removes is hidden; offers older than 120 days drop off. Newest first, or cheapest a month within one currency (`sort=price` needs `currency`: nothing is converted); filters `currency`, `max_monthly`, `source`, `priced=1`.
@@ -383,7 +389,7 @@ the owner's gates (go-ahead, a DMCA agent, a Public Suffix List entry for openvi
 Part of the [OpenVibe network](https://openvibe.network). Built in the open by [OpenVibers](https://github.com/OpenVibers).
 
 <!-- versions:start -->
-- openvibe-contracts: v0.289.1
+- openvibe-contracts: v0.311.0
 - openvibe-sdk: v0.93.0
 - openvibe-shared: v4.124.0
 - openvibe-publishing: v1.4.0

@@ -18,6 +18,8 @@ const { createHostOutbox } = require('./events/outbox');
 const { createSsoClient } = require('openvibe-sdk/sso');
 const { createViewerResolver } = require('./auth/viewer');
 const createInferencePlannerConfig = require('./inference-planner-config').create;
+const createDataSourcesConfig = require('./data-sources-config').create;
+const { createKeyedFeeds } = require('./catalog/keyed-feeds');
 const { createHostSession } = require('./auth/sso');
 const { createHostReadiness } = require('./observability');
 const { createWorker } = require('./worker');
@@ -53,7 +55,19 @@ async function createApp(opts = {}) {
     const log = opts.log || console;
     const store = opts.store || await openStore(config, { now: opts.now, log });
     // D11 owner settings (host.inference_planner): the planner's switches read through the store, env pins winning.
-    const plannerConfig = await createInferencePlannerConfig({ db: store.db, config, env: opts.env || process.env, log });
+    // host.data_sources (the owner-setup design): the hosting providers' read-only tokens the price feed reads at use
+    // time, served by the same /internal/config routes, with a Test button per token.
+    const dataSources = await createDataSourcesConfig({ db: store.db, env: opts.env || process.env, log });
+    let keyedFeeds = null;
+    const plannerConfig = await createInferencePlannerConfig({
+        db: store.db, config, env: opts.env || process.env, log, also: [dataSources.store],
+        test: (namespace, key) => {
+            if (namespace !== dataSources.store.namespace) return null;
+            const feed = Object.keys(dataSources.FEEDS).find((f) => dataSources.FEEDS[f].key === key);
+            if (!feed || !keyedFeeds) return null;
+            return { ...dataSources.token(feed), run: (value) => keyedFeeds.test(feed, value) };
+        },
+    });
     Object.defineProperty(config.inferencePlanner, 'enabled', { enumerable: true, configurable: true, get: () => plannerConfig.get('enabled') });
     Object.defineProperty(config.inferencePlanner, 'source', { enumerable: true, configurable: true, get: () => plannerConfig.get('source') });
     Object.defineProperty(config.inferencePlanner, 'budgetNanoUsdRaw', { enumerable: true, configurable: true, get: () => { const v = plannerConfig.get('budget_nano_usd'); return v == null ? '' : String(v); } });
@@ -80,14 +94,15 @@ async function createApp(opts = {}) {
     })();
     const catalog = createCatalog({ store, community, log, indexnow, baseUrl: config.baseUrl });
     const catalogIngest = createCatalogIngest({ config, store, catalog, fetchImpl: opts.fetchImpl });
+    keyedFeeds = createKeyedFeeds({ catalog, dataSources, fetchImpl: opts.fetchImpl || globalThis.fetch, now: store.now, log });
     const domainCheck = createDomainCheck({ catalog, rdap: opts.rdap || createRdap({ log }) });
     const benchmarks = createBenchmarks({ store, baseUrl: config.baseUrl });
     const catalogSearch = createCatalogSearch({ config, store, outbox, log });
     // The public pages as data, shared by the routes and the agent-layer twins (server/agent-pages.js).
     const views = require('./http/catalog-views').createCatalogViews({ catalog, benchmarks, community, config, log });
     catalog.onChange(() => { if (config.worker.enabled) catalogSearch.sweepSoon(); });
-    const worker = createWorker({ config, outbox, catalogIngest, catalogSearch, log });
-    const ctx = { config, store, plannerConfig, outbox, catalog, domainCheck, benchmarks, community, catalogIngest, catalogSearch, auth, viewers, worker, log, views };
+    const worker = createWorker({ config, outbox, catalogIngest, catalogSearch, keyedFeeds, log });
+    const ctx = { config, store, plannerConfig, dataSources, keyedFeeds, outbox, catalog, domainCheck, benchmarks, community, catalogIngest, catalogSearch, auth, viewers, worker, log, views };
     ctx.console = require('./console/console').createConsole({ store, config, catalog, fetchImpl: opts.fetchImpl, log });
     const app = express();
     plannerConfig.mount(app);
