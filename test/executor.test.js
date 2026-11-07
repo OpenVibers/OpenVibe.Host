@@ -15,6 +15,20 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ovhost-exec-'));
 process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));
 
 runTests([
+    test('kernel flock serializes two holders and reports the service that owns it', async () => {
+        const file = path.join(dir, 'deploy.lock');
+        const first = await exec.acquireDeployLock(file, 'live', 2);
+        let waiting = null;
+        const secondPromise = exec.acquireDeployLock(file, 'media', 2, (owner) => { waiting = owner; });
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        assert.strictEqual(waiting, 'live');
+        await assert.rejects(exec.acquireDeployLock(file, 'third', 0.1), /timed out waiting for the host deploy lock/);
+        await first.release();
+        const second = await secondPromise;
+        assert.strictEqual(fs.readFileSync(file, 'utf8').trim(), 'media');
+        await second.release();
+        assert.ok((await exec.memAvailableBytes()) > 0);
+    }),
     test('http, files, locks and run() behave as the fake host assumes', async () => {
         const server = http.createServer((req, res) => { res.writeHead(req.url === '/ok' ? 200 : 503); res.end(JSON.stringify({ host: req.headers.host })); });
         await new Promise((r) => server.listen(0, '127.0.0.1', r));
