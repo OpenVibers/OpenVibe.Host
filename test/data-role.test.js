@@ -53,6 +53,7 @@ runTests([
         assert.match(p, /pgbackrest --stanza=openvibe archive-push %p/);
         assert.match(p, /repo1-cipher-type=aes-256-cbc/);
         assert.match(p, /repo1-path=\/openvibe-pgbackrest/, 'beside, never under, the pruned backup prefix');
+        assert.match(p, /^archive-timeout=300$/m, 'a backup waits up to five minutes for its last WAL segment (the 11-07 diff failed at 60 s)');
         assert.match(p, /REVOKE CONNECT ON DATABASE postgres FROM PUBLIC;/, 'service roles cannot reach the maintenance database');
         const lib = read('lib.sh');
         assert.match(lib, /SCRAM-SHA-256\$\{it\}/, 'passwords reach SQL as SCRAM secrets');
