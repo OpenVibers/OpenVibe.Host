@@ -296,6 +296,11 @@ async function createApp(opts = {}) {
             const o = { title: view.title, description: view.description, body: view.body, viewer: req.viewer, config, path: '/', indexable: true, styles: view.styles, scripts: view.scripts, css: view.css, jsonLd: view.jsonLd, agent: true };
             const link = twinHeader(o);
             if (link) res.set('Link', link);
+            // The front page is the same for everyone who is not signed in, so a guest may reuse it for
+            // a minute and a half-open browser revalidates behind the stale copy. A viewer's page is
+            // personalised (the account bar), so it stays private and uncached.
+            res.vary('Cookie'); res.vary('Authorization');
+            res.set('Cache-Control', cache.htmlHeaders(req.viewer.kind === 'anonymous' ? { maxAge: 60 } : { private: true }));
             res.type('html').send(renderPage(o));
         } catch (err) { next(err); }
     });
