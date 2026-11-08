@@ -3050,6 +3050,36 @@
         ]
       }
     },
+    "computer": {
+      "_note": "Added 2026-11-08: OpenVibe.Computer is the thin front door over Run; it keeps no session state of its own.",
+      "repo": "/opt/openvibe.computer",
+      "units": [
+        "openvibe-computer.service"
+      ],
+      "unitSources": {
+        "openvibe-computer.service": "deploy/systemd/openvibe-computer.service"
+      },
+      "envFile": "/etc/openvibe/computer.env",
+      "env": {
+        "required": "from-example"
+      },
+      "port": 5135,
+      "ready": {
+        "url": "http://127.0.0.1:5135/api/health",
+        "timeoutSeconds": 15
+      },
+      "noRestartPaths": [
+        "docs/",
+        "test/",
+        "**/*.md"
+      ],
+      "origin": "https://openvibe.computer",
+      "nginx": {
+        "vhost": "openvibe.computer.conf",
+        "repoVhost": "deploy/nginx/openvibe.computer.conf",
+        "variant": "http"
+      }
+    },
     "services": {
       "_note": "Added 2026-10-07 (plan T13): OpenVibe.Services on loopback :4930.",
       "repo": "/opt/openvibe.services",
