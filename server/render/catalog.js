@@ -496,7 +496,8 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
         eyebrow: 'OpenVibe.Host · hosting compared · alpha',
         title: 'Hosting, compared honestly.',
         accent: 'Every price dated and sourced.',
-        lede: 'Cloud, VPS and dedicated plans from providers\' official APIs, side by side: price per month, per vCPU and per GB, the day each price was checked and a link to where it came from. Sorted by what you ask for, never by who pays.',
+        // The title already says every price is dated and sourced; the lede says what is compared (11-08, phone review).
+        lede: 'Cloud, VPS and dedicated plans from providers\' own APIs, side by side: per month, per vCPU and per GB. Sorted by what you ask for, never by who pays.',
         // Two, so they sit side by side on a phone; the latest offers have their own section and link below.
         actions: [{ label: 'Compare plans', href: '/catalog', primary: true }, { label: 'Domain prices', href: '/catalog/domains' }],
         note: stats.plans ? `${stats.plans} plans from ${stats.providers} provider${stats.providers === 1 ? '' : 's'} so far. More providers join as their sources are checked.` : 'The catalog is filling up: providers join as their official sources are checked and enabled.',
