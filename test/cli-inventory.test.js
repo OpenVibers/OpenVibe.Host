@@ -19,7 +19,7 @@ runTests([
         const inv = normalise(raw);
         // Every service on the host (2026-10-15): Sites retired, and the fourteen added since the first copy of this file.
         assert.deepStrictEqual(Object.keys(inv.services), ['network', 'live', 'media', 'tools', 'community', 'events', 'games', 'host', 'billing', 'chat', 'search', 'sources', 'wiki', 'blog', 'tips', 'vip', 'news', 'reviews', 'deals', 'coupons', 'trade', 'codes', 'ai', 'bot', 'openre',
-            'actor', 'food', 'help', 'work', 'quest', 'rent', 'media-hub', 'inventory', 'play', 'zone', 'watch', 'run', 'services', 'space',
+            'actor', 'food', 'help', 'work', 'quest', 'rent', 'media-hub', 'inventory', 'play', 'zone', 'watch', 'run', 'computer', 'services', 'space',
             'design', 'exchange', 'report', 'vision', 'fun', 'shoes', 'bench', 'cam', 'domains', 'meme', 'surf', 'today', 'tours', 'mail']);
         assert.ok(Object.values(inv.services).filter((s) => s.databases.length).every((s) => s.drill), 'every service with a database has a restore drill');
         assert.strictEqual(inv.services.live.socketUnit, 'openvibe-live.socket');
