@@ -1,5 +1,5 @@
 [Unit]
-Description=OpenVibe node registry: this inventory's machines and their measured health, reported to OpenVibe.Network
+Description=OpenVibe Link registry: this inventory's machines and their measured health, reported to OpenVibe.Network
 Documentation=https://github.com/OpenVibers/OpenVibe.Host/blob/main/docs/nodes.md
 After=network-online.target
 Wants=network-online.target
