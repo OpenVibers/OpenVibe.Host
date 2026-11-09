@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use OpenVibe.Host in research or a product, cite it as below."
+title: openvibe-host
+type: software
+authors:
+  - name: OpenVibe
+    alias: OpenVibers
+    website: https://openvibe.network
+repository-code: https://github.com/OpenVibers/OpenVibe.Host
+url: https://openvibe.host
+license: AGPL-3.0-only
+abstract: "Hosting and domain price comparison, then hosting with OpenVibe, at openvibe.host."
+keywords:
+  - openvibe
+  - domains
+  - hosting
+  - infrastructure
+  - price-comparison
