@@ -14,11 +14,11 @@
   "port": 4910,
   "domain": "openvibe.host",
   "contracts": "openvibe-contracts v0.338.0",
-  "sdk": "openvibe-sdk v0.123.0",
+  "sdk": "openvibe-sdk v0.125.0",
   "shared": "openvibe-shared v4.173.0",
   "packages": [
     "openvibe-contracts v0.338.0",
-    "openvibe-sdk v0.123.0",
+    "openvibe-sdk v0.125.0",
     "openvibe-shared v4.173.0"
   ],
   "capabilities": [
