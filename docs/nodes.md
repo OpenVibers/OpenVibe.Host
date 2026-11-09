@@ -4,21 +4,21 @@
 
 - It is roadmap WS-X1 step 3 and ADR-034 section 12.
 - `openvibe-nodes.timer` runs it every five minutes.
-- Products read the result at `GET https://openvibe.network/api/v1/nodes`, which returns `network.node-list-result@1`. It can be filtered with `?role=` and `?region=`. `openvibe-sdk/geo` uses it to pick the nearest node for a role, for example a game-server list or a ping tool with several locations.
+- Products read the result at `GET https://openvibe.network/api/v1/links`, which returns `network.link-list-result@1`. It can be filtered with `?role=` and `?region=`. `openvibe-sdk/geo` uses it to pick the nearest node for a role, for example a game-server list or a ping tool with several locations.
 
 ## The inventory
 
 `/etc/openvibe/host.json` holds two keys for this:
 
 - **`nodeSource`** names this inventory. The default is `primary`.
-- **`nodes`** lists each machine's public description, which is `network.node@1` without `health` and `updated_at`.
+- **`nodes`** lists each machine's public description, which is `network.link@1` without `health` and `updated_at`.
 
 ```json
 "nodeSource": "oregon",
 "nodes": [
   { "id": "oregon-1", "name": "Oregon 1", "roles": ["web", "app", "data", "ingest"],
     "location": { "region": "us-west", "country": "US" }, "provider": "ovh",
-    "beacon": "https://openvibe.network/api/v1/nodes/oregon-1/beacon" }
+    "beacon": "https://openvibe.network/api/v1/links/oregon-1/beacon" }
 ]
 ```
 
@@ -44,6 +44,6 @@ sudo cp /usr/local/lib/openvibe-host/deploy/systemd/openvibe-nodes.{service,time
 sudo systemctl daemon-reload && sudo systemctl enable --now openvibe-nodes.timer
 ```
 
-- **Credentials:** it uses Host's principal from `/etc/openvibe/host.env`, the same one `ovhost alerts relay` uses, with the scope `network.node.report`. Neither the secret nor the token is ever printed.
+- **Credentials:** it uses Host's principal from `/etc/openvibe/host.env`, the same one `ovhost alerts relay` uses, with the scope `network.link.report`. Neither the secret nor the token is ever printed.
 - **Metrics:** each run writes `openvibe_nodes_report.prom` to the textfile collector.
 - **Alerts:** `OpenVibeNodeReportStale` fires when no report has reached Network for an hour. `OpenVibeNodeDown` fires when a beacon has failed for 15 minutes.

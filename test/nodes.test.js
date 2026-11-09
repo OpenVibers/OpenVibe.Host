@@ -1,8 +1,8 @@
 'use strict';
 /**
  * The node registry reporter (lib/nodes.js, WS-X1 step 3): `ovhost nodes report` measures each inventory node's
- * beacon (2xx fast = up, 2xx slow = degraded, anything else = down), sends network.node-report-request@1 to
- * Network with Host's token (network.node.report), never shows a secret, and leaves openvibe_nodes_report.prom.
+ * beacon (2xx fast = up, 2xx slow = degraded, anything else = down), sends network.link-report-request@1 to
+ * Network with Host's token (network.link.report), never shows a secret, and leaves openvibe_nodes_report.prom.
  * The inventory refuses addresses and duplicate ids: the registry is public.
  */
 const assert = require('assert');
@@ -14,7 +14,7 @@ const TOKEN = 'tok_NODES_TOKEN_MUST_NEVER_APPEAR_9c2f';
 const HOST_SECRET = `${SECRET}-host`;
 const PROM_FILE = '/var/lib/prometheus/node-exporter/openvibe_nodes_report.prom';
 const NODES = [
-    { id: 'oregon-1', name: 'Oregon 1', roles: ['web', 'app', 'data', 'ingest'], location: { region: 'us-west', country: 'US', city: 'Hillsboro' }, provider: 'ovh', beacon: 'https://openvibe.network/api/v1/nodes/oregon-1/beacon' },
+    { id: 'oregon-1', name: 'Oregon 1', roles: ['web', 'app', 'data', 'ingest'], location: { region: 'us-west', country: 'US', city: 'Hillsboro' }, provider: 'ovh', beacon: 'https://openvibe.network/api/v1/links/oregon-1/beacon' },
     { id: 'probe-fra', name: 'Frankfurt probe', roles: ['edge-probe'], location: { region: 'eu-central', country: 'DE' }, beacon: 'https://fra.example.test/beacon' },
     { id: 'probe-sgp', name: 'Singapore probe', roles: ['edge-probe'], location: { region: 'ap-southeast', country: 'SG' }, beacon: 'https://sgp.example.test/beacon' },
 ];
@@ -37,7 +37,7 @@ function withNetwork({ network = 'ok' } = {}) {
         if (form.client_secret !== HOST_SECRET) return { status: 401, body: { error: 'invalid_client' } };
         return { status: 200, body: { access_token: TOKEN, token_type: 'Bearer', expires_in: 300 } };
     });
-    host.http.set('http://127.0.0.1:4000/internal/nodes/report', ({ method, headers, body }) => {
+    host.http.set('http://127.0.0.1:4000/internal/links/report', ({ method, headers, body }) => {
         assert.strictEqual(method, 'POST');
         assert.strictEqual(headers.Authorization, `Bearer ${TOKEN}`);
         const doc = JSON.parse(body);
@@ -64,7 +64,7 @@ runTests([
         assert.throws(() => normalise({ services: {}, nodes: [{ ...NODES[0], beacon: 'http://x.test/b' }] }), /https:\/\//);
         assert.throws(() => normalise({ services: {}, nodes: {} }), /must be an array/);
     }),
-    test('nodes report: beacons measured, the complete set sent with network.node.report, metrics written', async () => {
+    test('nodes report: beacons measured, the complete set sent with network.link.report, metrics written', async () => {
         const host = withNetwork();
         const r = await host.cli('nodes', 'report');
         assert.strictEqual(r.code, 0, r.out);
@@ -72,9 +72,9 @@ runTests([
         assert.match(r.out, /up +oregon-1 +\d+ ms/);
         assert.match(r.out, /degraded +probe-fra +2500 ms/);
         assert.match(r.out, /down +probe-sgp +beacon answered 502/);
-        assert.deepStrictEqual(host.tokenRequests.map((t) => [t.grant_type, t.client_id, t.audience, t.scope]), [['client_credentials', 'host', 'openvibe.network', 'network.node.report']]);
+        assert.deepStrictEqual(host.tokenRequests.map((t) => [t.grant_type, t.client_id, t.audience, t.scope]), [['client_credentials', 'host', 'openvibe.network', 'network.link.report']]);
         const doc = host.delivered[0];
-        assert.ok(contracts.validate('network.node-report-request@1', doc).valid);
+        assert.ok(contracts.validate('network.link-report-request@1', doc).valid);
         assert.deepStrictEqual(doc.nodes.map((n) => [n.id, n.health.status]), [['oregon-1', 'up'], ['probe-fra', 'degraded'], ['probe-sgp', 'down']]);
         const prom = host.read(PROM_FILE);
         assert.match(prom, /openvibe_nodes_report_last_run_ok 1/);
