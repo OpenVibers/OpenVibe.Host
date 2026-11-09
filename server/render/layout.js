@@ -74,6 +74,7 @@ function renderPage(o) {
         history: { type: 'page', title: o.title || SITE_NAME },
         silentLogin: `${o.config.baseUrl}/auth/login?silent=1&next={url}`,
         sessionUrl: '/auth/me',
+        tokenUrl: '/auth/navbar-token',
         loginUrl: '/auth/login?next={path}',   // filled from the current page (boost moves between pages)
         logoutUrl: '/auth/logout?next={path}',   // Sign out in the shared navbar ends this site's session too
         notificationsRealtime: true,   // the bell hears new notifications over OpenVibe.Events (Shared 1.22.0)
