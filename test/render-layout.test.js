@@ -25,5 +25,6 @@ runTests([
         const cfg = JSON.parse(page().match(/window\.__OV_PAGE = (.+);/)[1]);
         assert.strictEqual(cfg.navbar.loginUrl, '/auth/login?next={path}');
         assert.strictEqual(cfg.navbar.logoutUrl, '/auth/logout?next={path}');
+        assert.strictEqual(cfg.navbar.tokenUrl, '/auth/navbar-token');
     }),
 ]);

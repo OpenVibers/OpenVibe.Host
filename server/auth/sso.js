@@ -2,6 +2,7 @@
 
 /** Host-only, HttpOnly session and OAuth flow cookies around openvibe-sdk/sso. */
 const crypto = require('crypto');
+const { ids } = require('openvibe-contracts');
 const { COOKIES, decodeJwtPayload, parseCookies } = require('openvibe-sdk/sso');
 
 const SESSION_MAX_AGE = 30 * 24 * 3600e3;   // the SDK's ov_refresh lifetime: a refresh always finds the session it renews
@@ -84,6 +85,17 @@ function createHostSession({ auth, config }) {
     function router(express) {
         const r = express.Router();
         r.use(guard);
+        r.get('/navbar-token', async (req, res) => {
+            res.set('Cache-Control', 'private, no-store');
+            const token = sessionToken(config, req);
+            let claims = null;
+            try { if (token) claims = await auth.verify(token); } catch { /* an invalid session */ }
+            if (!claims || !ids.isSubjectId('user', claims.subject_id) || /^(svc|app|mod):/.test(String(claims.sub || ''))
+                || claims.typ !== undefined || claims.nonce !== undefined || claims.actor_type !== undefined) {
+                return res.status(401).json({ error: 'Not signed in' });
+            }
+            return res.json({ token });
+        });
         r.use(auth.router(express));
         return r;
     }
