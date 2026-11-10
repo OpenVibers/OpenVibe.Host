@@ -26,8 +26,19 @@ Prometheus (127.0.0.1:9090)  ──GET /api/v1/alerts──▶  ovhost alerts re
 - **Reminded**: the alert pages again once a day while it stays open.
 - **Resolved**: a notice goes out when the alert drops out of the firing set.
 - **Recipients**: `OWNER_USERNAME` in Network's environment, plus the comma-separated `OPERATOR_ALERT_USERNAMES`.
-- **What leaves the host**: only the alert name, severity, summary, description, `service` label and start time.
+- **What leaves the host**: the alert name, severity, summary, description, `service` label and start time.
   Instance and job labels stay on the host; the fingerprint is a hash of the labels.
+- **A browser-check alert says what failed**: `OpenVibeBrowserCheckFailed` also carries up to five `details`
+  from `/var/lib/openvibe-host/browser-watch/<site>.json` (the route, the check, the axe rule and impact, up to
+  five target selectors, the rule's help text and Deque University page, the failing page's own URL, a console
+  error, a viewport width, a status, overflow offenders), the release sha resolved to the full commit, the
+  commit's page (`git.openvibe.codes` when the repository is mirrored there, else `github.com`), when the check
+  ran and since when the alert has been failing. Network turns them into the notification's sentence, a facts
+  table, action links and a next step.
+- **Links are built on the host and allowlisted**: https only, and the host must be one of the network's own
+  domains (from the contracts service manifests), `git.openvibe.codes`, `github.com` or
+  `dequeuniversity.com`; anything else is dropped. Every string is text and is escaped where a notification
+  shows it.
 - **Pending alerts** (inside their `for:` window) are not sent.
 - **Prometheus unreachable**: the relay sends nothing, because an empty set would resolve every open alert.
 - **Relay failures**: `openvibe_alert_relay_last_run_ok` and `openvibe_alert_relay_last_success_timestamp_seconds`
@@ -63,7 +74,9 @@ The release is its own series (`openvibe_browser_check_release_info`), so a fail
 
 - **A settle window:** a release is judged once its process has run 3 minutes (`/release.json` `booted_at`). This stops a restart's reconnecting sockets from paging.
 - **Confirmation:** the confirming second run of a failure waits a minute.
-- **What failed:** the axe rules and targets, console errors, overflow and statuses are in `/var/lib/openvibe-host/browser-watch/<site>.json` under `details`.
+- **What failed:** the axe rules (with their help text and Deque help page), targets, console errors, overflow
+  offenders, duplicate scripts, JSON-LD the page does not show and statuses are in
+  `/var/lib/openvibe-host/browser-watch/<site>.json` under `details`; the relay sends the first five to Network.
 
 ## Commands
 
