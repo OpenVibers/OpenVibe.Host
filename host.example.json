@@ -2040,6 +2040,19 @@
         "url": "http://127.0.0.1:4630/api/ready",
         "timeoutSeconds": 30
       },
+      "protected": {
+        "kind": "http-json-count",
+        "url": "http://127.0.0.1:4630/api/ready",
+        "field": "details.protected_sessions",
+        "label": "robot control sessions"
+      },
+      "drain": {
+        "policy": "wait",
+        "waitMaxSeconds": 600,
+        "pollSeconds": 10,
+        "quietChecks": 2,
+        "timeoutPolicy": "continue"
+      },
       "noRestartPaths": [
         "docs/",
         "test/",
