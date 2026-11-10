@@ -319,6 +319,8 @@ async function networkDown(h) {
                     ignoreErrors: has('strict-errors') ? [] : KNOWN_ERRORS,
                 });
                 rep.id = site.id;
+                // The result file keeps it, so a failure detail can build the rule's Deque help page.
+                rep.axe_version = has('no-axe') ? null : h.AXE.version;
                 reports.push(rep);
             }
         } finally { if (browser) await browser.close(); }
