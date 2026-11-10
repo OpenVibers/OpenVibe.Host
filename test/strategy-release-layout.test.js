@@ -247,11 +247,12 @@ runTests([
 
     test('a service configured to continue at the wait limit logs the active sessions and deploys', async () => {
         const host = await liveHost({ drain: { policy: 'wait', waitMaxSeconds: 2, pollSeconds: 1, timeoutPolicy: 'continue' } });
-        const to = host.push({ 'server/index.js': 'v2();' }, 'v2');
+        const to = host.push({ 'server/index.js': 'v2();', 'server/db/schema.sql': 'CREATE TABLE b(y);' }, 'v2');
         host.liveStreams = [{ is_live: true }];
-        const r = await host.cli('deploy', 'live');
+        const r = await host.cli('deploy', 'live', '--wait-idle');
         assert.strictEqual(r.code, 0, r.out);
         assert.match(r.out, /protected-session wait reached 2s; proceeding with 1 live streams still active/);
+        assert.strictEqual((await lastRecord(host, 'live')).protectedSessions.waitedSeconds, 2, 'the second guard shares the same total wait budget');
         assert.strictEqual(host.currentSha(), to);
         assert.deepStrictEqual(host.restarts(), ['openvibe-live.service']);
     }),
