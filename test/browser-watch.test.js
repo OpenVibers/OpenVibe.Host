@@ -58,7 +58,7 @@ runTests([
         assert.match(host.files.get(PROM).content, /^openvibe_browser_check_failing_checks\{service="live"\} 2$/m);
         const st = JSON.parse(host.files.get('/var/lib/openvibe-host/browser-watch/live.json').content);
         assert.deepStrictEqual(st.details, [
-            { route: '/', check: 'axe', rule: 'color-contrast', impact: 'serious', targets: ['.live-card .badge', '.b', '.c', '.d'], help: 'Ensures the contrast between foreground and background colors meets WCAG 2 AA contrast ratio thresholds', help_url: 'https://dequeuniversity.com/rules/axe/4.13/color-contrast' },
+            { route: '/', check: 'axe', rule: 'color-contrast', impact: 'serious', targets: ['.live-card .badge', '.b', '.c', '.d'], help: 'Ensures the contrast between foreground and background colors meets WCAG 2 AA contrast ratio thresholds', help_url: 'https://dequeuniversity.com/rules/axe/4.13/color-contrast?application=axeAPI' },
             { route: '/', check: 'errors', width: 390, message: 'WebSocket closed' },
             { route: '/', check: 'overflow', width: 390, offenders: ['.wide'] },
             { route: '/', check: 'scripts', width: 390, message: 'https://openvibe.live/js/app.js?v=1' },

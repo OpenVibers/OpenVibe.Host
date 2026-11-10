@@ -162,7 +162,7 @@ runTests([
         const [out] = await enrichBrowser(host.ctx(), [{ fingerprint: 'b'.repeat(16), name: 'OpenVibeBrowserCheckFailed', severity: 'critical', summary: 'domains failed', service: 'domains', started_at: '2026-11-10T09:12:30Z' }], { domains: networkDomains() });
         assert.strictEqual(out.release_url, 'https://git.openvibe.codes/OpenVibers/OpenVibe.Domains/commit/74bdff4', 'the network own Forgejo when the mirror answers');
         assert.strictEqual(out.details[0].page_url, undefined, 'a route that escapes the origin gets no link');
-        assert.strictEqual(out.details[0].help_url, 'https://dequeuniversity.com/rules/axe/4.13/summary-name', 'an http helpUrl is replaced by the https Deque page');
+        assert.strictEqual(out.details[0].help_url, 'https://dequeuniversity.com/rules/axe/4.13/summary-name?application=axeAPI', 'an http helpUrl is replaced by the https Deque page');
         assert.strictEqual(out.details[1].help_url, undefined, 'an unknown rule id gets no made-up URL');
     }),
     test('browser-check alert: the short release in /release.json becomes the full commit from the checkout; 5 details, 5 targets', async () => {
@@ -209,7 +209,7 @@ runTests([
         assert.deepStrictEqual([a.service, a.release, a.checked_at, a.failing_since], ['domains', sha, '2026-11-10T09:12:00.000Z', '2026-11-10T09:12:30.000Z']);
         assert.strictEqual(a.details.length, 1);
         assert.strictEqual(a.details[0].page_url, 'https://openvibe.domains/');
-        assert.strictEqual(a.details[0].help_url, 'https://dequeuniversity.com/rules/axe/4.13/summary-name');
+        assert.strictEqual(a.details[0].help_url, 'https://dequeuniversity.com/rules/axe/4.13/summary-name?application=axeAPI');
         noSecrets(host, r.out);
     }),
     test('alerts: usage', async () => {
