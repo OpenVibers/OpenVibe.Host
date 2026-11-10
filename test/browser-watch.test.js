@@ -12,8 +12,8 @@ const { runBrowserCheck } = require('../lib/browser-check-hook');
 
 const PROM = '/var/lib/prometheus/node-exporter/openvibe_browsercheck.prom';
 const pass = [{ base: 'https://openvibe.live', ok: true, summary: { checks: { status: { fail: 0 }, console: { fail: 0 } } } }];
-const fail = [{ base: 'https://openvibe.live', ok: false, summary: { checks: { status: { fail: 0 }, console: { fail: 2 }, overflow: { fail: 1 } } },
-    routes: [{ path: '/', ok: false, axe: { violations: [{ id: 'color-contrast', impact: 'serious', targets: ['.live-card .badge', '.b', '.c', '.d'] }] }, errors: [], widths: [{ width: 390, errors: [{ text: 'WebSocket closed' }], overflow: true, offenders: ['.wide'] }] }, { path: '/ok', ok: true }] }];
+const fail = [{ base: 'https://openvibe.live', ok: false, axe_version: '4.13.0', summary: { checks: { status: { fail: 0 }, console: { fail: 2 }, overflow: { fail: 1 } } },
+    routes: [{ path: '/', ok: false, axe: { violations: [{ id: 'color-contrast', impact: 'serious', help: 'Ensures the contrast between foreground and background colors meets WCAG 2 AA contrast ratio thresholds', targets: ['.live-card .badge', '.b', '.c', '.d'] }] }, errors: [], widths: [{ width: 390, errors: [{ text: 'WebSocket closed' }], overflow: true, offenders: ['.wide'], duplicateScripts: [{ url: 'https://openvibe.live/js/app.js?v=1', count: 2 }] }] }, { path: '/ok', ok: true }] }];
 
 function site({ release = 'abc1234def56' } = {}) {
     const host = scenario();
@@ -58,10 +58,12 @@ runTests([
         assert.match(host.files.get(PROM).content, /^openvibe_browser_check_failing_checks\{service="live"\} 2$/m);
         const st = JSON.parse(host.files.get('/var/lib/openvibe-host/browser-watch/live.json').content);
         assert.deepStrictEqual(st.details, [
-            { route: '/', check: 'axe', rule: 'color-contrast', impact: 'serious', targets: ['.live-card .badge', '.b', '.c'] },
+            { route: '/', check: 'axe', rule: 'color-contrast', impact: 'serious', targets: ['.live-card .badge', '.b', '.c', '.d'], help: 'Ensures the contrast between foreground and background colors meets WCAG 2 AA contrast ratio thresholds', help_url: 'https://dequeuniversity.com/rules/axe/4.13/color-contrast' },
             { route: '/', check: 'errors', width: 390, message: 'WebSocket closed' },
             { route: '/', check: 'overflow', width: 390, offenders: ['.wide'] },
+            { route: '/', check: 'scripts', width: 390, message: 'https://openvibe.live/js/app.js?v=1' },
         ], 'what failed is kept for the operator');
+        assert.strictEqual(st.axeVersion, '4.13.0', 'the relay can build a help page for a detail written before the version was kept');
         // The same failed release: left alone for 30 minutes, then checked again (a transient failure clears itself).
         const t0 = Date.parse(st.checkedAt);
         r = await watch(host.ctx(), { retryDelayMs: 0, check: host.check, now: t0 + 10 * 60000 });

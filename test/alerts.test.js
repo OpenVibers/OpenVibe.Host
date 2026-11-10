@@ -8,7 +8,7 @@
 const assert = require('assert');
 const contracts = require('openvibe-contracts');
 const { scenario, test, runTests, SECRET } = require('./helpers');
-const { toReport, fingerprint } = require('../lib/alerts');
+const { toReport, enrichBrowser, networkDomains, fingerprint } = require('../lib/alerts');
 
 const TOKEN = 'tok_ALERTS_TOKEN_MUST_NEVER_APPEAR_5d1e';
 const HOST_SECRET = `${SECRET}-host`;
@@ -124,6 +124,93 @@ runTests([
         const r = await host.cli('alerts', 'relay');
         assert.strictEqual(r.code, 2);
         assert.match(r.out, /ALERTS not delivered \(credentials\)/);
+    }),
+    // ── What a browser-check alert carries (WS-H task 11, the operator's explanation) ─────────────
+    test('browser-check alert: the result file\'s details, the full release, page and help links, allowed hosts only', async () => {
+        const host = scenario();
+        const sha = '74bdff4c0a1e9d2b7f3c5a8e6b4d2f1a0c9e8d7b';
+        host.put('/var/lib/openvibe-host/browser-watch/domains.json', JSON.stringify({
+            site: 'domains', origin: 'https://openvibe.domains', release: sha, ok: false, failing: [{ check: 'axe', fail: 1 }], axeVersion: '4.13.0',
+            checkedAt: '2026-11-10T09:12:00Z',
+            details: [
+                { route: '/', check: 'axe', rule: 'summary-name', impact: 'serious', targets: ['#dev-fold > summary', '#faq-fold > summary'], help: 'Ensures the summary element has a non-empty accessible name', help_url: 'https://dequeuniversity.com/rules/axe/4.13/summary-name?application=axeAPI' },
+                { route: '/', check: 'errors', width: 390, message: 'WebSocket closed' },
+            ],
+        }));
+        const a = { fingerprint: 'a'.repeat(16), name: 'OpenVibeBrowserCheckFailed', severity: 'critical', summary: 'domains: the browser check of release 74bdff4 failed (1 failing check(s))', service: 'domains', started_at: '2026-11-10T09:12:30Z' };
+        const [out] = await enrichBrowser(host.ctx(), [a], { domains: networkDomains() });
+        assert.strictEqual(out.release, sha, 'the full release sha');
+        assert.strictEqual(out.release_url, `https://github.com/OpenVibers/OpenVibe.Domains/commit/${sha}`, 'GitHub when Forgejo does not answer');
+        assert.strictEqual(out.checked_at, '2026-11-10T09:12:00.000Z');
+        assert.strictEqual(out.failing_since, '2026-11-10T09:12:30Z');
+        assert.deepStrictEqual(out.details[0], { check: 'axe', route: '/', rule: 'summary-name', impact: 'serious', targets: ['#dev-fold > summary', '#faq-fold > summary'],
+            help: 'Ensures the summary element has a non-empty accessible name', help_url: 'https://dequeuniversity.com/rules/axe/4.13/summary-name?application=axeAPI', page_url: 'https://openvibe.domains/' });
+        assert.deepStrictEqual(out.details[1], { check: 'errors', route: '/', width: 390, message: 'WebSocket closed', page_url: 'https://openvibe.domains/' });
+        const v = contracts.validate('network.operator-alerts-request@1', { source: 'prometheus', alerts: [out] });
+        assert.ok(v.valid, JSON.stringify(v.errors));
+    }),
+    test('browser-check alert: Forgejo when the repository is mirrored there; an off-host page or http help link is dropped', async () => {
+        const host = scenario();
+        host.http.set('https://git.openvibe.codes/OpenVibers/OpenVibe.Domains', () => ({ status: 200, body: 'ok' }));
+        host.put('/var/lib/openvibe-host/browser-watch/domains.json', JSON.stringify({
+            site: 'domains', origin: 'https://openvibe.domains', release: '74bdff4', ok: false, axeVersion: '4.13.0', checkedAt: '2026-11-10T09:12:00Z',
+            details: [
+                { route: '//evil.example/x', check: 'axe', rule: 'summary-name', impact: 'serious', targets: ['#a'], help: 'x', help_url: 'http://dequeuniversity.com/rules/axe/4.13/summary-name' },
+                { route: '/two', check: 'axe', rule: 'not a rule!', targets: ['#b'] },
+            ],
+        }));
+        const [out] = await enrichBrowser(host.ctx(), [{ fingerprint: 'b'.repeat(16), name: 'OpenVibeBrowserCheckFailed', severity: 'critical', summary: 'domains failed', service: 'domains', started_at: '2026-11-10T09:12:30Z' }], { domains: networkDomains() });
+        assert.strictEqual(out.release_url, 'https://git.openvibe.codes/OpenVibers/OpenVibe.Domains/commit/74bdff4', 'the network own Forgejo when the mirror answers');
+        assert.strictEqual(out.details[0].page_url, undefined, 'a route that escapes the origin gets no link');
+        assert.strictEqual(out.details[0].help_url, 'https://dequeuniversity.com/rules/axe/4.13/summary-name', 'an http helpUrl is replaced by the https Deque page');
+        assert.strictEqual(out.details[1].help_url, undefined, 'an unknown rule id gets no made-up URL');
+    }),
+    test('browser-check alert: the short release in /release.json becomes the full commit from the checkout; 5 details, 5 targets', async () => {
+        const host = scenario();
+        const repo = host.createRepo('/opt/openvibe.domains', { owner: 'ubuntu' });
+        const sha = repo.commit({ 'package.json': '{}' });
+        repo.publish(sha); repo.checkout(sha);
+        host.inv.services.domains = { repo: '/opt/openvibe.domains', owner: 'ubuntu' };
+        host.put('/var/lib/openvibe-host/browser-watch/domains.json', JSON.stringify({
+            site: 'domains', origin: 'https://openvibe.domains', release: sha.slice(0, 12), ok: false, checkedAt: '2026-11-10T09:12:00Z',
+            details: Array.from({ length: 7 }, (_, i) => ({ route: `/${i}`, check: 'axe', rule: 'summary-name', targets: Array.from({ length: 7 }, (_, j) => `#t${i}-${j}`) })),
+        }));
+        const [out] = await enrichBrowser(host.ctx(), [{ fingerprint: 'c'.repeat(16), name: 'OpenVibeBrowserCheckFailed', severity: 'critical', summary: 'domains failed', service: 'domains', started_at: '2026-11-10T09:12:30Z' }], { domains: networkDomains() });
+        assert.strictEqual(out.release, sha);
+        assert.strictEqual(out.release_url, `https://github.com/OpenVibers/OpenVibe.Domains/commit/${sha}`);
+        assert.strictEqual(out.details.length, 5, 'at most 5 details');
+        assert.strictEqual(out.details[0].targets.length, 5, 'at most 5 targets');
+    }),
+    test('a Prometheus alert without a result file is sent unchanged (no details, no release)', async () => {
+        const host = scenario();
+        const [out] = await enrichBrowser(host.ctx(), [{ fingerprint: 'd'.repeat(16), name: 'OpenVibeBrowserCheckFailed', severity: 'warning', summary: 'live failed', service: 'live', started_at: '2026-09-26T05:00:00Z' }], { domains: networkDomains() });
+        assert.deepStrictEqual(out, { fingerprint: 'd'.repeat(16), name: 'OpenVibeBrowserCheckFailed', severity: 'warning', summary: 'live failed', service: 'live', started_at: '2026-09-26T05:00:00Z', failing_since: '2026-09-26T05:00:00Z' });
+        assert.ok(contracts.validate('network.operator-alerts-request@1', { source: 'prometheus', alerts: [out] }).valid);
+        const host2 = scenario();
+        host2.put('/var/lib/openvibe-host/browser-watch/live.json', JSON.stringify({ site: 'live', ok: true, release: 'abc1234', checkedAt: '2026-09-26T04:00:00Z' }));
+        const [pass] = await enrichBrowser(host2.ctx(), [{ fingerprint: 'e'.repeat(16), name: 'OpenVibeBrowserCheckFailed', severity: 'warning', summary: 'live failed', service: 'live', started_at: '2026-09-26T05:00:00Z' }], { domains: networkDomains() });
+        assert.strictEqual(pass.details, undefined, 'a stale pass is not used for a firing alert');
+    }),
+    test('alerts relay delivers a browser-check alert with what the result file knows', async () => {
+        const sha = '74bdff4c0a1e9d2b7f3c5a8e6b4d2f1a0c9e8d7b';
+        const host = withNetwork({ prom: { status: 200, body: { status: 'success', data: { alerts: [{
+            labels: { alertname: 'OpenVibeBrowserCheckFailed', severity: 'page', service: 'domains' }, state: 'firing', activeAt: '2026-11-10T09:12:30Z',
+            annotations: { summary: 'domains: the browser check of release 74bdff4 failed (1 failing check(s))' },
+        }] } } } });
+        host.put('/var/lib/openvibe-host/browser-watch/domains.json', JSON.stringify({
+            site: 'domains', origin: 'https://openvibe.domains', release: sha, ok: false, checkedAt: '2026-11-10T09:12:00Z',
+            details: [{ route: '/', check: 'axe', rule: 'summary-name', impact: 'serious', targets: ['#dev-fold > summary', '#faq-fold > summary'], help: 'Ensures the summary element has a non-empty accessible name' }],
+        }));
+        const r = await host.cli('alerts', 'relay');
+        assert.strictEqual(r.code, 0, r.out);
+        const doc = host.delivered[0];
+        assert.ok(contracts.validate('network.operator-alerts-request@1', doc).valid);
+        const a = doc.alerts[0];
+        assert.deepStrictEqual([a.service, a.release, a.checked_at, a.failing_since], ['domains', sha, '2026-11-10T09:12:00.000Z', '2026-11-10T09:12:30.000Z']);
+        assert.strictEqual(a.details.length, 1);
+        assert.strictEqual(a.details[0].page_url, 'https://openvibe.domains/');
+        assert.strictEqual(a.details[0].help_url, 'https://dequeuniversity.com/rules/axe/4.13/summary-name');
+        noSecrets(host, r.out);
     }),
     test('alerts: usage', async () => {
         const r = await scenario().cli('alerts');
