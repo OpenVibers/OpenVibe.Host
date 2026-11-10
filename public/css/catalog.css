@@ -125,7 +125,7 @@
 .hc-aside li strong { grid-row: 1 / span 2; grid-column: 2; align-self: center; font-variant-numeric: tabular-nums; }
 .hc-aside-spec { grid-column: 1; font-size: 12px; color: var(--hs-muted); }
 .hc-aside-foot { margin: .5rem 0 0; font-size: 12px; color: var(--hs-muted); }
-.hc-own { padding-top: 1rem; padding-bottom: 1rem; }
+.hc-own { padding-top: 1rem; padding-bottom: 0; }
 
 @media (max-width: 60rem) { .hc-plan { grid-template-columns: 1fr; } }
 /* Phones: each plan becomes a card; the header row is read from each cell's label. */
