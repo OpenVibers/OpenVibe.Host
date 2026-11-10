@@ -18,8 +18,8 @@ const BUDGETS = {
     htmlRawKB: 37,   // 32.7 openvibe-shared 4.22.0: the navbar's magnifier search button and More dropdown (search.js and loading.js load only when used); 28.8 on 2026-10-22 (fresh database: the curated front page's counts, sizes, value, providers and questions); 23.8 before; 15.9 before the showcase front page, 2026-10-07
     htmlBrotliKB: 9,   // 8.5 with openvibe-shared 4.92.0: the page starts its footer (2026-11-01); 2026-11-01: WebSite + Organization JSON-LD; 8.1 with openvibe-shared 4.59.0: the Pair mark beside the name, set in the brand face (2026-10-31); 7.1 on 2026-10-22; 6.3 (4.3 before the showcase)
     jsFiles: 5,   // 5 (openvibe-shared 2.10's shell adds web-runtime.js)
-    jsRawKB: 375.1, // 375.1: measured 367.1 with openvibe-shared 4.161.0, plus room for 4.162.0–4.163.0, 2026-11-09
-    jsBrotliKB: 89.5, // 89.5: measured 87.5 with openvibe-shared 4.163.0, plus room for 4.162.0–4.163.0, 2026-11-09
+    jsRawKB: 376.4, // 376.4: measured 376.3 KB raw with openvibe-shared 4.186.0 (2026-11-10: the mark's Working and Thinking states, the Dock and the menu as one sheet, bare controls styled by the loader); 375.1: measured 367.1 with openvibe-shared 4.161.0, plus room for 4.162.0–4.163.0, 2026-11-09
+    jsBrotliKB: 89.8, // 89.8: measured 89.7 KB brotli with openvibe-shared 4.186.0 (2026-11-10: the mark's Working and Thinking states, the Dock and the menu as one sheet, bare controls styled by the loader); 89.5: measured 87.5 with openvibe-shared 4.163.0, plus room for 4.162.0–4.163.0, 2026-11-09
     cssFiles: 3,   // 3 (host.css, openvibe-shared showcase.css, catalog.css: the front page is the hosting catalog since Host#69)
     cssRawKB: 63.1, // 63.1: measured 58.1 with openvibe-shared 4.161.0, plus room for 4.162.0–4.163.0, 2026-11-09
     cssBrotliKB: 12.9, // 12.9: measured 11.7 with openvibe-shared 4.161.0, plus room for 4.162.0–4.163.0, 2026-11-09
