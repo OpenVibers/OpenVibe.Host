@@ -2043,7 +2043,7 @@
       "protected": {
         "kind": "http-json-count",
         "url": "http://127.0.0.1:4630/api/ready",
-        "field": "details.protected_sessions",
+        "field": "protected_sessions",
         "label": "robot control sessions"
       },
       "drain": {
