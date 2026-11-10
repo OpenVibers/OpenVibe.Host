@@ -94,6 +94,7 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
         return {
             title: 'Compare hosting plans',
             body: render.catalog({ result, query, providers, currencies, dedicated }),
+            styles: ['kit.css'],
             indexable: !Object.keys(query).length,
             description: 'Compare cloud, VPS and dedicated hosting plans: price per month, per vCPU and per GB, each with the day it was checked and its source.',
             jsonLd: render.jsonLd.catalog(baseUrl, result.plans),
@@ -144,7 +145,7 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
         if (q.sort === 'price' && !q.currency) q.currency = 'USD';
         const result = await catalog.offers(q);
         return {
-            title: 'Hosting offers', body: render.offers({ result, query: q }), indexable: !Object.keys(query).length,
+            title: 'Hosting offers', body: render.offers({ result, query: q }), indexable: !Object.keys(query).length, styles: ['kit.css'],
             description: "Hosting offers from LowEndSpirit's Offers board, newest first or cheapest a month, each with the price its headline states and the day it was posted.",
         };
     }
