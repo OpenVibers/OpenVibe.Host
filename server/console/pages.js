@@ -39,7 +39,7 @@ function page({ viewer, config, data, csrf, notice, available }) {
     const totals = Object.entries(data.totals).map(([cur, n]) => money(n, cur)).join(' + ') || '—';
     const body = `<section class="cs">
   <header class="cs-head">
-    <div><p class="cs-eyebrow">OpenVibe.Host · console</p><h1>Your servers, every provider</h1>
+    <div><p class="cs-eyebrow">Console</p><h1>Your servers, every provider</h1>
       <p class="cs-lede">Connect your own hosting accounts and see and run all your servers in one place, with where the catalog has the same size for less.</p></div>
     <div class="cs-stats"><div><b>${data.servers.length}</b><span>servers</span></div><div><b>${data.running}</b><span>running</span></div><div><b>${esc(totals)}</b><span>a month</span></div></div>
   </header>

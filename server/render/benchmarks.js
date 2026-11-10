@@ -48,7 +48,7 @@ function list({ result, query = {} }) {
     const rows = result.benchmarks;
     const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog/benchmarks?${new URLSearchParams({ ...q, cursor: result.next_cursor })}`, 'Next 50 results →', 'button hc-button-quiet')}</p>` : '';
     const filtered = q.provider || q.plan;
-    return `<header class="hc-head hc-head-row"><div><p class="hc-eyebrow">OpenVibe.Host · benchmarks</p><h1>Server benchmarks</h1>
+    return `<header class="hc-head hc-head-row"><div><h1>Server benchmarks</h1>
 <p class="hc-lede">CPU, disk and network results people ran on their own servers with YABS, by provider and plan.</p></div>
 <p>${link('/catalog/benchmarks/new', 'Submit a benchmark', 'button')}</p></header>
 ${rows.length || filtered ? `<form class="hc-filters" method="get" action="/catalog/benchmarks" role="search" aria-label="Sort benchmarks">
