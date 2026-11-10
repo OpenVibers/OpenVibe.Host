@@ -23,6 +23,8 @@ runTests([
             'design', 'exchange', 'report', 'vision', 'fun', 'shoes', 'bench', 'cam', 'domains', 'meme', 'surf', 'today', 'tours', 'mail']);
         assert.ok(Object.values(inv.services).filter((s) => s.databases.length).every((s) => s.drill), 'every service with a database has a restore drill');
         assert.strictEqual(inv.services.live.socketUnit, 'openvibe-live.socket');
+        assert.strictEqual(inv.services.bot.protected.field, 'protected_sessions');
+        assert.deepStrictEqual(inv.services.bot.drain, { policy: 'wait', waitMaxSeconds: 600, pollSeconds: 10, quietChecks: 2, timeoutPolicy: 'continue' });
         assert.ok(!inv.services.live.units.includes('openvibe-live.socket'));
         assert.strictEqual(inv.services.live.protected.url, 'http://127.0.0.1:3000/api/streams');
         // Media: its /api/ready reports ffmpeg recordings, chunked browser recordings, the recordings the
