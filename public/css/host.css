@@ -8,7 +8,7 @@ body { margin: 0; background: var(--hs-bg); color: var(--hs-fg); font: 15px/1.55
 a { color: var(--hs-accent); }
 .skip { position: absolute; left: -9999px; } .skip:focus { left: 1rem; top: 1rem; }
 .account-bar { max-width: 72rem; margin: 0 auto; padding: .5rem 1rem; text-align: right; color: var(--hs-muted); font-size: 14px; }
-.page { max-width: 72rem; margin: 0 auto; padding: 0 1rem 3rem; }
+.page { max-width: 72rem; margin: 0 auto; padding: 0 1rem; }
 h1 { font-size: 1.7rem; margin: .5rem 0 .25rem; } h2 { font-size: 1.2rem; margin-top: 2rem; } h3 { font-size: 1rem; }
 .meta, .muted, .crumbs { color: var(--hs-muted); } .crumbs { margin: 0; font-size: 14px; }
 code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; overflow-wrap: anywhere; }
