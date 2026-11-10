@@ -95,7 +95,7 @@ ${canRemove ? `<form method="post" action="/catalog/benchmarks/${esc(b.id)}/remo
 
 function submitForm({ viewer, providers = [], plans = [], csrf = '', error = null, query = {} }) {
     const head = `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog/benchmarks', 'Benchmarks')} / Submit</nav>
-<header class="hc-head"><p class="hc-eyebrow">OpenVibe.Host · benchmarks</p><h1>Benchmark your server</h1>
+<header class="hc-head"><h1>Benchmark your server</h1>
 <p class="hc-lede">Name the provider and plan, get a one-time link, and run one command on the server. YABS measures the CPU (Geekbench), the disk (fio) and the network (iperf3) in about 10 to 15 minutes, then posts the result here.</p></header>`;
     if (!viewer || viewer.kind !== 'user') {
         return `${head}<div class="hc-empty hc-empty-rich"><p><strong>Sign in to submit a benchmark.</strong></p><p>Results are public; who submitted them is not. Signing in lets you remove your own results later.</p><p>${link('/auth/login?next=%2Fcatalog%2Fbenchmarks%2Fnew', 'Sign in', 'button')}</p></div>`;
