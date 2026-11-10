@@ -88,7 +88,7 @@ ${select('sort', 'Sort by', SORTS, q.sort || 'popular')}
 </form>
 ${tldTable(rows, { caption: `${rows.length}${result.next_cursor ? '+' : ''} ending${rows.length === 1 ? '' : 's'}, ${sortLabel}; the cheapest price at any registrar` })}
 ${!rows.length && filtered ? `<div class="hc-empty"><p><strong>No ending matches.</strong></p><p>${link('/catalog/domains', 'Clear the filters')} or try another ending.</p></div>` : ''}${next}` : '';
-    return `<header class="hc-head"><p class="hc-eyebrow">OpenVibe.Host · domains compared</p><h1>Compare domain prices</h1>
+    return `<header class="hc-head"><h1>Compare domain prices</h1>
 <p class="hc-lede">${stats.tlds ? `${stats.tlds.toLocaleString('en')} endings with what registrars charge for the first year, a renewal and a transfer, and the total over five years.` : 'What registrars charge for each ending, for the first year, a renewal and a transfer.'} Check whether a name is taken, then register it wherever it costs least.</p></header>
 ${checkForm({ autofocus: !filtered && !q.sort && !q.cursor })}
 ${prices}

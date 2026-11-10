@@ -100,7 +100,7 @@ function page(result) {
     const needs = result.summary.needs_owner_budget;
     const demand = demandText(result.demand);
     return `<header class="hc-head">
-<p class="hc-eyebrow">OpenVibe.Host · staff · inference</p>
+<p class="hc-eyebrow">Staff</p>
 <h1>Inference placement planner</h1>
 <p class="hc-lede">A forecast and a monthly break-even for a warm rented GPU, scale-to-zero and wholesale. This page recommends; it never starts, stops or rents anything. The owner approves every rental.</p>
 </header>
@@ -114,7 +114,7 @@ ${method()}`;
 
 /** A staff-only error page: no result is shown and nothing is acted on. */
 function errorPage(message, { input = false } = {}) {
-    return `<header class="hc-head"><p class="hc-eyebrow">OpenVibe.Host · staff · inference</p><h1>Inference placement planner</h1>
+    return `<header class="hc-head"><p class="hc-eyebrow">Staff</p><h1>Inference placement planner</h1>
 <p class="hc-lede">The planner could not show a plan. Nothing was started, stopped or rented.</p></header>
 <div class="hc-empty"><p><strong>${input ? 'The planning input is unavailable.' : 'The planner has no plan to show.'}</strong></p><p>${esc(message)}</p>${input ? '<p>Set <code>HOST_INFERENCE_PLANNER_INPUT</code> to a readable planning JSON and reload.</p>' : ''}</div>`;
 }

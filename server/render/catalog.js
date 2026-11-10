@@ -240,7 +240,6 @@ ${planTable(dedicated.plans.slice(0, 10), { caption: `Dedicated servers, lowest 
 ${dedicated.plans.length > 10 ? `<p class="hc-more">${link('/catalog?kind=dedicated', `All ${dedicated.total} dedicated servers →`, 'button hc-button-quiet')}</p>` : ''}
 </section>` : '';
     return `<header class="hc-head">
-<p class="hc-eyebrow">OpenVibe.Host · hosting compared · alpha</p>
 <h1>Compare hosting plans</h1>
 <p class="hc-lede">Cloud, VPS and dedicated plans side by side, each with the day its price was checked and a link to where it came from.</p>
 </header>
@@ -253,7 +252,7 @@ ${method(plans.some((p) => p.affiliate_url))}`;
 }
 
 function providerList(providers) {
-    return `<header class="hc-head"><p class="hc-eyebrow">OpenVibe.Host · hosting compared</p><h1>Providers</h1>
+    return `<header class="hc-head"><h1>Providers</h1>
 <p class="hc-lede">Every provider in the catalog, with where its plans come from.</p></header>
 ${providers.length ? `<ul class="hc-providers">${providers.map((p) => `<li>${link(`/catalog/providers/${encodeURIComponent(p.slug)}`, `<strong>${esc(p.name)}</strong>`)}${p.description ? `<span>${esc(p.description)}</span>` : ''}${p.affiliate_url ? '<span class="hc-chip">Affiliate</span>' : ''}</li>`).join('')}</ul>` : '<div class="hc-empty"><p>No provider is listed yet.</p></div>'}
 ${providers.some((p) => p.affiliate_url) ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}`;
@@ -280,7 +279,7 @@ const PROMO_RULES = `<div class="hc-empty hc-empty-rich"><p><strong>No promotion
 <p>${link('/catalog', 'Compare every plan')} · ${link('/providers', 'See the providers')}</p></div>`;
 
 function promos(list) {
-    return `<header class="hc-head"><p class="hc-eyebrow">OpenVibe.Host · hosting compared</p><h1>Hosting promotions</h1>
+    return `<header class="hc-head"><h1>Hosting promotions</h1>
 <p class="hc-lede">Offers running now, with their codes and end dates as the provider states them. An ended offer drops off by itself.</p></header>
 ${list.length ? promoCards(list) : PROMO_RULES}
 ${list.some((p) => p.affiliate) ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}
@@ -391,7 +390,7 @@ function offers({ result, query = {}, now = Date.now() }) {
     const list = result.offers;
     const filtered = ['currency', 'max_monthly', 'source', 'priced'].some((k) => q[k]);
     const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog/offers?${new URLSearchParams({ ...q, cursor: result.next_cursor })}`, 'Next 50 offers →', 'button hc-button-quiet')}</p>` : '';
-    return `<header class="hc-head"><p class="hc-eyebrow">OpenVibe.Host · hosting compared</p><h1>Hosting offers</h1>
+    return `<header class="hc-head"><h1>Hosting offers</h1>
 <p class="hc-lede">What providers post on LowEndSpirit's Offers board, with the price each headline states and that price a month. Sort by the monthly price within one currency; nothing is converted.</p></header>
 <form class="hc-filters" method="get" action="/catalog/offers" role="search" aria-label="Filter hosting offers">
 ${select('sort', 'Sort by', OFFER_SORTS, q.sort || 'new')}
