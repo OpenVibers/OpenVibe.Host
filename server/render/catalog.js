@@ -228,8 +228,8 @@ function catalog({ result, query, providers, currencies, dedicated = { plans: []
     const plans = result.plans;
     const filtered = Object.keys(query || {}).some((k) => k !== 'sort' && k !== 'cursor' && query[k]);
     const empty = plans.length ? '' : filtered
-        ? `<div class="hc-empty"><p><strong>No plan matches these filters.</strong></p><p>${link('/catalog', 'Clear the filters')} or widen one of them.</p></div>`
-        : `<div class="hc-empty"><p><strong>The catalog is filling up.</strong></p><p>Plans arrive from providers' official APIs as each source is checked and enabled, and from staff entries with their source pages.</p></div>`;
+        ? kit.empty({ icon: 'search', title: 'No plan matches these filters', text: 'Widen one of the filters to see more plans.', action: { href: '/catalog', label: 'Clear the filters', icon: 'grid' } })
+        : kit.empty({ icon: 'grid', title: 'The catalog is filling up', text: 'Plans arrive from providers\' official APIs as each source is checked and enabled, and from staff entries with their source pages.' });
     const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog?${new URLSearchParams({ ...query, cursor: result.next_cursor })}`, 'Next 50 plans →', 'button hc-button-quiet')}</p>` : '';
     // The catalog filter already has a Dedicated kind; when there are dedicated plans, the comparison page also
     // shows them as their own section, with the same table. A kind=dedicated view is that table, so no second copy.
@@ -401,8 +401,8 @@ ${input('max_monthly', 'Max a month', q.max_monthly, 'type="number" min="0" step
 <div class="hc-filter-actions"><button type="submit">Show offers</button> <a href="/catalog/offers" class="hc-reset">Reset</a></div>
 </form>
 ${list.length ? `<ol class="hc-offers" aria-label="${list.length}${result.next_cursor ? '+' : ''} offers">${list.map((o) => offerItem(o, now)).join('')}</ol>`
-        : filtered ? `<div class="hc-empty"><p><strong>No offer matches these filters.</strong></p><p>${link('/catalog/offers', 'Clear the filters')} or widen one of them.</p></div>`
-            : '<div class="hc-empty"><p><strong>No offer in the last 120 days.</strong></p><p>LowEndSpirit\'s Offers board is read every hour.</p></div>'}
+        : filtered ? kit.empty({ icon: 'search', title: 'No offer matches these filters', text: 'Widen one of the filters to see more offers.', action: { href: '/catalog/offers', label: 'Clear the filters', icon: 'grid' } })
+            : kit.empty({ icon: 'tag', title: 'No offer in the last 120 days', text: 'LowEndSpirit\'s Offers board is read every hour.', action: { href: '/catalog', label: 'Compare the plans', icon: 'grid' } })}
 ${next}
 <section class="hc-method" aria-labelledby="hc-offers-method-h"><h2 id="hc-offers-method-h">How offers are read</h2><ul>
 <li><strong>From the board's own feed.</strong> LowEndSpirit's Offers board, where providers post their offers, through OpenVibe.Sources. Each headline links to its post, which has the details and the final word.</li>

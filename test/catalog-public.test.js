@@ -60,6 +60,8 @@ const { boot, check, done } = require('./helpers/boot');
             assert.ok(front.text.includes(`href="/catalog/providers/${p.slug}"`), 'a provider card opens its page');
             assert.strictEqual((await t.api('GET', '/catalog/providers')).status, 200);
             const nothing = await t.api('GET', '/catalog?min_vcpu=999'); assert.match(nothing.text, /No plan matches these filters/);
+            assert.match(nothing.text, /class="ovk-empty"/, 'an empty catalog draws the kit empty state');
+            assert.match(nothing.text, /class="ovk-btn[^"]*" href="\/catalog"/, 'the empty state offers the button that clears the filters');
             const bad = await t.api('GET', '/catalog?sort=affiliate'); assert.strictEqual(bad.status, 422);
             // JSON-LD on the indexable catalog pages: WebSite and an ItemList on the front, an ItemList on /catalog,
             // a Product with a monthly Offer on a plan; never on a filtered (noindex) view.
