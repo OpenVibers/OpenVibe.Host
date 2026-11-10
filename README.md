@@ -2,6 +2,9 @@
 
 > Hosting, compared honestly: plans side by side with dated, sourced prices. And the network's operator plane, `ovhost`.
 
+**Live site:** https://openvibe.host · **API docs:** https://openvibe.services · **For AI:** https://openvibe.host/llms.txt
+**Run it:** `npm ci && npm run dev` (Node 22 or newer) · **Tests:** `npm test`
+
 **Status:** alpha. Stage A (operator plane) is a CLI, `ovhost`, tested against a fake host. It is installed on the production host at `/usr/local/bin/ovhost` with inventory `/etc/openvibe/host.json`; it deploys services, runs nightly backups, and performs restore drills. Repository deploy scripts are thin wrappers around `ovhost deploy|rollback|plan`: [docs/deploy-strategies.md](docs/deploy-strategies.md). The Host service on port 4910 serves the hosting comparison catalog at openvibe.host. Stage B (tenant static hosting) **moved to OpenVibe.Space on 2026-10-12** (see [Static hosting moved](#static-hosting-moved)). Stage C (sandboxed user code) is **not started**.
 **Domain:** `openvibe.host` (the catalog). `*.openvibe.host` served Stage B's tenant sites; any request there now answers 410 with a link to OpenVibe.Space.
 **Plan:** OpenVibe End-to-End Realignment & Implementation Plan, revision 3 (20 Sep 2026), §15.3 and §15.17; roadmap Wave 21; T20 (Host, Space and Community re-split, 2026-10-08).
