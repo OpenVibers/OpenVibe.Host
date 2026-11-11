@@ -7,7 +7,7 @@ import tempfile
 import sys
 
 
-def entry():
+def old_entry():
     return {
         '_note': 'Directory v1: stateless, source-linked public directories; no database or service credentials.',
         'repo': '/opt/openvibe.directory',
@@ -32,16 +32,30 @@ def entry():
     }
 
 
+def entry():
+    service = old_entry()
+    service['_note'] = 'Directory: sourced public reads plus opt-in people listings in PostgreSQL.'
+    service['databases'] = [{'name': 'directory', 'engine': 'postgresql', 'database': 'ov_directory'}]
+    service['env'] = {'required': ['PORT', 'HOST', 'BASE_URL', 'DATABASE_URL', 'OV_OAUTH_CLIENT_ID', 'OV_OAUTH_CLIENT_SECRET']}
+    service['lifecycle']['startupRecovery']['resumes'].append({'kind': 'state', 'what': 'Reload opt-in people listings from PostgreSQL.'})
+    service['lifecycle']['rollback']['blockers'] = {'none': 'People migration is expand-only and the previous version ignores the new table.'}
+    service['lifecycle']['contracts'] = {'none': 'Directory uses signed Network user tokens and its own PostgreSQL table; the service manifest release is separate.'}
+    service['lifecycle']['leases'] = {'none': 'No background writer lease; public source refresh stays in process.'}
+    return service
+
+
 def register(target):
     target = pathlib.Path(target)
     data = json.loads(target.read_text())
     if 'directory' in data['services']:
-        if data['services']['directory'] != entry():
+        if data['services']['directory'] == entry():
+            print('directory already registered')
+            return
+        if data['services']['directory'] != old_entry():
             raise SystemExit('directory already registered with different settings; refusing overwrite')
-        print('directory already registered')
-        return
+        data['services']['directory'] = entry()
     for name, service in data['services'].items():
-        if service.get('port') == 5281 or service.get('drill', {}).get('port') == 5281:
+        if name != 'directory' and (service.get('port') == 5281 or service.get('drill', {}).get('port') == 5281):
             raise SystemExit(f'Port 5281 already belongs to {name}')
     data['services']['directory'] = entry()
     st = target.stat()
