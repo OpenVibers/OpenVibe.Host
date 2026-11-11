@@ -26,6 +26,7 @@ def entry():
             'shutdown': {'signal': 'SIGTERM', 'deadlineSeconds': 10, 'drains': ['HTTP server closed']},
             'startupRecovery': {'resumes': [{'kind': 'state', 'what': 'Refetch public sources after ten-minute cache reset'}]},
             'rollback': {'conditions': ['Ready probe fails'], 'window': 'Any time', 'blockers': {'none': 'Stateless; no migrations'}},
+            'contracts': {'none': 'Stateless public reads; no runtime Contracts dependency. Comparison schema release is held separately.'},
             'leases': {'none': 'No workers or writes'},
         },
     }
