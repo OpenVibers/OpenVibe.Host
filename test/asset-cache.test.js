@@ -22,17 +22,17 @@ const ASSET = 'css/host.css';
             assert.strictEqual(r.headers['cache-control'], 'public, max-age=31536000, immutable');
         });
 
-        await check("a wrong-but-hex ?v= is 'public, max-age=300, stale-while-revalidate=86400'", async () => {
+        await check("a wrong-but-hex ?v= is 'public, max-age=300, stale-while-revalidate=300'", async () => {
             const r = await t.get(DASHBOARD, `/${ASSET}?v=deadbeefdeadbeef`);
             assert.strictEqual(r.status, 200);
             assert.strictEqual(r.headers['cache-control'], cache.assetHeaders(ASSET, { hashed: false }));
-            assert.strictEqual(r.headers['cache-control'], 'public, max-age=300, stale-while-revalidate=86400');
+            assert.strictEqual(r.headers['cache-control'], 'public, max-age=300, stale-while-revalidate=300');
         });
 
-        await check("no ?v= is 'public, max-age=300, stale-while-revalidate=86400'", async () => {
+        await check("no ?v= is 'public, max-age=300, stale-while-revalidate=300'", async () => {
             const r = await t.get(DASHBOARD, `/${ASSET}`);
             assert.strictEqual(r.status, 200);
-            assert.strictEqual(r.headers['cache-control'], 'public, max-age=300, stale-while-revalidate=86400');
+            assert.strictEqual(r.headers['cache-control'], 'public, max-age=300, stale-while-revalidate=300');
         });
     } finally {
         await t.close();
