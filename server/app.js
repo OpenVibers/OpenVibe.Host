@@ -226,7 +226,15 @@ async function createApp(opts = {}) {
     // /auth/me is the navbar's who-is-signed-in read on every page, so it is not counted with sign-ins: 60 page views in 15 minutes made a signed-in visitor look signed out.
     app.use('/auth/', rateLimit({ windowMs: 15 * 60_000, max: 60, skip: (req) => req.path === '/me', standardHeaders: true, legacyHeaders: false }));
     app.use('/auth', createHostSession({ auth, config }).router(express));
-    { const legal = require('openvibe-shared/legal'); app.get(legal.PATHS, legal.handler({ id: 'host', service: 'host', host: 'openvibe.host', name: 'OpenVibe.Host', profile: 'ugc' })); }
+    { const legal = require('openvibe-shared/legal');
+    // Shared's legal template starts the navbar without links, so /terms, /privacy and /dmca showed its fallback
+    // (Home, My Account, Themes) instead of Host's catalogue. Add Host's own list to that init call.
+    const navLinks = JSON.stringify(require('./render/layout').NAV_LINKS());
+    app.get(legal.PATHS, (req, res, next) => {
+        const send = res.send.bind(res);
+        res.send = (body) => send(String(body).replace('try{OpenVibeNavbar.init({service:', `try{OpenVibeNavbar.init({links:${navLinks},service:`));
+        next();
+    }, legal.handler({ id: 'host', service: 'host', host: 'openvibe.host', name: 'OpenVibe.Host', profile: 'ugc' })); }
     app.use('/shared', require('openvibe-shared/serve').handler());
     // GET /<key>.txt — the IndexNow key file, only when a key is configured.
     if (indexnow.enabled) app.use(indexnow.keyFile);
