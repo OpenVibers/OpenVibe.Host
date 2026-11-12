@@ -142,4 +142,4 @@ document.addEventListener('DOMContentLoaded', function () {
     });
 }
 
-module.exports = { renderPage, esc, asset, assetVersion, setRelease, SITE_NAME, NETWORK_URL, canonicalOf, twinHeader };
+module.exports = { renderPage, esc, asset, assetVersion, setRelease, SITE_NAME, NETWORK_URL, canonicalOf, twinHeader, NAV_LINKS };
