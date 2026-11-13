@@ -18,7 +18,10 @@
 const showcase = require('openvibe-shared/showcase');
 const kit = require('openvibe-shared/kit');
 const seo = require('openvibe-shared/seo');
+const glyphs = require('openvibe-shared/glyphs');
 const { esc } = require('./layout');
+const arrowRight = glyphs.svg('arrow-right', { size: 16 });
+const arrowLeft = glyphs.svg('arrow-left', { size: 16 });
 const { MAX_AGE_DAYS } = require('../catalog/offers');
 const { isStorageRate, isStale } = require('../catalog/pricing');
 
@@ -230,14 +233,14 @@ function catalog({ result, query, providers, currencies, dedicated = { plans: []
     const empty = plans.length ? '' : filtered
         ? kit.empty({ icon: 'search', title: 'No plan matches these filters', text: 'Widen one of the filters to see more plans.', action: { href: '/catalog', label: 'Clear the filters', icon: 'grid' } })
         : kit.empty({ icon: 'grid', title: 'The catalog is filling up', text: 'Plans arrive from providers\' official APIs as each source is checked and enabled, and from staff entries with their source pages.' });
-    const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog?${new URLSearchParams({ ...query, cursor: result.next_cursor })}`, 'Next 50 plans →', 'button hc-button-quiet')}</p>` : '';
+    const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog?${new URLSearchParams({ ...query, cursor: result.next_cursor })}`, `Next 50 plans ${arrowRight}`, 'button hc-button-quiet')}</p>` : '';
     // The catalog filter already has a Dedicated kind; when there are dedicated plans, the comparison page also
     // shows them as their own section, with the same table. A kind=dedicated view is that table, so no second copy.
     const dedicatedSection = dedicated.plans.length ? `<section aria-labelledby="hc-dedicated-h">
 <h2 id="hc-dedicated-h">Dedicated servers compared</h2>
 <p class="hc-dim">Bare-metal plans from providers' official catalogs, with the same columns and the day each price was checked.</p>
 ${planTable(dedicated.plans.slice(0, 10), { caption: `Dedicated servers, lowest price first${dedicated.plans.length > 10 ? ' (10 shown)' : ''}` })}
-${dedicated.plans.length > 10 ? `<p class="hc-more">${link('/catalog?kind=dedicated', `All ${dedicated.total} dedicated servers →`, 'button hc-button-quiet')}</p>` : ''}
+${dedicated.plans.length > 10 ? `<p class="hc-more">${link('/catalog?kind=dedicated', `All ${dedicated.total} dedicated servers ${arrowRight}`, 'button hc-button-quiet')}</p>` : ''}
 </section>` : '';
     return `<header class="hc-head">
 <h1>Compare hosting plans</h1>
@@ -283,7 +286,7 @@ function promos(list) {
 <p class="hc-lede">Offers running now, with their codes and end dates as the provider states them. An ended offer drops off by itself.</p></header>
 ${list.length ? promoCards(list) : PROMO_RULES}
 ${list.some((p) => p.affiliate) ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}
-<p class="hc-links">${link('/catalog', '← Compare plans')}</p>`;
+<p class="hc-links">${link('/catalog', `${arrowLeft} Compare plans`)}</p>`;
 }
 
 function discussionSection(d) {
@@ -306,7 +309,7 @@ function reviewsSection(p) {
     const elsewhere = `${REVIEWS_URL}/everywhere?q=${encodeURIComponent(p.name)}&kind=${registrar ? 'company' : 'hosting'}`;
     return `<section class="hc-reviews" aria-labelledby="hc-reviews-h"><h2 id="hc-reviews-h">Reviews</h2>
 <p>Used ${esc(p.name)}? Review it on OpenVibe.Reviews, where reviews come from signed-in members, or see what other review sites say about it.</p>
-<p class="hc-more">${out(write, `Review ${esc(p.name)}`, { cls: 'button' })} ${out(elsewhere, 'Other review sites →')}</p></section>`;
+<p class="hc-more">${out(write, `Review ${esc(p.name)}`, { cls: 'button' })} ${out(elsewhere, `Other review sites ${arrowRight}`)}</p></section>`;
 }
 
 function provider(p, discussion = null, extra = '', now = Date.now()) {
@@ -321,7 +324,7 @@ function provider(p, discussion = null, extra = '', now = Date.now()) {
 <p class="hc-facts">${p.plans.length || !p.domains ? `${p.plans.length} plan${p.plans.length === 1 ? '' : 's'} listed` : ''}${cheapest ? ` · from <strong>${esc(money(cheapest.price_monthly, cheapest.currency))}</strong>/mo` : ''}${p.domains ? `${p.plans.length ? ' · ' : ''}${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `${p.domains.toLocaleString('en')} domain endings priced`)}` : ''}${p.homepage_url ? ` · ${out(p.homepage_url, esc(new URL(p.homepage_url).hostname))}` : ''}</p></div>
 ${visit(p)}
 </header>
-${p.plans.length ? planTable(p.plans, { caption: `${p.name}'s plans, lowest price first`, showProvider: false, now }) + (skipped ? `<p class="hc-dim">${skipped} of these plans carry no monthly price (a rate per GB) or one last checked over a year ago: they are listed, but not counted in the price above.</p>` : '') : p.domains ? `<p class="hc-more">${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `See ${esc(p.name)}'s domain prices →`, 'button')}</p>` : '<div class="hc-empty"><p>No plan of this provider is listed right now.</p></div>'}
+${p.plans.length ? planTable(p.plans, { caption: `${p.name}'s plans, lowest price first`, showProvider: false, now }) + (skipped ? `<p class="hc-dim">${skipped} of these plans carry no monthly price (a rate per GB) or one last checked over a year ago: they are listed, but not counted in the price above.</p>` : '') : p.domains ? `<p class="hc-more">${link(`/catalog/domains?registrar=${encodeURIComponent(p.slug)}&sort=tld`, `See ${esc(p.name)}'s domain prices ${arrowRight}`, 'button')}</p>` : '<div class="hc-empty"><p>No plan of this provider is listed right now.</p></div>'}
 ${extra}
 ${reviewsSection(p)}
 ${discussionSection(discussion)}
@@ -342,7 +345,7 @@ function plan(p, discussion = null, { baseUrl = '', watchUrl = '', extra = '', n
     const trend = Number(p.price_monthly) > 0 ? p.price_trend : null;
     const chart = trendFigure(trend, { title: 'Monthly price over time', seriesName: 'Monthly price' }) || trendSummary(trend);
     const history = p.price_history.length
-        ? `<details class="hc-history-fold"><summary>Every change (${p.price_history.length})</summary><ol class="hc-history">${p.price_history.map((h) => `<li><time datetime="${esc(day(Number(h.observed_at)))}">${esc(day(Number(h.observed_at)))}</time> ${esc(rowMoney(h.price_monthly_before, h.currency))} → <strong>${esc(rowMoney(h.price_monthly_after, h.currency))}</strong></li>`).join('')}</ol></details>`
+        ? `<details class="hc-history-fold"><summary>Every change (${p.price_history.length})</summary><ol class="hc-history">${p.price_history.map((h) => `<li><time datetime="${esc(day(Number(h.observed_at)))}">${esc(day(Number(h.observed_at)))}</time> ${esc(rowMoney(h.price_monthly_before, h.currency))} to <strong>${esc(rowMoney(h.price_monthly_after, h.currency))}</strong></li>`).join('')}</ol></details>`
         : '';
     const priceHistory = chart || history ? `<h2>Price history</h2>\n${chart}\n${history}` : '';
     return `<nav class="hc-crumbs" aria-label="Breadcrumb">${link('/catalog', 'Catalog')} / ${link(`/catalog/providers/${encodeURIComponent(p.provider_slug)}`, esc(p.provider_name))}</nav>
@@ -366,7 +369,7 @@ ${baseUrl && watchUrl ? `<p class="hc-watch">${out(`${watchUrl}/watches/new?${ne
 ${extra}
 ${discussionSection(discussion)}
 ${p.affiliate_url ? `<p class="hc-disclosure">${esc(DISCLOSURE)}</p>` : ''}
-<p class="hc-links">${link('/catalog', '← Compare plans')}</p>`;
+<p class="hc-links">${link('/catalog', `${arrowLeft} Compare plans`)}</p>`;
 }
 
 // Offers (server/catalog/offers.js): headlines from LowEndSpirit's Offers board, each with the cheapest
@@ -389,7 +392,7 @@ function offers({ result, query = {}, now = Date.now() }) {
     const q = query || {};
     const list = result.offers;
     const filtered = ['currency', 'max_monthly', 'source', 'priced'].some((k) => q[k]);
-    const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog/offers?${new URLSearchParams({ ...q, cursor: result.next_cursor })}`, 'Next 50 offers →', 'button hc-button-quiet')}</p>` : '';
+    const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog/offers?${new URLSearchParams({ ...q, cursor: result.next_cursor })}`, `Next 50 offers ${arrowRight}`, 'button hc-button-quiet')}</p>` : '';
     return `<header class="hc-head"><h1>Hosting offers</h1>
 <p class="hc-lede">What providers post on LowEndSpirit's Offers board, with the price each headline states and that price a month. Sort by the monthly price within one currency; nothing is converted.</p></header>
 <form class="hc-filters" method="get" action="/catalog/offers" role="search" aria-label="Filter hosting offers">
@@ -409,7 +412,7 @@ ${next}
 <li><strong>Dated.</strong> Every offer shows the day it was posted; one older than 30 days is marked, and offers older than ${MAX_AGE_DAYS} days drop off.</li>
 <li><strong>Not for sale.</strong> The order comes only from the sort you pick. No provider pays to be listed here.</li>
 </ul></section>
-<p class="hc-links">${link('/catalog', '← Compare plans')} · ${link('/catalog/promos', 'Current promotions')}</p>`;
+<p class="hc-links">${link('/catalog', `${arrowLeft} Compare plans`)} · ${link('/catalog/promos', 'Current promotions')}</p>`;
 }
 
 /** JSON-LD for the catalog pages (only indexable pages carry it; renderPage drops it otherwise). */
@@ -481,7 +484,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
 <ol class="hc-changes">${changes.map((c) => {
         const up = c.after > c.before;
         const move = c.percent == null ? (up ? 'Rose' : 'Dropped') : `${up ? 'Rose' : 'Dropped'} ${Math.abs(c.percent)}%`;
-        return `<li><a href="${esc(c.href)}"><span class="hc-change-what"><b>${esc(c.name)}</b><span class="hc-dim">${esc(c.kind)}</span></span><span class="hc-change-move ${up ? 'is-up' : 'is-down'}"><span class="hc-change-word">${move}</span><span class="hc-change-prices">${esc(rowMoney(c.before, c.currency))} → ${esc(rowMoney(c.after, c.currency))}</span></span></a></li>`;
+        return `<li><a href="${esc(c.href)}"><span class="hc-change-what"><b>${esc(c.name)}</b><span class="hc-dim">${esc(c.kind)}</span></span><span class="hc-change-move ${up ? 'is-up' : 'is-down'}"><span class="hc-change-word">${move}</span><span class="hc-change-prices">${esc(rowMoney(c.before, c.currency))} to ${esc(rowMoney(c.after, c.currency))}</span></span></a></li>`;
     }).join('')}</ol></section>` : '';
     // The aside is servers: a plan with vCPU and a price above zero. Per-GB storage (archive tiers at $0.00 a GB once
     // rounded) read as four free "plans" at the top of the home (2026-11-01).
@@ -502,7 +505,7 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
         note: stats.plans ? `${stats.plans} plans from ${stats.providers} provider${stats.providers === 1 ? '' : 's'} so far. More providers join as their sources are checked.` : 'The catalog is filling up: providers join as their official sources are checked and enabled.',
         aside: aside ? { html: aside } : undefined,
     }) + extra.stats + changeRail + `<section class="sc-sec hh-short" aria-labelledby="hh-cheapest"><h2 id="hh-cheapest">The lowest monthly prices</h2>${planTable(plans.slice(0, 5), { caption: 'Lowest price first', now })}
-<p class="hc-more">${link('/catalog', stats.plans > 5 ? `Filter and sort all ${Number(stats.plans).toLocaleString('en')} plans →` : 'Filter and sort every plan →', 'button')}</p></section>`
+<p class="hc-more">${link('/catalog', stats.plans > 5 ? `Filter and sort all ${Number(stats.plans).toLocaleString('en')} plans ${arrowRight}` : `Filter and sort every plan ${arrowRight}`, 'button')}</p></section>`
     + extra.sizes + extra.value + extra.providers
     + domainSection
     + '<section class="sc-sec" id="why" aria-labelledby="hh-why"><details class="hh-fold"><summary><h2 id="hh-why">Why this comparison is different</h2><span>sourced, dated, ranked by you</span></summary>'
@@ -513,8 +516,8 @@ function front({ plans, providers, promos: live, stats, offers: recent = [], dom
             { icon: 'ov:search', title: 'Compare what matters', text: 'Sort by monthly price, or by price per vCPU, per GB of RAM or per GB of disk. Unknown stays unknown.' },
             { icon: 'ov:account', title: 'Ranked by you', text: 'No paid placement. Every outbound link says what it earns us, and an affiliate link never changes the order.' },
         ],
-    }) + '</details></section>' + (recent.length ? `<section class="sc-sec"><h2>Latest hosting offers</h2><ol class="hc-offers">${recent.slice(0, 6).map((o) => offerItem(o, now)).join('')}</ol><p class="hc-more">${link('/catalog/offers', 'Every offer, by price or date →')}</p></section>` : '')
-    + (live.length ? `<section class="sc-sec"><h2>Promotions running now</h2>${promoCards(live.slice(0, 3))}<p class="hc-more">${link('/catalog/promos', 'All promotions →')}</p></section>` : '')
+    }) + '</details></section>' + (recent.length ? `<section class="sc-sec"><h2>Latest hosting offers</h2><ol class="hc-offers">${recent.slice(0, 6).map((o) => offerItem(o, now)).join('')}</ol><p class="hc-more">${link('/catalog/offers', `Every offer, by price or date ${arrowRight}`)}</p></section>` : '')
+    + (live.length ? `<section class="sc-sec"><h2>Promotions running now</h2>${promoCards(live.slice(0, 3))}<p class="hc-more">${link('/catalog/promos', `All promotions ${arrowRight}`)}</p></section>` : '')
     + extra.faq
     + `<p class="hc-own">Want to host a site with OpenVibe? ${out('https://openvibe.space', 'Visit OpenVibe.Space')}.</p>`;
 }

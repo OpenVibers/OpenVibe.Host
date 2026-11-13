@@ -112,7 +112,7 @@ const { boot, check, done } = require('./helpers/boot');
             // The link under the section counts every dedicated plan, not the 50 one page carries (109 from OVHcloud).
             const eleven = Array.from({ length: 11 }, (_, i) => ({ ...list.plans[0], id: `metal-${i}` }));
             const many = render.catalog({ result: { plans: [], next_cursor: null }, query: {}, providers: [], currencies: ['USD'], dedicated: { plans: eleven, total: 109 } });
-            assert.match(many, /All 109 dedicated servers →/, 'the link counts every dedicated server');
+            assert.match(many, /All 109 dedicated servers <svg[^>]*aria-hidden="true"/, 'the link counts every dedicated server and draws the arrow');
         });
         await check('the sitemap dates catalog pages by their newest price check', async () => {
             const xml = (await t.api('GET', '/sitemap.xml')).text;

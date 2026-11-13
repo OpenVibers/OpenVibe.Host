@@ -13,8 +13,8 @@ const { config } = ctx;
 // queues requests in the kernel instead of answering 502. Without the socket unit, the usual listen.
 const socketActivated = process.env.LISTEN_FDS === '1' && Number(process.env.LISTEN_PID) === process.pid;
 const server = app.listen(...(socketActivated ? [{ fd: 3 }] : [config.port, config.host]), () => {
-    console.log(`[Host] ${config.nodeEnv} on http://${config.host}:${config.port} → catalog ${config.baseUrl} (db ${config.db.url ? 'PostgreSQL' : 'embedded PGlite'})`);
-    console.log(`[Host] events relay ${ctx.outbox.enabled ? `on → ${config.events.url}` : 'off (events wait in event_outbox)'}; worker ${config.worker.enabled ? 'on' : 'off'}`);
+    console.log(`[Host] ${config.nodeEnv} on http://${config.host}:${config.port}, catalog ${config.baseUrl} (db ${config.db.url ? 'PostgreSQL' : 'embedded PGlite'})`);
+    console.log(`[Host] events relay ${ctx.outbox.enabled ? `on at ${config.events.url}` : 'off (events wait in event_outbox)'}; worker ${config.worker.enabled ? 'on' : 'off'}`);
 });
 server.keepAliveTimeout = 65_000;
 // Request telemetry (openvibe-sdk/service, plan T1): one aggregated sample per route template, method and status

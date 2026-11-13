@@ -290,7 +290,7 @@ runTests([
         const r = await host.cli('plan', 'live');
         assert.strictEqual(r.code, 0, r.out);
         assert.match(r.out, /strategy +release-layout \(release layout, keep 3\)/);
-        assert.match(r.out, new RegExp(`release +${host.firstRelease} → \\d{8}-\\d{6}-[0-9a-f]{8} \\(new, prepared while`));
+        assert.match(r.out, new RegExp(`release +${host.firstRelease} to \\d{8}-\\d{6}-[0-9a-f]{8} \\(new, prepared while`));
         assert.match(r.out, /dependencies unchanged — node_modules hard-linked from/);
         assert.match(r.out, /preflight +syntax check of changed \.js\/\.json/);
         assert.match(r.out, /restart +yes: openvibe-live\.service \(socket openvibe-live\.socket stays up\)/);
