@@ -9,7 +9,10 @@
  *   issued(link)                             the command with its one-time link
  *   summaryBlock(s, { href, label })         a provider's or a plan's medians, on its page
  */
+const glyphs = require('openvibe-shared/glyphs');
 const { esc } = require('./layout');
+const arrowRight = glyphs.svg('arrow-right', { size: 16 });
+const arrowLeft = glyphs.svg('arrow-left', { size: 16 });
 const { bytesMb } = require('./catalog');
 
 const SORTS = [['new', 'Newest'], ['gb_single', 'Geekbench single-core'], ['gb_multi', 'Geekbench multi-core'], ['disk', 'Disk (4k IOPS)']];
@@ -46,7 +49,7 @@ const HOW = `<section class="hc-method" aria-labelledby="hb-method-h"><h2 id="hb
 function list({ result, query = {} }) {
     const q = query || {};
     const rows = result.benchmarks;
-    const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog/benchmarks?${new URLSearchParams({ ...q, cursor: result.next_cursor })}`, 'Next 50 results →', 'button hc-button-quiet')}</p>` : '';
+    const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog/benchmarks?${new URLSearchParams({ ...q, cursor: result.next_cursor })}`, `Next 50 results ${arrowRight}`, 'button hc-button-quiet')}</p>` : '';
     const filtered = q.provider || q.plan;
     return `<header class="hc-head hc-head-row"><div><h1>Server benchmarks</h1>
 <p class="hc-lede">CPU, disk and network results people ran on their own servers with YABS, by provider and plan.</p></div>
@@ -61,7 +64,7 @@ ${rows.length ? table(rows, `${rows.length}${result.next_cursor ? '+' : ''} resu
             : `<div class="hc-empty hc-empty-rich"><p><strong>Be the first to add a result.</strong></p><p>Have a VPS or a dedicated server? One command measures it, and the result lands here for everyone comparing providers.</p><p>${link('/catalog/benchmarks/new', 'Submit a benchmark', 'button')}</p></div>`}
 ${next}
 ${HOW}
-<p class="hc-links">${link('/catalog', '← Compare plans')} · ${link('/catalog/offers', 'Hosting offers')}</p>`;
+<p class="hc-links">${link('/catalog', `${arrowLeft} Compare plans`)} · ${link('/catalog/offers', 'Hosting offers')}</p>`;
 }
 
 function detail(b, { csrf = '', canRemove = false } = {}) {
@@ -90,7 +93,7 @@ ${fio}
 ${iperf}
 <p class="hc-dim">Run with YABS ${esc(b.tool_version || '')}${b.elapsed_s ? ` in ${esc(String(Math.round(b.elapsed_s / 60)))} minutes` : ''}, submitted ${esc(day(b.created_at))}.</p>
 ${canRemove ? `<form method="post" action="/catalog/benchmarks/${esc(b.id)}/remove" class="inline"><input type="hidden" name="csrf" value="${esc(csrf)}"><button type="submit" class="hc-button-quiet">Remove this result</button></form>` : ''}
-<p class="hc-links">${link('/catalog/benchmarks', '← Every benchmark')}${b.provider_slug ? ` · ${link(`/catalog/benchmarks?provider=${encodeURIComponent(b.provider_slug)}`, `More ${esc(b.provider_name)} results`)}` : ''}</p>`;
+<p class="hc-links">${link('/catalog/benchmarks', `${arrowLeft} Every benchmark`)}${b.provider_slug ? ` · ${link(`/catalog/benchmarks?provider=${encodeURIComponent(b.provider_slug)}`, `More ${esc(b.provider_name)} results`)}` : ''}</p>`;
 }
 
 function submitForm({ viewer, providers = [], plans = [], csrf = '', error = null, query = {} }) {
@@ -122,14 +125,14 @@ function issued(l) {
 <ul class="hc-rules"><li>The link works once, until ${esc(l.expires_at.slice(0, 16).replace('T', ' '))} UTC. Ask for another for each server.</li>
 <li>Skip a test with YABS's own flags after <code>-s</code>: <code>-i</code> skips the network test, <code>-g</code> Geekbench, <code>-f</code> the disk test.</li>
 <li>Keep the link to yourself: whoever has it can post one result in your name.</li></ul>
-<p class="hc-links">${link('/catalog/benchmarks', '← Every benchmark')}</p>`;
+<p class="hc-links">${link('/catalog/benchmarks', `${arrowLeft} Every benchmark`)}</p>`;
 }
 
 function summaryBlock(s, { href, label }) {
     if (!s || !s.count) return `<section class="hb-summary" aria-label="Benchmarks"><h2>Benchmarks</h2><p class="hc-dim">No one has posted a benchmark of ${esc(label)} yet. ${link('/catalog/benchmarks/new', 'Run one on your server')}.</p></section>`;
     return `<section class="hb-summary" aria-label="Benchmarks"><h2>Benchmarks</h2>
 <p>${esc(String(s.count))} result${s.count === 1 ? '' : 's'} from people running ${esc(label)}. Medians: ${s.gb_single != null ? `Geekbench ${esc(String(s.gb_version || ''))} <strong>${esc(s.gb_single.toLocaleString('en'))}</strong> single, <strong>${esc((s.gb_multi || 0).toLocaleString('en'))}</strong> multi` : 'no Geekbench run'}${s.disk_4k_iops != null ? `; disk <strong>${esc(s.disk_4k_iops.toLocaleString('en'))}</strong> 4k IOPS` : ''}.</p>
-<p>${link(href, 'See every result →')} · ${link('/catalog/benchmarks/new', 'Add yours')}</p></section>`;
+<p>${link(href, `See every result ${arrowRight}`)} · ${link('/catalog/benchmarks/new', 'Add yours')}</p></section>`;
 }
 
 module.exports = { list, detail, submitForm, issued, summaryBlock, SORTS };

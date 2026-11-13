@@ -44,7 +44,7 @@ runTests([
 
         const r = await cli(host, 'self-update');
         assert.strictEqual(r.code, 0, r.out);
-        assert.match(r.out, /ovhost [0-9a-f]{12} → [0-9a-f]{12} \(1 commit\)/);
+        assert.match(r.out, /ovhost [0-9a-f]{12} to [0-9a-f]{12} \(1 commit\)/);
         assert.strictEqual(repo.head, next);
         assert.ok(gitCalls(host).some((c) => c.args.includes('fetch')), 'fetches origin');
         assert.ok(gitCalls(host).some((c) => c.args.includes('merge') && c.args.includes('--ff-only') && c.args.includes(next)), 'merges --ff-only the fetched sha');

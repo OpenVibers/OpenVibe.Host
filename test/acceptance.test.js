@@ -104,7 +104,7 @@ runTests([
         // Live's smoke lap probes.
         const laps = '  ✓ x\n    lap probes: {"intervals":14,"sockets":0,"windowListeners":58,"domNodes":6363}\n                {"intervals":14,"sockets":1,"windowListeners":58,"domNodes":6370}\n                {"intervals":15,"sockets":1,"windowListeners":61,"domNodes":6300}\n  ✓ repeated navigation';
         assert.deepStrictEqual(a.lapProbes(laps), { intervals: 1, sockets: 0, windowListeners: 3, domNodes: -70 });
-        assert.deepStrictEqual(a.lapGrowth(['intervals', 'windowListeners'])(laps), { value: 3, text: 'intervals +1, windowListeners +3 (laps 2→3)' });
+        assert.deepStrictEqual(a.lapGrowth(['intervals', 'windowListeners'])(laps), { value: 3, text: 'intervals +1, windowListeners +3 (laps 2 to 3)' });
         assert.strictEqual(a.lapGrowth(['domNodes'])(laps).value, -70);
         assert.strictEqual(a.lapProbes('lap probes: {"a":1}'), null, 'three laps or nothing');
         assert.deepStrictEqual(a.duplicateScripts('  ✓ no script requested twice (48 scripts)'), { value: 0, text: '0 of 48 scripts' });
@@ -113,7 +113,7 @@ runTests([
         const report = [{ id: 'live', navigation: { growth: { measured: true, laps: 5, from: 2, deltas: { heapKB: 61, nodes: 5, listeners: 1, documents: 0, intervals: 0, timeouts: 0, sockets: 0 }, over: [] } },
             routes: [{ nojs: { textChars: 2058 } }, { nojs: { textChars: 1529 } }, { nojs: null }], summary: { checks: { nojs: { pass: 2, warn: 0, fail: 0, skip: 1 } } } }];
         const io = { stdout: JSON.stringify(report, null, 2) };
-        assert.deepStrictEqual(a.navigationGrowth('progress', io), { value: 0, text: '0 over; heap +61 KB, nodes +5, listeners +1, intervals 0, timeouts 0, sockets 0 (laps 2→5)' });
+        assert.deepStrictEqual(a.navigationGrowth('progress', io), { value: 0, text: '0 over; heap +61 KB, nodes +5, listeners +1, intervals 0, timeouts 0, sockets 0 (laps 2 to 5)' });
         assert.deepStrictEqual(a.noJsRoutes('progress', io), { value: 0, text: '0 of 2 routes unreadable (least text 1529 chars)' });
         assert.strictEqual(a.navigationGrowth('not json', { stdout: 'not json' }), null);
         // docs/deploy-proofs.md's table.

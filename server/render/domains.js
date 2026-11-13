@@ -12,7 +12,10 @@
  * first year plus four renewals at the same registrar. Registrar search links are plain links (never affiliate).
  */
 const seo = require('openvibe-shared/seo');
+const glyphs = require('openvibe-shared/glyphs');
 const { esc } = require('./layout');
+const arrowRight = glyphs.svg('arrow-right', { size: 16 });
+const arrowLeft = glyphs.svg('arrow-left', { size: 16 });
 const { money, tldTrendFigure } = require('./catalog');
 const domains = require('../catalog/domains');
 
@@ -78,7 +81,7 @@ function index({ result, query = {}, stats, registrars = [] }) {
     const q = query || {};
     const rows = result.tlds;
     const filtered = ['q', 'kind', 'registrar'].some((k) => q[k]);
-    const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog/domains?${new URLSearchParams({ ...q, cursor: result.next_cursor })}`, 'Next 100 endings →', 'button hc-button-quiet')}</p>` : '';
+    const next = result.next_cursor ? `<p class="hc-more">${link(`/catalog/domains?${new URLSearchParams({ ...q, cursor: result.next_cursor })}`, `Next 100 endings ${arrowRight}`, 'button hc-button-quiet')}</p>` : '';
     const sortLabel = (SORTS.find(([v]) => v === (q.sort || 'popular')) || SORTS[0])[1].toLowerCase();
     const prices = stats.tlds ? `<form class="hc-filters" method="get" action="/catalog/domains" role="search" aria-label="Filter domain endings">
 <label><span>Ending</span><input name="q" value="${esc(q.q || '')}" placeholder=".dev, co.uk" autocapitalize="off" spellcheck="false"></label>
@@ -104,7 +107,7 @@ function tld(t, { baseUrl = '', watchUrl = '' } = {}) {
     const trend = tldTrendFigure(t.price_trend, { title: 'Registration and renewal over time' });
     const history = t.history.length ? `<details class="hc-history-fold"><summary>Every change (${t.history_count || t.history.length})</summary><ol class="hc-history">${t.history.map((h) => {
         const moved = [['first year', h.register], ['renewal', h.renew], ['transfer', h.transfer]].filter(([, [a, b]]) => a !== b)
-            .map(([k, [a, b]]) => `${k} ${a == null ? 'none' : esc(money(a, h.currency))} → <strong>${b == null ? 'none' : esc(money(b, h.currency))}</strong>`).join(', ');
+            .map(([k, [a, b]]) => `${k} ${a == null ? 'none' : esc(money(a, h.currency))} to <strong>${b == null ? 'none' : esc(money(b, h.currency))}</strong>`).join(', ');
         return `<li><time datetime="${esc(day(h.observed_at))}">${esc(day(h.observed_at))}</time> ${esc(h.registrar)}: ${moved}</li>`;
     }).join('')}</ol></details>` : '';
     const rows = t.prices.map((p) => `<tr>
@@ -128,7 +131,7 @@ ${trend}
 ${history}
 ${baseUrl && watchUrl ? `<p class="hc-watch">${out(`${watchUrl}/watches/new?${new URLSearchParams({ template: 'json', url: `${baseUrl}/api/v1/catalog/domains/${t.tld}`, value_path: 'tld.cheapest.renew', op: 'changed', name: `${t.display} renewal price` })}`, `Tell me when ${esc(t.display)} prices change`, 'button hc-button-quiet')} <span class="hc-dim">with OpenVibe.Watch, free</span></p>` : ''}
 <section aria-labelledby="hd-reg-h"><h2 id="hd-reg-h">Search a ${esc(t.display)} name at every registrar</h2>${registrarLinks(`yourname.${t.tld}`)}</section>
-<p class="hc-links">${link('/catalog/domains', '← Every ending')}</p>`;
+<p class="hc-links">${link('/catalog/domains', `${arrowLeft} Every ending`)}</p>`;
 }
 
 const STATUS_TEXT = {
@@ -155,7 +158,7 @@ ${checkForm({ value: c.display || c.labelDisplay, label: 'Check another name' })
 ${card}
 <section aria-labelledby="hd-reg-h"><h2 id="hd-reg-h">${c.status === 'registered' ? 'Look for it at a registrar' : 'Register it at a registrar'}</h2>${registrarLinks(c.name || `${c.label}.com`)}</section>
 ${alts}
-<p class="hc-links">${link('/catalog/domains', '← Compare every ending')}</p>`;
+<p class="hc-links">${link('/catalog/domains', `${arrowLeft} Compare every ending`)}</p>`;
 }
 
 function frontSection({ popular = [], cheap = [], stats }) {
@@ -165,7 +168,7 @@ function frontSection({ popular = [], cheap = [], stats }) {
 ${checkForm({})}
 <div class="hh-short">${tldTable(popular.slice(0, 5), { caption: 'Popular endings: the cheapest price at any registrar' })}</div>
 ${cheap.length ? '<div class="hh-short">' + tldTable(cheap.slice(0, 5), { caption: 'The cheapest first year right now: check what it renews at' }) + '</div>' : ''}
-${stats.tlds ? `<p class="hc-more">${link('/catalog/domains', `All ${Number(stats.tlds).toLocaleString('en')} endings, by price →`, 'button')}</p>` : ''}</section>`;
+${stats.tlds ? `<p class="hc-more">${link('/catalog/domains', `All ${Number(stats.tlds).toLocaleString('en')} endings, by price ${arrowRight}`, 'button')}</p>` : ''}</section>`;
 }
 
 const jsonLd = {

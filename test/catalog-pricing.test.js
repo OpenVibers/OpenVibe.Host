@@ -127,7 +127,7 @@ const YEAR = 365 * 86400000;
             await catalog.save('plans', { price_monthly: 0.002, checked_at: NOW + 1000 }, rate.id, 'tester');
             const page = render.plan(await catalog.plan(rate.id), null, { now: NOW + 1000 });
             assert.ok(page.includes('$0.0020'), 'the new rate is shown');
-            assert.match(page, /\$0\.0010 → <strong>\$0\.0020<\/strong>/, 'the history row keeps four decimals');
+            assert.match(page, /\$0\.0010 to <strong>\$0\.0020<\/strong>/, 'the history row keeps four decimals');
             assert.ok(!/\$0\.00(?!\d)/.test(page), 'neither the trend nor the history prints $0.00');
         });
     } finally {

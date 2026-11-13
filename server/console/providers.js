@@ -16,7 +16,7 @@ const PROVIDERS = {
     linode: { name: 'Linode (Akamai)', api: 'https://api.linode.com/v4', tokenUrl: 'https://cloud.linode.com/profile/tokens', tokenHelp: 'A personal access token with Linodes: read/write.' },
     digitalocean: { name: 'DigitalOcean', api: 'https://api.digitalocean.com/v2', tokenUrl: 'https://cloud.digitalocean.com/account/api/tokens', tokenHelp: 'A personal access token (read and write, or droplet scopes).' },
     vultr: { name: 'Vultr', api: 'https://api.vultr.com/v2', tokenUrl: 'https://my.vultr.com/settings/#settingsapi', tokenHelp: 'Your API key (allow this server\'s address if access control is on).' },
-    hetzner: { name: 'Hetzner Cloud', api: 'https://api.hetzner.cloud/v1', tokenUrl: 'https://console.hetzner.cloud/', tokenHelp: 'A project API token (Security → API tokens, read and write).' },
+    hetzner: { name: 'Hetzner Cloud', api: 'https://api.hetzner.cloud/v1', tokenUrl: 'https://console.hetzner.cloud/', tokenHelp: 'A project API token (Security, then API tokens, read and write).' },
 };
 
 class ProviderError extends Error {

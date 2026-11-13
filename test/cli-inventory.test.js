@@ -145,7 +145,7 @@ runTests([
         push(host, 'live', { 'server/index.js': 'z();' }, 'z change');
         await host.cli('deploy', 'live');
         const r = await host.cli('releases', 'live');
-        assert.match(r.out, /deploy +[0-9a-f]{12} → [0-9a-f]{12} +deployed/);
+        assert.match(r.out, /deploy +[0-9a-f]{12} to [0-9a-f]{12} +deployed/);
         const raw = JSON.parse(host.read('/etc/openvibe/host.json'));
         raw.services.events.managed = false;
         raw.services.events.unmanagedReason = 'test';
