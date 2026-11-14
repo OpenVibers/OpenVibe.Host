@@ -16,7 +16,7 @@ function pkgJson(name, deps) {
 }
 
 // A complete lifecycle declaration (the manifest block, WS-P task 1), carried inline because the
-// openvibe-contracts this repository pins predates it.
+// fake host's own services are not in openvibe-contracts.
 function lifecycleDoc(overrides = {}) {
     return {
         liveness: { endpoint: '/api/health', means: 'the process answers HTTP; nothing else is checked' },
