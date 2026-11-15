@@ -62,7 +62,7 @@ groups:
         expr: increase(live_transcript_floor_flags_total{rule="minors"}[1h]) > 0
         labels: { severity: ticket }
         annotations:
-          summary: 'A stream''s speech reads as sexual content involving minors ({{ $value | printf "%.0f" }} window(s) in the last hour): review it from the openvibe-live journal'
+          summary: 'A stream''s speech reads as sexual content involving minors ({{ $value | printf "%.0f" }} window(s) in the last hour): review it at openvibe.network/admin → Flagged speech (the recording at that second)'
       - alert: HighErrorRate
         expr: |
           sum by (service) (rate(http_requests_total{status=~"5.."}[10m]))
