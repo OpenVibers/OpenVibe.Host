@@ -13,6 +13,8 @@ ExecStart=/usr/local/bin/ovhost browser-watch --sites live,network,tools,media,c
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
 Nice=10
-TimeoutStartSec=30min
+# 52 sites took just over 30 minutes after a day of releases (11-15: six runs in a row ended "timeout"
+# and paged as a failed check); an hour leaves room.
+TimeoutStartSec=60min
 PrivateTmp=true
 ProtectSystem=full
