@@ -7,7 +7,7 @@
 const assert = require('assert');
 const { spawn } = require('child_process');
 const { scenario, test, runTests } = require('./helpers');
-const { watch, failingChecks, DAY_MS } = require('../lib/browser-watch');
+const { watch, failingChecks, failureDetails, DAY_MS } = require('../lib/browser-watch');
 const { runBrowserCheck } = require('../lib/browser-check-hook');
 
 const PROM = '/var/lib/prometheus/node-exporter/openvibe_browsercheck.prom';
@@ -28,6 +28,16 @@ function site({ release = 'abc1234def56' } = {}) {
 }
 
 runTests([
+    test('the 404 probe answering 404 is never listed as a status failure; an unexpected 5xx is', async () => {
+        // The harness reports the status a route expects as route.status (the 404 probe: 404). A probe page that fails
+        // another check (contrast on the 404 page) used to add four "status 404" lines.
+        const out = failureDetails([{ routes: [
+            { path: '/__ovcheck-404', status: 404, ok: false, axe: { violations: [{ id: 'color-contrast', impact: 'serious', nodes: [] }] }, widths: [{ width: 390, status: 404 }, { width: 1280, status: 404 }] },
+            { path: '/broken', ok: false, widths: [{ width: 390, status: 502 }] },
+        ] }]);
+        assert.deepStrictEqual(out.filter((d) => d.check === 'status'), [{ route: '/broken', check: 'status', width: 390, status: 502 }]);
+        assert.ok(out.some((d) => d.route === '/__ovcheck-404' && d.check === 'axe'), 'the probe\'s real finding stays');
+    }),
     test('a new release is checked as ovcheck with --json; the same release is skipped; a day later it is checked again', async () => {
         const host = site();
         const now = Date.parse('2026-09-26T14:00:00Z');
