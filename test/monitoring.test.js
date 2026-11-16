@@ -50,9 +50,31 @@ const ctxOf = (exec) => ({ exec, inv: { file: '/etc/openvibe/host.json' } });
     assert.ok(!exec.files.has('/etc/prometheus/prometheus.yml.next'));
     assert.deepStrictEqual(exec.runs, ['promtool check config /etc/prometheus/prometheus.yml.next', 'systemctl reload prometheus']);
 
-    // Mail's metrics do not answer: not added, the reason said.
+    // A service still starting (the deploy has just restarted it): asked again until it answers, then added
+    // (11-16: Computer, Directory and Locker came up with /metrics after the probe and were left unscraped).
+    {
+        const starting = fakeExec({ answers: { 5080: 200 } });
+        let calls = 0;
+        const http = starting.http;
+        starting.http = async (url) => (++calls < 3 ? { error: 'ECONNREFUSED' } : http(url));
+        const waits = [];
+        const late = await ensureScraped(ctxOf(starting), 'report', { wait: async (ms) => { waits.push(ms); } });
+        assert.strictEqual(late.state, 'added', late.line);
+        assert.deepStrictEqual([calls, waits], [3, [2000, 2000]], 'two waits, then the answer');
+        // One that never comes up gives up after the tries.
+        const never = fakeExec();
+        let n = 0;
+        never.http = async () => { n++; return { status: 503 }; };
+        const gone = await ensureScraped(ctxOf(never), 'report', { wait: async () => {} });
+        assert.deepStrictEqual([gone.state, n], ['no-metrics', 6]);
+    }
+
+    // Mail's metrics do not answer: not added, the reason said. A 404 is an answer: asked once.
     exec = fakeExec({ answers: {} });
-    const m = await ensureScraped(ctxOf(exec), 'mail');
+    let asked404 = 0;
+    { const http = exec.http; exec.http = async (url) => { asked404++; return http(url); }; }
+    const m = await ensureScraped(ctxOf(exec), 'mail', { wait: async () => { throw new Error('a 404 is not waited on'); } });
+    assert.strictEqual(asked404, 1);
     assert.strictEqual(m.state, 'no-metrics');
     assert.ok(/answers 404/.test(m.line));
     assert.strictEqual(exec.files.get('/etc/prometheus/prometheus.yml'), TODAY, 'unchanged');
