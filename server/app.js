@@ -169,13 +169,12 @@ async function createApp(opts = {}) {
     app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Allow: /catalog$', 'Allow: /catalog/*', 'Disallow: /catalog/domains/check', 'Disallow: /catalog/benchmarks/', 'Allow: /catalog/benchmarks$', 'Allow: /.well-known/agent.json', 'Allow: /*.md', 'Disallow: /', '', '# Agent manifest: https://openvibe.host/.well-known/agent.json; every public page has a .md twin.', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
     app.get('/sitemap.xml', async (_req, res, next) => {
         try {
-            const [providers, plans, tlds] = await Promise.all([catalog.providers(), catalog.sitemapPlans(), catalog.domains.sitemap()]);
+            const [providers, plans] = await Promise.all([catalog.providers(), catalog.sitemapPlans()]);
             const day = (ms) => Number.isFinite(Number(ms)) && ms != null ? new Date(Number(ms)).toISOString().slice(0, 10) : undefined;
             const latest = (rows) => day(rows.reduce((m, p) => Math.max(m, Number(p.checked_at) || 0), 0) || undefined);
             const urls = [{ path: '/', lastmod: latest(plans) }, ...legalPaths.map((p) => ({ path: p })), { path: '/catalog', lastmod: latest(plans) }, { path: '/catalog/promos' }, { path: '/catalog/benchmarks' }, { path: '/catalog/providers', lastmod: latest(plans) },
                 ...providers.map((p) => ({ path: `/catalog/providers/${p.slug}`, lastmod: latest(plans.filter((v) => v.provider_slug === p.slug)) })),
-                ...plans.map((p) => ({ path: `/catalog/plans/${p.id}`, lastmod: day(p.checked_at) })),
-                { path: '/catalog/domains', lastmod: tlds.length ? latest(tlds) : undefined }];
+                ...plans.map((p) => ({ path: `/catalog/plans/${p.id}`, lastmod: day(p.checked_at) }))];   // domain prices are in OpenVibe.Domains' sitemap
             res.type('application/xml').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(sharedSeo.sitemapXml(urls.map((u) => ({ loc: `${config.baseUrl}${u.path}`, lastmod: u.lastmod }))));
         } catch (err) { next(err); }
     });
@@ -290,7 +289,7 @@ async function createApp(opts = {}) {
     // Lookaheads: app.use strips what the path matched, and a consumed '/' would make Express skip the route.
     app.use(/^\/api\/v1\/(?:projects|sites|deploys|domains|resources)(?=\/|$)/, movedApi);
     // /domains was static hosting's custom domains (moved to Space); the page itself is now the domain comparison.
-    app.get('/domains', (_req, res) => res.redirect(301, '/catalog/domains'));
+    app.get('/domains', (_req, res) => res.redirect(301, 'https://openvibe.domains/tld'));
     app.use(/^\/(?:hosting|projects|sites|deploys|domains|preview)(?=\/|$)/, movedPage);
     app.use('/catalog', rateLimit({ windowMs: 60_000, max: 300, standardHeaders: true, legacyHeaders: false }), createCatalogPages(ctx));
     app.get('/providers', (_req, res) => res.redirect(301, '/catalog/providers'));
