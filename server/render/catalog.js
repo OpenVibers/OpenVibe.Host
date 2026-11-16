@@ -20,8 +20,8 @@ const kit = require('openvibe-shared/kit');
 const seo = require('openvibe-shared/seo');
 const glyphs = require('openvibe-shared/glyphs');
 const { esc } = require('./layout');
-const arrowRight = glyphs.svg('arrow-right', { size: 16 });
-const arrowLeft = glyphs.svg('arrow-left', { size: 16 });
+const arrowRight = glyphs.svg('arrow-right', { size: 20 });
+const arrowLeft = glyphs.svg('arrow-left', { size: 20 });
 const { MAX_AGE_DAYS } = require('../catalog/offers');
 const { isStorageRate, isStale } = require('../catalog/pricing');
 

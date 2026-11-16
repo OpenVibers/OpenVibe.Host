@@ -18,7 +18,7 @@ const NETWORK_URL = 'https://openvibe.network';
 // into the navbar's More (Shared 4.22). Search is the navbar's magnifier; What shipped is the footer's.
 const NAV_LINKS = () => [
     { label: 'Compare', href: '/catalog', icon: 'fa-chart-line' },
-    { label: 'Domains', href: '/catalog/domains', icon: 'fa-globe' },
+    { label: 'Domains', href: 'https://openvibe.domains/', icon: 'fa-globe' },
     { label: 'Offers', href: '/catalog/offers', icon: 'fa-tag' },
     { label: 'Console', href: '/console', icon: 'fa-gauge-high' },
     { label: 'Benchmarks', href: '/catalog/benchmarks', icon: 'fa-gauge-high', more: true },

@@ -56,7 +56,7 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
             counts: [
                 { value: stats.plans, label: 'hosting plans compared', href: '/catalog' },
                 { value: stats.providers, label: stats.providers === 1 ? 'provider' : 'providers', href: '/catalog/providers' },
-                { value: domainStats.tlds, label: 'domain endings priced', href: '/catalog/domains' },
+                { value: domainStats.tlds, label: 'domain endings priced', href: 'https://openvibe.domains/tld' },
                 { value: (domainStats.registrars || []).length, label: (domainStats.registrars || []).length === 1 ? 'registrar priced' : 'registrars compared', href: '/catalog/domains' },
             ],
             tiers, value: { vcpu, ram, disk }, providerCards, faq: HOST_FAQ,

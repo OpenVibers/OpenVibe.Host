@@ -128,15 +128,12 @@ function fakeRegistry() {
         });
 
         await check('pages: the comparison links OpenVibe.Domains; a TLD page here 301s there (query kept)', async () => {
-            const index = await t.api('GET', '/catalog/domains');
-            assert.strictEqual(index.status, 200);
-            assert.match(index.text, /<h1>Compare domain prices<\/h1>/);
-            assert.match(index.text, /6 endings with what registrars charge/);
-            assert.match(index.text, /href="https:\/\/openvibe\.domains\/tld\/dev">\.dev<\/a>/);
-            assert.match(index.text, /Renews higher/);
-            assert.match(index.text, /Porkbun today/);
-            assert.match(index.text, /rel="nofollow noopener"/);
-            assert.doesNotMatch(index.text, /noindex/);
+            // The comparison is OpenVibe.Domains' (2026-11-16): the query kept.
+            const index = await t.api('GET', '/catalog/domains?kind=generic&sort=popular');
+            assert.deepStrictEqual([index.status, index.headers.location], [301, 'https://openvibe.domains/tld?kind=generic&sort=popular']);
+            const stats = (await t.api('GET', '/api/v1/catalog/domains/stats')).json().stats;
+            assert.strictEqual(stats.tlds, 6, 'the catalog counts its endings for Domains');
+            assert.ok(Array.isArray(stats.registrars) && stats.registrars.length >= 1);
             const dev = await t.api('GET', '/catalog/domains/dev');
             assert.deepStrictEqual([dev.status, dev.headers.location], [301, 'https://openvibe.domains/tld/dev']);
             const filtered = await t.api('GET', '/catalog/domains/dev?registrar=porkbun&sort=tld');
@@ -150,13 +147,14 @@ function fakeRegistry() {
             assert.match(pb.text, /href="https:\/\/openvibe\.reviews\/review\?kind=service&amp;name=Porkbun"/, 'a registrar is reviewed as a service');
             const front = await t.api('GET', '/');
             assert.match(front.text, /Domain names, compared too/);
-            assert.match(front.text, /href="\/catalog\/domains"/);
+            assert.match(front.text, /action="https:\/\/openvibe\.domains\/search"/, 'the check asks Domains');
+            assert.match(front.text, /href="https:\/\/openvibe\.domains\/tld"/);
             const map = (await t.api('GET', '/sitemap.xml')).text;
-            assert.match(map, /\/catalog\/domains<\/loc>/);
+            assert.doesNotMatch(map, /\/catalog\/domains<\/loc>/, 'domain prices are in OpenVibe.Domains\' sitemap');
             assert.ok(!map.includes('/catalog/domains/co.uk</loc>'), 'a TLD page is OpenVibe.Domains\'s, not Host\'s');
             assert.match((await t.api('GET', '/robots.txt')).text, /Disallow: \/catalog\/domains\/check/);
             const old = await t.api('GET', '/domains');
-            assert.deepStrictEqual([old.status, old.headers.location], [301, '/catalog/domains']);
+            assert.deepStrictEqual([old.status, old.headers.location], [301, 'https://openvibe.domains/tld']);
             assert.strictEqual((await t.api('GET', '/domains/abc')).status, 410, 'old custom-domain pages still say hosting moved');
         });
 
@@ -176,7 +174,9 @@ function fakeRegistry() {
         });
 
         await check('a name check: typed name read, registry asked, the same name priced at other endings; bad names are 422', async () => {
-            const free = await t.api('GET', '/catalog/domains/check?name=OpenVibe.dev');
+            const moved = await t.api('GET', '/catalog/domains/check?name=OpenVibe.dev');
+            assert.deepStrictEqual([moved.status, moved.headers.location], [301, 'https://openvibe.domains/search?q=OpenVibe.dev'], 'the check is Domains\'');
+            const free = await t.api('GET', '/catalog/domains/check-here?name=OpenVibe.dev');
             assert.strictEqual(free.status, 200);
             assert.match(free.text, /<h1 class="hd-name">openvibe\.dev<\/h1>/);
             assert.match(free.text, /Probably free/);
@@ -191,10 +191,10 @@ function fakeRegistry() {
             assert.strictEqual(bare.name, 'taken.com', 'a bare label is checked as .com');
             const uk = (await t.api('GET', '/api/v1/catalog/domains/check?name=shop.example.co.uk')).json().check;
             assert.deepStrictEqual([uk.label, uk.tld, uk.status], ['example', 'co.uk', 'unknown'], 'the longest priced suffix; .uk has no RDAP here');
-            assert.strictEqual((await t.api('GET', '/catalog/domains/check?name=a..b')).status, 422);
+            assert.strictEqual((await t.api('GET', '/catalog/domains/check-here?name=a..b')).status, 422);
             assert.strictEqual((await t.api('GET', '/api/v1/catalog/domains/check?name=-x.com')).status, 422);
             const empty = await t.api('GET', '/catalog/domains/check');
-            assert.deepStrictEqual([empty.status, empty.headers.location], [303, '/catalog/domains']);
+            assert.deepStrictEqual([empty.status, empty.headers.location], [301, 'https://openvibe.domains/']);
         });
 
         await check('readiness waits for the domain tables (a release never answers without them)', async () => {
