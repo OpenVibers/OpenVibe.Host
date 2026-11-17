@@ -19,10 +19,9 @@ Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
 UMask=0077
 # 11-17: the production host has 4 cores and serves every site; this batch job yields to them (Nice 19, the smallest
-# CPU share, idle IO). Interactive Node services showed up to 1.8 s of event-loop lag while checks and recordings ran.
+# CPU share; its IO stays best-effort at 7 below, so a busy disk never starves the backup). Interactive Node services showed up to 1.8 s of event-loop lag while checks and recordings ran.
 Nice=19
 CPUWeight=10
-IOSchedulingClass=idle
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
 # A pg_dump has a six-hour limit, which also covers a whole run.
