@@ -28,6 +28,11 @@ OpenVibe's own static hosting moved to OpenVibe.Space ([below](#static-hosting-m
     addons apart from the plan, so the Sources mapping joins each default addon to its own product; Host multiplies the
     socket count by the cores and one disk's size by the disk count. Vultr's API host disallows robots, so that
     Sources seed stays disabled.
+  - OVHcloud's Public Cloud catalog (`ovhcloud-public-cloud`): every Linux instance flavor at its hourly price, shown as
+    a 730-hour month, and, where OVHcloud sells it, its monthly billing as a row of its own (about half). A flavor
+    tagged coming soon is held. Managed databases are the `database` kind (migration 0017):
+    `ovhcloud-managed-postgresql` prices a size per node, so the plan is that times its nodes, and
+    `linode-managed-postgresql` lists one node. The compare page shows them as their own section.
   - DigitalOcean's Droplet sizes and Hetzner Cloud's server types, which their APIs show only to a signed-in account:
     Host reads them itself every six hours (`server/catalog/keyed-feeds.js`) with the owner's read-only token from the
     admin panel's Setup tab (`host.data_sources`, sealed; `HOST_DIGITALOCEAN_TOKEN` / `HOST_HETZNER_TOKEN` are the

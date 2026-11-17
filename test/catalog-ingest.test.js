@@ -91,6 +91,32 @@ const item = (key, id, fields, time = at, title = id) => ({ id: `itm_${'0'.repea
             const row = (await catalog.plans({ provider: 'ovhcloud', kind: 'dedicated' })).plans[0];
             assert.deepStrictEqual([row.name, row.kind, Number(row.price_monthly), Number(row.setup_fee), row.source_key, row.locations], ['ADVANCE-1 | AMD EPYC 4244P', 'dedicated', 147, 147, 'ovhcloud-baremetal', ['vin', 'hil']]);
         });
+        await check('OVHcloud Public Cloud: an hourly flavor is a 730-hour month, monthly billing is its own row, a coming-soon flavor is held', async () => {
+            const f = { currency: 'USD', flavor: 'd2-4', family: 'discovery', vcpu: 2, cpu_ghz: 2, memory_gb: 4, disk_capacity_gb: 50, disk_count: 1, disk_interface: 'NVMe', bandwidth_mbps: 250, bandwidth_unlimited: false, price: 2560000, interval_unit: 'none', tags: ['active'] };
+            const h = mapItem(item('ovhcloud-public-cloud', 'd2-4.consumption', f, at, 'd2-4'));
+            assert.deepStrictEqual([h.provider.slug, h.name, h.kind, h.vcpu, h.ram_mb, h.disk_gb, h.disk_type, h.port_mbps, h.price_hourly, h.price_monthly, h.bandwidth_gb, h.unmetered, h.source_url],
+                ['ovhcloud', 'D2-4 · Discovery', 'cloud', 2, 4096, 50, 'nvme', 250, 0.0256, 18.69, null, null, 'https://us.ovhcloud.com/public-cloud/prices/']);
+            const m = mapItem(item('ovhcloud-public-cloud', 'd2-4.monthly.postpaid', { ...f, price: 1418000000, interval_unit: 'month' }, at, 'd2-4'));
+            assert.deepStrictEqual([m.name, m.price_monthly, m.price_hourly, m.external_id], ['D2-4 · Discovery · monthly billing', 14.18, null, 'd2-4.monthly.postpaid']);
+            assert.strictEqual(mapItem(item('ovhcloud-public-cloud', 'b3-8.consumption', { ...f, flavor: 'b3-8', tags: ['coming_soon', 'is_new', 'active'] })), null, 'not orderable yet');
+            const gpu = mapItem(item('ovhcloud-public-cloud', 'l4-90.monthly.postpaid', { ...f, flavor: 'l4-90', family: 'gpu', gpu_count: 1, gpu_model: 'L4', price: 60000000000 }));
+            assert.strictEqual(gpu.name, 'L4-90 · Gpu · 1× L4 · monthly billing');
+            assert.throws(() => mapItem(item('ovhcloud-public-cloud', 'x.consumption', { ...f, currency: 'EUR' })), /not in USD/);
+            assert.throws(() => mapItem(item('ovhcloud-public-cloud', 'x.hour', f)), /not an hourly or monthly flavor/);
+        });
+        await check('managed PostgreSQL: OVHcloud prices a node, the plan is the whole service; Linode lists one node; both are the database kind', async () => {
+            const o = { currency: 'USD', engine: 'PostgreSQL', tier: 'PostgreSQL Business', price_unit: 'M/node', vcpu: 4, memory_gb: 15, nodes: 2, storage_gb: 320, storage_max_gb: 960, bandwidth_mbps: 250, price: 32711000000 };
+            const p = mapItem(item('ovhcloud-managed-postgresql', 'databases.postgresql-business-db1-15.month.consumption', o, at, 'Business DB1-15'));
+            assert.deepStrictEqual([p.provider.slug, p.name, p.kind, p.vcpu, p.ram_mb, p.disk_gb, p.price_monthly, p.source_url],
+                ['ovhcloud', 'PostgreSQL Business DB1-15 · 2 nodes', 'database', 4, 15360, 320, 654.22, 'https://us.ovhcloud.com/public-cloud/postgresql/']);
+            assert.throws(() => mapItem(item('ovhcloud-managed-postgresql', 'x', { ...o, price_unit: 'h/node' })), /per node and month/);
+            const l = mapItem(item('linode-managed-postgresql', 'g6-nanode-1', { class: 'nanode', vcpus: 1, memory: 1024, disk: 9216, price_monthly: 16, price_hourly: 0.024, price_monthly_3_nodes: 37 }, at, 'DBaaS - Nanode 1GB'));
+            assert.deepStrictEqual([l.provider.slug, l.name, l.kind, l.vcpu, l.ram_mb, l.disk_gb, l.price_monthly, l.price_hourly], ['linode', 'PostgreSQL · Nanode 1GB · 1 node', 'database', 1, 1024, 9, 16, 0.024]);
+            // The migration widened the kind check: a database plan is stored and filtered like any other.
+            await catalog.applyItem(item('ovhcloud-managed-postgresql', 'databases.postgresql-business-db1-15.month.consumption', o, at, 'Business DB1-15'));
+            const row = (await catalog.plans({ kind: 'database' })).plans[0];
+            assert.deepStrictEqual([row.kind, row.name, Number(row.price_monthly)], ['database', 'PostgreSQL Business DB1-15 · 2 nodes', 654.22]);
+        });
         await check('upsert preserves first seen and records only a changed price', async () => {
             const raw = { vcpu_count: 1, ram: 1024, disk: 25, bandwidth: 1000, monthly_cost: 5, hourly_cost: 0.007, type: 'vc2' };
             await catalog.applyItem(item('vultr-plans', 'vc2-1c-1gb', raw));
