@@ -10,7 +10,10 @@ Type=oneshot
 # /etc/openvibe/backup.env, the encryption key and the root-only backups. The env file is read by
 # ovhost itself, not loaded into this unit's environment.
 User=root
-ExecStart=/usr/local/bin/ovhost backup --all --offsite
+# Local copies: the newest 2 days and the newest week. The encrypted off-host copy keeps 30 days and pgBackRest
+# keeps its own (S3), so a local copy is only the fast restore. The 96 GB host ran out of room on 2026-11-17 with
+# 8 GB of local copies (7 daily + 4 weekly): Media refused to record live streams for 15 minutes.
+ExecStart=/usr/local/bin/ovhost backup --all --offsite --keep-daily 2 --keep-weekly 1
 # /usr/sbin for runuser (lib/executor.js also resolves it by absolute path).
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
