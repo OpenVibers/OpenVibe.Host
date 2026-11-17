@@ -9,6 +9,9 @@ const SOURCES = Object.freeze({
     'ovhcloud-vps': { slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://us.ovhcloud.com/', source_url: 'https://us.ovhcloud.com/vps/' },
     'ovhcloud-baremetal': { slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://us.ovhcloud.com/', source_url: 'https://us.ovhcloud.com/bare-metal/prices/' },
     'azure-retail-prices': { slug: 'azure', name: 'Microsoft Azure', homepage_url: 'https://azure.microsoft.com/', source_url: 'https://azure.microsoft.com/en-us/pricing/' },
+    'ovhcloud-public-cloud': { slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://us.ovhcloud.com/', source_url: 'https://us.ovhcloud.com/public-cloud/prices/' },
+    'ovhcloud-managed-postgresql': { slug: 'ovhcloud', name: 'OVHcloud', homepage_url: 'https://us.ovhcloud.com/', source_url: 'https://us.ovhcloud.com/public-cloud/postgresql/' },
+    'linode-managed-postgresql': { slug: 'linode', name: 'Linode', homepage_url: 'https://www.linode.com/', source_url: 'https://www.linode.com/pricing/#databases' },
     // Read by Host itself with the owner's read-only token (server/catalog/keyed-feeds.js), not through Sources.
     'digitalocean-sizes': { slug: 'digitalocean', name: 'DigitalOcean', homepage_url: 'https://www.digitalocean.com/', source_url: 'https://www.digitalocean.com/pricing/droplets' },
     'hetzner-server-types': { slug: 'hetzner', name: 'Hetzner', homepage_url: 'https://www.hetzner.com/', source_url: 'https://www.hetzner.com/cloud/' },
@@ -109,6 +112,73 @@ function ovhBaremetal(x, id, title) {
         price_monthly: monthly, price_hourly: null, ipv4: null,
         locations: Array.isArray(x.locations) && x.locations.length ? x.locations : null,
         setup_fee: setup,
+    };
+}
+
+// OVHcloud's Public Cloud catalog (Sources `ovhcloud-public-cloud`): one record per Linux instance flavor and billing.
+// A `.consumption` record is the hourly price (hundred-millionths: 6050000 is $0.0605 an hour), shown as a month of
+// 730 hours, the way OVHcloud's own page states it; a `.monthly.postpaid` record is OVHcloud's monthly billing for the
+// same flavor, about half the hourly month. A flavor tagged coming_soon is not orderable yet in the US: held, not
+// listed. Bandwidth is the flavor's port in Mbit/s; the catalog states no transfer allowance, so it stays unknown.
+const words = (v) => { const t = String(v || '').replace(/[-_]+/g, ' ').trim(); return t ? t[0].toUpperCase() + t.slice(1) : ''; };
+function ovhPublicCloud(x, id) {
+    if (x.currency !== 'USD') throw new TypeError('OVHcloud price is not in USD');
+    if (Array.isArray(x.tags) && x.tags.includes('coming_soon')) return null;
+    const units = number(x.price, 'price');
+    if (units == null) throw new TypeError('missing price');
+    const monthlyBilling = /\.monthly\.postpaid$/.test(id);
+    if (!monthlyBilling && !/\.consumption$/.test(id)) throw new TypeError('not an hourly or monthly flavor');
+    if (units <= 0) return null;
+    const hourly = monthlyBilling ? null : units / 1e8;
+    const monthly = monthlyBilling ? Math.round(units / 1e6) / 100 : Math.round(hourly * 730 * 100) / 100;
+    const memoryGb = number(x.memory_gb, 'memory');
+    const perDisk = number(x.disk_capacity_gb, 'disk capacity');
+    const disks = x.disk_count == null ? 1 : number(x.disk_count, 'disk count');
+    const gpus = x.gpu_count == null ? 0 : number(x.gpu_count, 'gpu count');
+    const flavor = String(x.flavor || id.split('.')[0]).toUpperCase();
+    const name = [flavor, words(x.family), gpus ? `${gpus}× ${String(x.gpu_model || 'GPU').trim()}` : '', monthlyBilling ? 'monthly billing' : ''].filter(Boolean).join(' · ');
+    return {
+        name, kind: 'cloud',
+        vcpu: number(x.vcpu, 'vcpu'), ram_mb: memoryGb == null ? null : Math.round(memoryGb * 1024),
+        disk_gb: perDisk == null ? null : perDisk * (disks || 1),
+        disk_type: /nvme/i.test(String(x.disk_interface || '')) || /nvme/i.test(String(x.disk_technology || '')) ? 'nvme' : /ssd/i.test(String(x.disk_technology || '')) ? 'ssd' : null,
+        bandwidth_gb: null, unmetered: null, port_mbps: number(x.bandwidth_mbps, 'bandwidth'),
+        price_monthly: monthly, price_hourly: hourly == null ? null : Math.round(hourly * 1e4) / 1e4, ipv4: null, locations: null,
+    };
+}
+// OVHcloud's managed PostgreSQL (Sources `ovhcloud-managed-postgresql`): the catalog prices a service size per node and
+// month ("M/node"); the plan is the whole service, so its price is that times the size's node count (Business DB1-15
+// is two nodes at $327.11). The vCPUs and memory are one node's, as OVHcloud's page states them.
+function ovhManagedPostgres(x, id, title) {
+    if (x.currency !== 'USD') throw new TypeError('OVHcloud price is not in USD');
+    if (x.price_unit !== 'M/node') throw new TypeError('OVHcloud database price is not per node and month');
+    const units = number(x.price, 'price');
+    if (units == null) throw new TypeError('missing monthly price');
+    if (units <= 0) return null;
+    const nodes = x.nodes == null ? 1 : number(x.nodes, 'nodes');
+    const memoryGb = number(x.memory_gb, 'memory');
+    const size = (typeof title === 'string' && title.trim()) || id;
+    return {
+        name: `PostgreSQL ${size} · ${nodes} node${nodes === 1 ? '' : 's'}`, kind: 'database',
+        vcpu: number(x.vcpu, 'vcpu'), ram_mb: memoryGb == null ? null : Math.round(memoryGb * 1024),
+        disk_gb: number(x.storage_gb, 'storage'), disk_type: null,
+        bandwidth_gb: null, unmetered: null, port_mbps: number(x.bandwidth_mbps, 'bandwidth'),
+        price_monthly: Math.round((units * nodes) / 1e6) / 100, price_hourly: null, ipv4: null, locations: null,
+    };
+}
+// Linode's managed databases (Sources `linode-managed-postgresql`): a size's PostgreSQL price for one node; the
+// three-node cluster is the same size's high-availability option, at its own price, kept in the source's fields.
+function linodeManagedPostgres(x, id, title) {
+    const monthly = number(x.price_monthly, 'monthly price');
+    if (monthly == null) throw new TypeError('missing monthly price');
+    if (monthly <= 0) return null;
+    const size = String((typeof title === 'string' && title.trim()) || id).replace(/^DBaaS\s*-\s*/i, '');
+    return {
+        name: `PostgreSQL · ${size} · 1 node`, kind: 'database',
+        vcpu: number(x.vcpus, 'vcpu'), ram_mb: number(x.memory, 'memory'),
+        disk_gb: x.disk == null ? null : number(x.disk, 'disk') / 1024, disk_type: null,
+        bandwidth_gb: null, unmetered: null, port_mbps: null,
+        price_monthly: monthly, price_hourly: number(x.price_hourly, 'hourly price'), ipv4: null, locations: null,
     };
 }
 
@@ -225,6 +295,18 @@ function mapItem(item) {
     }
     if (item.source_key === 'ovhcloud-vps') {
         const plan = ovhcloud(x, id, item.title);
+        return plan && { ...common, ...plan };
+    }
+    if (item.source_key === 'ovhcloud-public-cloud') {
+        const plan = ovhPublicCloud(x, id);
+        return plan && { ...common, ...plan };
+    }
+    if (item.source_key === 'ovhcloud-managed-postgresql') {
+        const plan = ovhManagedPostgres(x, id, item.title);
+        return plan && { ...common, ...plan };
+    }
+    if (item.source_key === 'linode-managed-postgresql') {
+        const plan = linodeManagedPostgres(x, id, item.title);
         return plan && { ...common, ...plan };
     }
     if (item.source_key === 'ovhcloud-baremetal') {

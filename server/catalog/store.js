@@ -23,7 +23,7 @@ const fields = {
     plans: ['provider_id', 'external_id', 'name', 'kind', 'vcpu', 'ram_mb', 'disk_gb', 'disk_type', 'bandwidth_gb', 'unmetered', 'port_mbps', 'ipv4', 'locations', 'currency', 'price_monthly', 'price_hourly', 'price_term', 'renewal_price', 'setup_fee', 'source_url', 'checked_at', 'status'],
     promos: ['provider_id', 'title', 'details', 'code', 'url', 'affiliate', 'starts_at', 'ends_at', 'status'],
 };
-const kinds = new Set(['cloud', 'vps', 'dedicated', 'storage', 'domain']);
+const kinds = new Set(['cloud', 'vps', 'dedicated', 'database', 'storage', 'domain']);
 const currencies = new Set(Intl.supportedValuesOf('currency'));
 const url = (v) => { try { const u = new URL(v); return ['https:', 'http:'].includes(u.protocol) && !u.username && !u.password; } catch { return false; } };
 const clean = (type, input, current, now) => {

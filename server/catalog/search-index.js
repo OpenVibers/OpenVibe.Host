@@ -21,7 +21,7 @@ const { money, bytesMb, sizeGb } = require('../render/catalog');
 const { displayTld, tldKind, KIND_LABEL } = require('./domains');
 const { isStorageRate, isStale, freshCutoff } = require('./pricing');
 
-const KINDS = { cloud: 'Cloud', vps: 'VPS', dedicated: 'Dedicated server', storage: 'Storage', domain: 'Domain' };
+const KINDS = { cloud: 'Cloud', vps: 'VPS', dedicated: 'Dedicated server', database: 'Managed database', storage: 'Storage', domain: 'Domain' };
 const day = (ms) => (Number.isFinite(Number(ms)) ? new Date(Number(ms)).toISOString().slice(0, 10) : null);
 const iso = (ms) => (Number.isFinite(Number(ms)) && ms != null ? new Date(Number(ms)).toISOString() : null);
 
