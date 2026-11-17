@@ -262,7 +262,7 @@ Counts only, never a row about a person. A database that does not answer prints 
 
 - It backs up every service that declares databases. A failing service never stops the others; exit `2` if anything failed.
 - A **PostgreSQL** database is verified on every run: every run checks pgBackRest for the whole cluster and records `verified`, and a logical `pg_dump -Fc` per database is taken when the last good one is over 7 days old or on any run with `--logical`. A failed verification is `failed`, never `skipped`.
-- It keeps the last 7 daily and 4 weekly good backups per service.
+- It keeps the last 7 daily and 4 weekly good backups per service by default; the shipped unit keeps 2 daily and 1 weekly on the host (`--keep-daily 2 --keep-weekly 1`), since the off-host copy keeps 30 days.
 - It writes a JSON summary to `<stateDir>/backup-runs/<run>.json`.
 - It encrypts every copy on the host (AES-256-GCM, Node crypto, with a key that stays on the host) and uploads it to S3-compatible storage (Backblaze B2). Off-host copies are kept for 30 days.
 - Backups are `root:root`: directories 0700, files 0600. PostgreSQL dumps are made as the postgres OS user over peer auth; ovhost reads no service env value.

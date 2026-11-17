@@ -222,7 +222,8 @@ the S3 client is an npm dependency of OpenVibe.Host (`@aws-sdk/client-s3`, the s
    (Run these from `/usr/local/lib/openvibe-host`.) The timer fires daily at 03:30 UTC, up to 15 minutes
    later (`RandomizedDelaySec`). A run missed while the host was down happens at the next boot
    (`Persistent=true`). To run one now: `sudo systemctl start openvibe-backup.service`.
-7. **Disk.** Local retention keeps up to 11 copies of every database. Check the space before the first
+7. **Disk.** Local retention keeps up to 11 copies of every database by default; the shipped unit keeps 3
+   (`--keep-daily 2 --keep-weekly 1`: 2026-11-17, 8 GB of local copies on a 96 GB host left Media refusing to record). Check the space before the first
    week fills up: `sudo du -sh /var/backups/openvibe/*` against `df -h /var/backups`. If space is tight,
    lower `--keep-daily`/`--keep-weekly` in the unit's `ExecStart`.
 
