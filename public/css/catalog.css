@@ -292,3 +292,5 @@ html[data-ov-motion=off] .hh-cards a:hover{transform: none}
 .hc-change-move.is-down .hc-change-word { color: var(--hs-ok); }
 .hc-change-prices { color: var(--hs-muted); font-variant-numeric: tabular-nums; }
 @media (max-width: 400px) { .hc-change-move { align-items: flex-start; margin-left: 0; } }
+/* Design rule 201: the intro is one line on a computer, at most two on a phone. */
+@media (max-width: 640px) { .hc-lede { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; } }

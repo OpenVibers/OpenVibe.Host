@@ -48,3 +48,5 @@ ul.domains { padding-left: 1.2rem; } ul.domains li { margin-bottom: 1rem; }
 /* The shared footer's patch-notes link is nowrap; a long title pushes a 320px page sideways (found on the catalog
    home, 2026-10-30). It wraps like the rest of the footer. */
 a.ov-shipped-notes { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+/* Design rule 201: the intro is one line on a computer, at most two on a phone. */
+@media (max-width: 640px) { .intro { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; } }
