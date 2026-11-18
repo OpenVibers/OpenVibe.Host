@@ -33,6 +33,14 @@ function fakeExec(states, result) {
     assert.strictEqual(createRunCheck({ exec: fakeExec([], null), inv: {}, env: {} }), null);
     assert.strictEqual(settingsOf({ browserCheck: { run: { url: 'http://127.0.0.1:4920', subject: 'nobody', project: PROJECT } } }, {}), null, 'a malformed subject is not configured');
 
+    // Through the real inventory loader (11-18: the normaliser kept only the keys it knew, so host.json's browserCheck
+    // never reached the check and production kept running Chrome itself).
+    const { normalise } = require('../lib/inventory');
+    const loaded = normalise({ services: {}, browserCheck: inv.browserCheck });
+    assert.deepStrictEqual(loaded.browserCheck.run, inv.browserCheck.run, 'browserCheck.run survives the loader');
+    assert.ok(createRunCheck({ exec: fakeExec([], null), inv: loaded, env: {} }), 'and configures the check');
+    assert.strictEqual(normalise({ services: {} }).browserCheck.run, null);
+
     // A pass: submitted as the operator in the checks project, polled to the end, the report handed back as stdout.
     const e = fakeExec(['queued', 'running', 'succeeded'], { code: 0, stdout: JSON.stringify(REPORT), stderr: '' });
     const check = createRunCheck({ exec: e, inv, env: {}, pollMs: 1 });
