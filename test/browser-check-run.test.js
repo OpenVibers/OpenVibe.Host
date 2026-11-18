@@ -49,6 +49,8 @@ function fakeExec(states, result) {
     const submit = e.calls.find((c) => c.method === 'POST' && c.url.endsWith('/api/v1/jobs'));
     const body = JSON.parse(submit.body);
     assert.deepStrictEqual([body.class, body.artifact, body.args, body.egress], ['linux', { name: 'openvibe-browser-check', version: '1.0.0' }, { site: 'wiki' }, 'public']);
+    assert.deepStrictEqual(body.requirements.trust, ['first-party', 'user-owned'], 'the operator\'s own node is eligible (11-18: without it the job waited, unplaceable)');
+    assert.deepStrictEqual([body.requirements.kind, body.requirements.mobility, body.requirements.latency_class, body.requirements.objective], ['host.browser-check', 'job', 'background', 'balanced']);
     assert.deepStrictEqual([submit.headers.Authorization, submit.headers['X-OV-Subject'], submit.headers['X-OV-Project']], ['Bearer tok-run', SUBJECT, PROJECT]);
     const tokenCall = e.calls.find((c) => c.url.endsWith('/oauth/token'));
     assert.match(tokenCall.body, /audience=openvibe\.run/);
