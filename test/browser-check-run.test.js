@@ -66,5 +66,55 @@ function fakeExec(states, result) {
     // A job that runs too long is given up, as code 2.
     const slow = await createRunCheck({ exec: fakeExec(['running'], null), inv, env: {}, pollMs: 1, timeoutMs: 5 })('wiki');
     assert.match(slow.error, /did not end in/);
+    // A job that waits longer than a token lives (11-18: a 13-minute job, a 5-minute token; every later poll answered
+    // 401, the finished job was never seen and the check gave up as code 2). Run accepts only the newest token here,
+    // and each poll moves the clock a minute.
+    {
+        let clock = Date.parse('2026-11-18T01:02:34Z');
+        let issued = 0;
+        let polls = 0;
+        const born = new Map();
+        const reads = [];
+        const ex = {
+            readFile: async () => ENV_FILE,
+            request: async (url, o = {}) => {
+                if (url.endsWith('/oauth/token')) { issued++; born.set(`tok-${issued}`, clock); return { status: 200, body: JSON.stringify({ access_token: `tok-${issued}`, expires_in: 300 }) }; }
+                const tok = String(o.headers.Authorization || '').replace(/^Bearer /, '');
+                const ok = tok === `tok-${issued}` && clock < born.get(tok) + 300000;   // the newest, and not past its 5 minutes
+                if (url.endsWith('/api/v1/jobs') && o.method === 'POST') return ok ? { status: 201, body: JSON.stringify({ id: 'job_1', state: 'queued' }) } : { status: 401, body: '{}' };
+                if (url.endsWith('/api/v1/jobs/job_1')) {
+                    reads.push(o.headers.Authorization);
+                    if (!ok) { clock += 15000; return { status: 401, body: JSON.stringify({ code: 'auth.invalid_token' }) }; }
+                    clock += 60000;
+                    const state = ++polls >= 13 ? 'succeeded' : 'queued';
+                    return { status: 200, body: JSON.stringify({ id: 'job_1', state, result: state === 'succeeded' ? { code: 0, stdout: JSON.stringify(REPORT), stderr: '' } : null }) };
+                }
+                return { status: 404, body: '{}' };
+            },
+        };
+        const long = await createRunCheck({ exec: ex, inv, env: {}, pollMs: 1, now: () => clock })('wiki');
+        assert.deepStrictEqual(long, { code: 0, stdout: JSON.stringify(REPORT) }, 'a 13-minute job is still seen to finish');
+        assert.ok(issued >= 3, `the token is taken again before it ends (${issued} taken)`);
+        assert.ok(reads.every((h) => /^Bearer tok-\d+$/.test(h)));
+
+        // A token Run refuses early (rotated keys, say) is taken again at once, without waiting for its time.
+        issued = 0; polls = 12; reads.length = 0;
+        let refused = false;
+        const ex2 = { ...ex, request: async (url, o = {}) => {
+            if (!refused && url.endsWith('/api/v1/jobs/job_1')) { refused = true; issued++; return { status: 401, body: '{}' }; }
+            return ex.request(url, o);
+        } };
+        const early = await createRunCheck({ exec: ex2, inv, env: {}, pollMs: 1, now: () => clock })('wiki');
+        assert.strictEqual(early.code, 0, 'a 401 takes a new token and reads again');
+
+        // A read Run keeps refusing: the give-up says why.
+        const denied = { readFile: async () => ENV_FILE, request: async (url, o = {}) => {
+            if (url.endsWith('/oauth/token')) return { status: 200, body: JSON.stringify({ access_token: 'tok', expires_in: 300 }) };
+            if (o.method === 'POST') return { status: 201, body: JSON.stringify({ id: 'job_1' }) };
+            return { status: 403, body: JSON.stringify({ code: 'run.forbidden' }) };
+        } };
+        const why = await createRunCheck({ exec: denied, inv, env: {}, pollMs: 1, timeoutMs: 5 })('wiki');
+        assert.match(why.error, /the last read answered HTTP 403/);
+    }
     console.log('browser check on Run: all checks passed');
 })().catch((err) => { console.error(err); process.exit(1); });
