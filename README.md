@@ -399,7 +399,7 @@ Part of the [OpenVibe network](https://openvibe.network). Built in the open by [
 <!-- versions:start -->
 - openvibe-contracts: v0.443.0
 - openvibe-sdk: v0.177.0
-- openvibe-shared: v4.317.0
+- openvibe-shared: v4.320.0
 - openvibe-publishing: v1.7.0
 <!-- versions:end -->
 ---
