@@ -56,7 +56,7 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
             counts: [
                 { value: stats.plans, label: 'hosting plans compared', href: '/catalog' },
                 { value: stats.providers, label: stats.providers === 1 ? 'provider' : 'providers', href: '/catalog/providers' },
-                { value: domainStats.tlds, label: 'domain endings priced', href: '/catalog/domains' },
+                { value: domainStats.tlds, label: 'domain endings priced', href: 'https://openvibe.domains/tld' },
                 { value: (domainStats.registrars || []).length, label: (domainStats.registrars || []).length === 1 ? 'registrar priced' : 'registrars compared', href: '/catalog/domains' },
             ],
             tiers, value: { vcpu, ram, disk }, providerCards, faq: HOST_FAQ,
@@ -87,13 +87,14 @@ function createCatalogViews({ catalog, benchmarks, community, config, log = cons
         // The comparison table is whatever the filters ask for; dedicated plans also get their own section, unless
         // the reader already asked for that kind (then the table itself is the dedicated view).
         const dedicatedQuery = query.kind ? null : { kind: 'dedicated', currency: query.currency || 'USD' };
-        const [result, providers, currencies, dedicated] = await Promise.all([
-            catalog.plans(query), catalog.providers(), catalog.currencies(),
-            dedicatedQuery ? catalog.plans(dedicatedQuery).then((r) => ({ plans: r.plans, total: r.total })) : Promise.resolve({ plans: [], total: 0 }),
+        const databaseQuery = query.kind ? null : { kind: 'database', currency: query.currency || 'USD' };
+        const section = (q) => (q ? catalog.plans(q).then((r) => ({ plans: r.plans, total: r.total })) : Promise.resolve({ plans: [], total: 0 }));
+        const [result, providers, currencies, dedicated, databases] = await Promise.all([
+            catalog.plans(query), catalog.providers(), catalog.currencies(), section(dedicatedQuery), section(databaseQuery),
         ]);
         return {
             title: 'Compare hosting plans',
-            body: render.catalog({ result, query, providers, currencies, dedicated }),
+            body: render.catalog({ result, query, providers, currencies, dedicated, databases }),
             styles: ['kit.css'],
             indexable: !Object.keys(query).length,
             description: 'Compare cloud, VPS and dedicated hosting plans: price per month, per vCPU and per GB, each with the day it was checked and its source.',

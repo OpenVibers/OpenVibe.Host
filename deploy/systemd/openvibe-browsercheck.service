@@ -12,7 +12,13 @@ User=root
 ExecStart=/usr/local/bin/ovhost browser-watch --sites live,network,tools,media,community,chat,games,blog,wiki,codes,host,ai,billing,search,sources,news,reviews,deals,coupons,trade,openre,space,bot,events,services,actor,watch,run,food,help,work,quest,rent,media-hub,inventory,play,zone,tips,vip,design,exchange,report,vision,fun,shoes,bench,cam,domains,meme,surf,today,tours,mail,computer
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
-Nice=10
-TimeoutStartSec=30min
+# 11-17: the production host has 4 cores and serves every site; this batch job yields to them (Nice 19, the smallest
+# CPU share, idle IO). Interactive Node services showed up to 1.8 s of event-loop lag while checks and recordings ran.
+Nice=19
+CPUWeight=10
+IOSchedulingClass=idle
+# 52 sites took just over 30 minutes after a day of releases (11-15: six runs in a row ended "timeout"
+# and paged as a failed check); an hour leaves room.
+TimeoutStartSec=60min
 PrivateTmp=true
 ProtectSystem=full

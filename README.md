@@ -28,6 +28,11 @@ OpenVibe's own static hosting moved to OpenVibe.Space ([below](#static-hosting-m
     addons apart from the plan, so the Sources mapping joins each default addon to its own product; Host multiplies the
     socket count by the cores and one disk's size by the disk count. Vultr's API host disallows robots, so that
     Sources seed stays disabled.
+  - OVHcloud's Public Cloud catalog (`ovhcloud-public-cloud`): every Linux instance flavor at its hourly price, shown as
+    a 730-hour month, and, where OVHcloud sells it, its monthly billing as a row of its own (about half). A flavor
+    tagged coming soon is held. Managed databases are the `database` kind (migration 0017):
+    `ovhcloud-managed-postgresql` prices a size per node, so the plan is that times its nodes, and
+    `linode-managed-postgresql` lists one node. The compare page shows them as their own section.
   - DigitalOcean's Droplet sizes and Hetzner Cloud's server types, which their APIs show only to a signed-in account:
     Host reads them itself every six hours (`server/catalog/keyed-feeds.js`) with the owner's read-only token from the
     admin panel's Setup tab (`host.data_sources`, sealed; `HOST_DIGITALOCEAN_TOKEN` / `HOST_HETZNER_TOKEN` are the
@@ -262,7 +267,7 @@ Counts only, never a row about a person. A database that does not answer prints 
 
 - It backs up every service that declares databases. A failing service never stops the others; exit `2` if anything failed.
 - A **PostgreSQL** database is verified on every run: every run checks pgBackRest for the whole cluster and records `verified`, and a logical `pg_dump -Fc` per database is taken when the last good one is over 7 days old or on any run with `--logical`. A failed verification is `failed`, never `skipped`.
-- It keeps the last 7 daily and 4 weekly good backups per service.
+- It keeps the last 7 daily and 4 weekly good backups per service by default; the shipped unit keeps 2 daily and 1 weekly on the host (`--keep-daily 2 --keep-weekly 1`), since the off-host copy keeps 30 days.
 - It writes a JSON summary to `<stateDir>/backup-runs/<run>.json`.
 - It encrypts every copy on the host (AES-256-GCM, Node crypto, with a key that stays on the host) and uploads it to S3-compatible storage (Backblaze B2). Off-host copies are kept for 30 days.
 - Backups are `root:root`: directories 0700, files 0600. PostgreSQL dumps are made as the postgres OS user over peer auth; ovhost reads no service env value.
@@ -293,7 +298,7 @@ The sandbox blocks writes outside the drill directory and addresses beyond loopb
 
 `host.example.json` describes every service on the host. It records the checkout, owner/`runAs`, units and socket unit, `unitSources` (repo unit files), env file, `env.required` (names, or `"from-example"`), port, loopback `ready` URL (plus headers, since Tools needs `Host: openvibe.tools`), `packages` (`"apps/*"` for Tools), install command, `build` hooks, `noRestartPaths`, the `protected` probe (`http-json-count` — a numeric `field`, plus any present `addFields` —, `postgresql-count`, or `sum` of several: Live streams, Media recordings, chunk sessions and uploads, Events SSE connections, Chat sockets, Games players online, OpenRestream ingest sessions, Tools running jobs), the `drain` policy, `databases` (each a PostgreSQL database `{ "name", "engine": "postgresql", "database": "ov_<name>" }`; [docs/db-inventory.md](docs/db-inventory.md)), `backupOnChange`, `nginx`, `layout` (`release` for a `releases/<id>` + `current` service using the `release-layout` strategy) and `workerUnits`. `workerUnits` are units, or templates such as OpenRestream's `openre-rtmp-ingest@.service`, that belong to the service but that ovhost **never starts, stops or restarts**: they drain and exit on their own. `status` and `validate` list their instances read-only, `validate` warns when none runs, and the inventory refuses a worker unit, or an instance of one, in `units`. `auxiliaryUnits` are service units a service depends on but does not run in its own process: Mail's `openvibe-stalwart.service`, installed from `unitSources` (which may also carry its `.slice`). A deploy restarts one only when a path in its `restartOn` list changed, and a rollback never does. `objects` directories are archived by `backup`; when a store compresses or encrypts its blobs, declare `"verify": false` so a drill checks the archive but not each file's sha256. An `addFields` entry that the service does not report at all is read as zero (an older service), while one it reports as `null` is read as unknown: the service could not answer it, so the restart is held. The real file is `/etc/openvibe/host.json` and is **never committed**. When `ovhost` runs as root it refuses an inventory that is not root-owned or that anyone else can write, and it rejects relative paths, non-loopback probe URLs, non-SELECT probe queries and vhost names that contain a path.
 
-**Lifecycle** (roadmap WS-P task 1, `lib/lifecycle.js`). Each service's lifecycle is the `lifecycle` block of its manifest in openvibe-contracts (≥ 0.55.0): liveness, shutdown (signal, `deadlineSeconds`, drains, workers), startupRecovery, rollback, contracts and leases. A service entry may carry its own `lifecycle` block, which replaces the manifest's on this host, and `validate --manifest <file>` reads another manifest file. `ovhost validate` fails when no block is found or a field is missing, naming the service and the field (`live: lifecycle.shutdown.deadlineSeconds is missing`). It also fails when `deadlineSeconds` exceeds a unit's stop timeout (systemd's effective `TimeoutStopUSec`, else `TimeoutStopSec` in the unit source) or the unit's `KillSignal` is another signal, and when the checkout's installed openvibe-contracts is outside `contracts.range`. Worker units that drain longer than their stop timeout are a warning, since ovhost never stops them. This repository pins openvibe-contracts v0.419.0, which carries the lifecycle blocks, so `validate` reads each service's lifecycle from its manifest in the installed package.
+**Lifecycle** (roadmap WS-P task 1, `lib/lifecycle.js`). Each service's lifecycle is the `lifecycle` block of its manifest in openvibe-contracts (≥ 0.55.0): liveness, shutdown (signal, `deadlineSeconds`, drains, workers), startupRecovery, rollback, contracts and leases. A service entry may carry its own `lifecycle` block, which replaces the manifest's on this host, and `validate --manifest <file>` reads another manifest file. `ovhost validate` fails when no block is found or a field is missing, naming the service and the field (`live: lifecycle.shutdown.deadlineSeconds is missing`). It also fails when `deadlineSeconds` exceeds a unit's stop timeout (systemd's effective `TimeoutStopUSec`, else `TimeoutStopSec` in the unit source) or the unit's `KillSignal` is another signal, and when the checkout's installed openvibe-contracts is outside `contracts.range`. Worker units that drain longer than their stop timeout are a warning, since ovhost never stops them. This repository pins openvibe-contracts v0.443.0, which carries the lifecycle blocks, so `validate` reads each service's lifecycle from its manifest in the installed package.
 
 `games` deploys with the `pnpm-build` strategy (a pnpm workspace with a TypeScript build: `pnpm install --frozen-lockfile`, `pnpm build`, the tracked `dist-types/` restored from git before the merge). A release layout requires `strategy: "release-layout"`. The deploy-strategy fields (`strategy`, `release`, `preflight`, `skipPackages`, `removeUntrackedLockfiles`, `generated`, `installUnits`, `unitsMatch`, `announce.releaseFiles`, `install.lockfile`, `install.workspace`, `ready.release`, `ready.allUnits`) are listed in [docs/deploy-strategies.md](docs/deploy-strategies.md#inventory-fields).
 
@@ -392,9 +397,9 @@ the owner's gates (go-ahead, a DMCA agent, a Public Suffix List entry for openvi
 Part of the [OpenVibe network](https://openvibe.network). Built in the open by [OpenVibers](https://github.com/OpenVibers).
 
 <!-- versions:start -->
-- openvibe-contracts: v0.419.0
-- openvibe-sdk: v0.168.0
-- openvibe-shared: v4.249.0
+- openvibe-contracts: v0.443.0
+- openvibe-sdk: v0.177.0
+- openvibe-shared: v4.313.0
 - openvibe-publishing: v1.7.0
 <!-- versions:end -->
 ---

@@ -33,6 +33,8 @@ function createCatalogApi({ catalog, domainCheck, benchmarks, viewers, actorLimi
     router.get('/offers', run(async (req) => await catalog.offers(req.query)));
     router.get('/domains', run(async (req) => await catalog.domains.list(req.query)));
     router.get('/domains/check', checkLimit(), run(async (req) => ({ check: await domainCheck.check(req.query.name) })));
+    // How many endings and which registrars the catalog prices (the counts OpenVibe.Domains shows; 2026-11-16).
+    router.get('/domains/stats', run(async () => { const s = await catalog.domains.stats(); return { stats: { tlds: s.tlds, registrars: s.registrars, last_checked: s.lastChecked == null ? null : new Date(s.lastChecked).toISOString() } }; }));
     router.get('/domains/:tld', run(async (req) => ({ tld: await catalog.domains.tld(req.params.tld) })));
     router.get('/benchmarks', run(async (req) => await benchmarks.list(req.query)));
     router.get('/benchmarks/:id', run(async (req) => ({ benchmark: await benchmarks.get(req.params.id, req.viewer) })));
@@ -101,9 +103,17 @@ function createCatalogPages({ catalog, domainCheck, benchmarks, community, confi
     router.get('/plans/:id', view(async (req, res) => page(req, res, await views.plan(req.params.id, req.ov))));
     router.get('/promos', view(async (req, res) => page(req, res, await views.promos())));
     router.get('/offers', view(async (req, res) => page(req, res, await views.offers(req.query))));
-    router.get('/domains', view(async (req, res) => page(req, res, await views.domains(req.query))));
-    router.get('/domains/check', checkLimit(), view(async (req, res) => {
-        if (typeof req.query.name !== 'string' || !req.query.name.trim()) return res.redirect(303, '/catalog/domains');
+    // Domain names are OpenVibe.Domains' (2026-11-16, the owner: "the domains on openvibe.host should be interconnected
+    // with openvibe.domains"): Host keeps the catalog and its API, and its comparison and name check are Domains' pages.
+    const DOMAINS = 'https://openvibe.domains';
+    const qs = (req) => { const i = req.originalUrl.indexOf('?'); return i < 0 ? '' : req.originalUrl.slice(i); };
+    router.get('/domains', (req, res) => res.redirect(301, `${DOMAINS}/tld${qs(req)}`));
+    router.get('/domains/check', (req, res) => {
+        const name = typeof req.query.name === 'string' ? req.query.name.trim().slice(0, 253) : '';
+        return res.redirect(301, name ? `${DOMAINS}/search?q=${encodeURIComponent(name)}` : `${DOMAINS}/`);
+    });
+    router.get('/domains/check-here', checkLimit(), view(async (req, res) => {
+        if (typeof req.query.name !== 'string' || !req.query.name.trim()) return res.redirect(303, `${DOMAINS}/`);
         let c;
         try { c = await domainCheck.check(req.query.name); } catch (err) {
             if (err.status !== 422) throw err;

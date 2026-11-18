@@ -14,8 +14,8 @@
 const seo = require('openvibe-shared/seo');
 const glyphs = require('openvibe-shared/glyphs');
 const { esc } = require('./layout');
-const arrowRight = glyphs.svg('arrow-right', { size: 16 });
-const arrowLeft = glyphs.svg('arrow-left', { size: 16 });
+const arrowRight = glyphs.svg('arrow-right', { size: 20 });
+const arrowLeft = glyphs.svg('arrow-left', { size: 20 });
 const { money, tldTrendFigure } = require('./catalog');
 const domains = require('../catalog/domains');
 
@@ -37,11 +37,11 @@ const jumpChip = (r) => (jumps(r) ? ' <span class="hc-chip" title="The renewal c
 
 function checkForm({ value = '', tld = '', label = 'Is your name free?', autofocus = false } = {}) {
     const ph = tld ? `yourname${domains.displayTld(tld)}` : 'yourname.dev';
-    return `<form class="hd-check" method="get" action="/catalog/domains/check" role="search" aria-label="Check a domain name">
+    return `<form class="hd-check" method="get" action="${DOMAINS}/search" role="search" aria-label="Check a domain name on OpenVibe.Domains">
 <label for="hd-name">${esc(label)}</label>
-<div class="hd-check-row"><input id="hd-name" name="name" value="${esc(value)}" placeholder="${esc(ph)}" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url" maxlength="253" required${autofocus ? ' autofocus' : ''}>
+<div class="hd-check-row"><input id="hd-name" name="q" value="${esc(value)}" placeholder="${esc(ph)}" autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="url" maxlength="253" required${autofocus ? ' autofocus' : ''}>
 <button type="submit">Check</button></div>
-<p class="hd-check-note">Asks the registry directly (RDAP), then shows what it costs at each registrar.</p>
+<p class="hd-check-note">On OpenVibe.Domains: it asks the registry directly (RDAP), then shows what the name costs at each registrar over three years.</p>
 </form>`;
 }
 
@@ -168,7 +168,7 @@ function frontSection({ popular = [], cheap = [], stats }) {
 ${checkForm({})}
 <div class="hh-short">${tldTable(popular.slice(0, 5), { caption: 'Popular endings: the cheapest price at any registrar' })}</div>
 ${cheap.length ? '<div class="hh-short">' + tldTable(cheap.slice(0, 5), { caption: 'The cheapest first year right now: check what it renews at' }) + '</div>' : ''}
-${stats.tlds ? `<p class="hc-more">${link('/catalog/domains', `All ${Number(stats.tlds).toLocaleString('en')} endings, by price ${arrowRight}`, 'button')}</p>` : ''}</section>`;
+${stats.tlds ? `<p class="hc-more">${link(`${DOMAINS}/tld`, `All ${Number(stats.tlds).toLocaleString('en')} endings on OpenVibe.Domains ${arrowRight}`, 'button')}</p>` : ''}</section>`;
 }
 
 const jsonLd = {

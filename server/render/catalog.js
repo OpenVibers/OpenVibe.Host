@@ -20,13 +20,13 @@ const kit = require('openvibe-shared/kit');
 const seo = require('openvibe-shared/seo');
 const glyphs = require('openvibe-shared/glyphs');
 const { esc } = require('./layout');
-const arrowRight = glyphs.svg('arrow-right', { size: 16 });
-const arrowLeft = glyphs.svg('arrow-left', { size: 16 });
+const arrowRight = glyphs.svg('arrow-right', { size: 20 });
+const arrowLeft = glyphs.svg('arrow-left', { size: 20 });
 const { MAX_AGE_DAYS } = require('../catalog/offers');
 const { isStorageRate, isStale } = require('../catalog/pricing');
 
 const DISCLOSURE = 'OpenVibe may earn a commission from links marked as affiliate links; it never changes the order or the prices shown.';
-const KINDS = [['', 'Any kind'], ['cloud', 'Cloud'], ['vps', 'VPS'], ['dedicated', 'Dedicated'], ['storage', 'Storage'], ['domain', 'Domains']];
+const KINDS = [['', 'Any kind'], ['cloud', 'Cloud'], ['vps', 'VPS'], ['dedicated', 'Dedicated'], ['database', 'Managed databases'], ['storage', 'Storage'], ['domain', 'Domains']];
 const SORTS = [['price', 'Lowest price'], ['price_per_vcpu', 'Price per vCPU'], ['price_per_gb_ram', 'Price per GB of RAM'], ['price_per_gb_disk', 'Price per GB of disk'], ['checked_at', 'Recently checked']];
 const RAM = [['', 'Any RAM'], ['1024', '1 GB+'], ['2048', '2 GB+'], ['4096', '4 GB+'], ['8192', '8 GB+'], ['16384', '16 GB+'], ['32768', '32 GB+'], ['65536', '64 GB+']];
 
@@ -227,7 +227,7 @@ function method(hasAffiliate) {
 </section>`;
 }
 
-function catalog({ result, query, providers, currencies, dedicated = { plans: [], total: 0 } }) {
+function catalog({ result, query, providers, currencies, dedicated = { plans: [], total: 0 }, databases = { plans: [], total: 0 } }) {
     const plans = result.plans;
     const filtered = Object.keys(query || {}).some((k) => k !== 'sort' && k !== 'cursor' && query[k]);
     const empty = plans.length ? '' : filtered
@@ -242,6 +242,14 @@ function catalog({ result, query, providers, currencies, dedicated = { plans: []
 ${planTable(dedicated.plans.slice(0, 10), { caption: `Dedicated servers, lowest price first${dedicated.plans.length > 10 ? ' (10 shown)' : ''}` })}
 ${dedicated.plans.length > 10 ? `<p class="hc-more">${link('/catalog?kind=dedicated', `All ${dedicated.total} dedicated servers ${arrowRight}`, 'button hc-button-quiet')}</p>` : ''}
 </section>` : '';
+    // Managed databases (plan §AD.18) the same way: the provider runs the database, its backups and its failover; the
+    // price is the whole service's month, every node included.
+    const databaseSection = databases.plans.length ? `<section aria-labelledby="hc-databases-h">
+<h2 id="hc-databases-h">Managed databases compared</h2>
+<p class="hc-dim">PostgreSQL run for you by the provider: backups, updates and failover included. The price is the whole service for a month, every node counted.</p>
+${planTable(databases.plans.slice(0, 10), { caption: `Managed databases, lowest price first${databases.plans.length > 10 ? ' (10 shown)' : ''}` })}
+${databases.plans.length > 10 ? `<p class="hc-more">${link('/catalog?kind=database', `All ${databases.total} managed databases ${arrowRight}`, 'button hc-button-quiet')}</p>` : ''}
+</section>` : '';
     return `<header class="hc-head">
 <h1>Compare hosting plans</h1>
 <p class="hc-lede">Cloud, VPS and dedicated plans side by side, each with the day its price was checked and a link to where it came from.</p>
@@ -250,6 +258,7 @@ ${filters(query, providers, currencies)}
 ${planTable(plans, { caption: `${plans.length}${result.next_cursor ? '+' : ''} plan${plans.length === 1 ? '' : 's'}, sorted by ${(SORTS.find(([v]) => v === (query.sort || 'price')) || SORTS[0])[1].toLowerCase()}` })}
 ${empty}${next}
 ${dedicatedSection}
+${databaseSection}
 <p class="hc-links">${link('/catalog/promos', 'Current promotions')} · ${link('/catalog/providers', 'All providers')}</p>
 ${method(plans.some((p) => p.affiliate_url))}`;
 }

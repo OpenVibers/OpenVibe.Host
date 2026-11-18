@@ -11,8 +11,8 @@
  */
 const glyphs = require('openvibe-shared/glyphs');
 const { esc } = require('./layout');
-const arrowRight = glyphs.svg('arrow-right', { size: 16 });
-const arrowLeft = glyphs.svg('arrow-left', { size: 16 });
+const arrowRight = glyphs.svg('arrow-right', { size: 20 });
+const arrowLeft = glyphs.svg('arrow-left', { size: 20 });
 const { bytesMb } = require('./catalog');
 
 const SORTS = [['new', 'Newest'], ['gb_single', 'Geekbench single-core'], ['gb_multi', 'Geekbench multi-core'], ['disk', 'Disk (4k IOPS)']];

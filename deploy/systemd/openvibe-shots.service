@@ -13,7 +13,11 @@ User=root
 ExecStart=/usr/local/bin/ovhost shots
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=OVHOST_INVENTORY=/etc/openvibe/host.json
-Nice=10
+# 11-17: the production host has 4 cores and serves every site; this batch job yields to them (Nice 19, the smallest
+# CPU share, idle IO). Interactive Node services showed up to 1.8 s of event-loop lag while checks and recordings ran.
+Nice=19
+CPUWeight=10
+IOSchedulingClass=idle
 TimeoutStartSec=30min
 PrivateTmp=true
 ProtectSystem=full

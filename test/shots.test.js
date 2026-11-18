@@ -65,7 +65,7 @@ runTests([
         const media = fakeMedia();
         const capture = fakeCapture();
         const now = Date.parse('2026-11-06T12:00:00Z');
-        const r = await shots(host.ctx(), { services: ['live'], media, capture, now });
+        const r = await shots(host.ctx(), { services: ['live'], media, capture, now, paceMs: 0 });
         assert.strictEqual(r.captured, 2, 'one shot per viewport');
         assert.strictEqual(r.uploaded, 2);
         assert.strictEqual(media.uploads.length, 2);
@@ -78,6 +78,23 @@ runTests([
         assert.strictEqual(m.captured_at, new Date(now).toISOString());
     }),
 
+    test('uploads are paced under Media\'s 30 a minute, and one refused for the rate is tried again (11-15: 92 lost)', async () => {
+        const host = site({ pages: ['/', '/a', '/b'] });
+        const media = fakeMedia();
+        const realUpload = media.uploadPng.bind(media);
+        let refusedOnce = false;
+        media.uploadPng = async (o) => {
+            if (!refusedOnce && o.metadata.path === '/a' && o.metadata.viewport === 'phone') { refusedOnce = true; throw new Error('Media answered 429: over 30 per minute'); }
+            return realUpload(o);
+        };
+        const waits = [];
+        const r = await shots(host.ctx(), { services: ['live'], media, capture: fakeCapture(), now: Date.parse('2026-11-06T12:00:00Z'), paceMs: 2400, retryMs: 60000, wait: async (ms) => { waits.push(ms); } });
+        assert.strictEqual(r.uploaded, 6, 'every shot stored, the refused one on its second try');
+        assert.strictEqual(waits.filter((ms) => ms === 2400).length, 5, 'a pause between uploads, none before the first');
+        assert.strictEqual(waits.filter((ms) => ms === 60000).length, 1, 'a minute before trying the refused one again');
+        assert.ok(2400 * 25 <= 60000, '25 a minute at most');
+    }),
+
     test('a shot older than 14 days is pruned, a younger one is kept', async () => {
         const now = Date.parse('2026-11-06T12:00:00Z');
         const old = { id: 'med_old', metadata: { captured_at: new Date(now - RETENTION_MS - 60000).toISOString() } };
@@ -86,7 +103,7 @@ runTests([
 
         const host = site({ pages: ['/'] });
         const media = fakeMedia([old, fresh]);
-        const r = await shots(host.ctx(), { services: ['live'], media, capture: fakeCapture(), now });
+        const r = await shots(host.ctx(), { services: ['live'], media, capture: fakeCapture(), now, paceMs: 0 });
         assert.deepStrictEqual(media.removed, ['med_old']);
         assert.strictEqual(r.pruned, 1);
         assert.ok(media.objects.some((o) => o.id === 'med_fresh'), 'the young shot stays');
