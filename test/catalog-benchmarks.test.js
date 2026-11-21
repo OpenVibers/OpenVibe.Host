@@ -137,7 +137,10 @@ const linode = (time = '2026-09-22T11:00:00Z') => ({ id: `itm_${'1'.repeat(26)}`
             assert.match(issued.headers['cache-control'], /no-store/);
             const none = await t.api('POST', '/catalog/benchmarks/new', { session: ada, headers: ORIGIN, form: { csrf, provider: '', provider_name: '' } });
             assert.deepStrictEqual([none.status, /Name the provider/.test(none.text)], [422, true]);
-            assert.match((await t.api('GET', '/robots.txt')).text, /Disallow: \/catalog\/benchmarks\/\nAllow: \/catalog\/benchmarks\$/);
+            // 2026-11-21 (the owner: "Everything should be just crawlable"): every page is open to crawlers, benchmarks included.
+            const robots = (await t.api('GET', '/robots.txt')).text;
+            assert.match(robots, /^User-agent: \*\nAllow: \/\n/m);
+            assert.ok(!/^Disallow: \/catalog\/benchmarks/m.test(robots) && !/^Disallow: \/$/m.test(robots), 'nothing closes the benchmarks or the site');
         });
 
         await check('its submitter or staff removes it; export carries it and erasure detaches it', async () => {
