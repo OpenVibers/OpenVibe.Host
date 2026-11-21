@@ -166,7 +166,9 @@ async function createApp(opts = {}) {
     app.get('/api/ready', createHostReadiness({ store, outbox, jwksUrl: `${config.networkInternalUrl}/api/.well-known/jwks`, release: release.release, valkey }).handler);
     app.get('/metrics', sharedMetrics.metricsHandler(registry));
     const legalPaths = require('openvibe-shared/legal').PATHS;
-    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(['User-agent: *', 'Allow: /$', ...legalPaths.map((p) => `Allow: ${p}$`), 'Allow: /catalog$', 'Allow: /catalog/*', 'Disallow: /catalog/domains/check', 'Disallow: /catalog/benchmarks/', 'Allow: /catalog/benchmarks$', 'Allow: /.well-known/agent.json', 'Allow: /*.md', 'Disallow: /', '', '# Agent manifest: https://openvibe.host/.well-known/agent.json; every public page has a .md twin.', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
+    // Every page crawlable, by every bot, AI included (the owner, 2026-11-21: "Everything should be just crawlable"). Out:
+    // the sign-in plumbing, and the domain check, which asks the registrars on every request.
+    app.get('/robots.txt', (_req, res) => res.type('text/plain').set('Cache-Control', cache.htmlHeaders({ maxAge: 3600 })).send(['# Content signals: you may use this site\'s content for search, AI answers (ai-input) and AI training.', 'Content-Signal: search=yes, ai-input=yes, ai-train=yes', '', 'User-agent: *', 'Allow: /', 'Disallow: /auth/', 'Disallow: /catalog/domains/check', '', '# Agent manifest: https://openvibe.host/.well-known/agent.json; every public page has a .md twin.', `Sitemap: ${config.baseUrl}/sitemap.xml`, ''].join('\n')));
     app.get('/sitemap.xml', async (_req, res, next) => {
         try {
             const [providers, plans] = await Promise.all([catalog.providers(), catalog.sitemapPlans()]);
