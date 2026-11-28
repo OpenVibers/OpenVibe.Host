@@ -144,7 +144,7 @@
   .hc-table td[data-label="Price"] { grid-column: 2; order: -1; text-align: right; align-self: start; }
   .hc-table td[data-label="Price"]::before { display: none; }
   .hc-table td[data-label="Price"] .hc-price { font-size: 18px; }
-  .hc-table td::before { content: attr(data-label); display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; color: var(--hs-muted); }
+  .hc-table td::before { content: attr(data-label); display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--hs-muted); }
   .hc-table td[data-label="Provider"]::before { display: none; }
   .hc-table td[data-label="Checked"] { grid-column: 1 / -1; white-space: normal; }
   .hc-filters { grid-template-columns: 1fr 1fr; }
